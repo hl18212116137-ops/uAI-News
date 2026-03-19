@@ -107,6 +107,10 @@ export default function SourcesList({ sources, currentSource, totalCount }: Sour
             <button
               key={source.handle}
               onClick={() => {
+                // 保存当前滚动位置
+                if (typeof window !== 'undefined') {
+                  sessionStorage.setItem('scrollY', window.scrollY.toString());
+                }
                 const params = new URLSearchParams(searchParams);
                 params.set("source", source.handle);
                 router.push(`?${params.toString()}`);
@@ -184,6 +188,10 @@ export default function SourcesList({ sources, currentSource, totalCount }: Sour
                 <div
                   key={source.handle}
                   onClick={() => {
+                    // 保存当前滚动位置
+                    if (typeof window !== 'undefined') {
+                      sessionStorage.setItem('scrollY', window.scrollY.toString());
+                    }
                     const params = new URLSearchParams(searchParams);
                     params.set("source", source.handle);
                     router.push(`?${params.toString()}`);

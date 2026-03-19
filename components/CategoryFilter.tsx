@@ -20,6 +20,11 @@ export default function CategoryFilter() {
   const currentCategory = searchParams.get("category") || "all";
 
   const handleCategoryChange = (category: string) => {
+    // 保存当前滚动位置
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('scrollY', window.scrollY.toString());
+    }
+
     const params = new URLSearchParams(searchParams);
 
     // 设置分类参数

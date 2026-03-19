@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { NewsItem } from "@/lib/types";
 import SiteHeader from "./SiteHeader";
 import RefreshProgress from "./RefreshButton";
@@ -49,6 +50,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [task, setTask] = useState<Task | null>(null);
+  const searchParams = useSearchParams();
 
   const isRunning = !!(task && (task.status === 'pending' || task.status === 'running'));
 
@@ -62,6 +64,22 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
       }
     }
   }, []);
+
+  // 保存滚动位置，当 URL 参数变化时恢复
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      // 从 sessionStorage 读取保存的滚动位置
+      const savedScrollY = sessionStorage.getItem('scrollY');
+      if (savedScrollY) {
+        const scrollY = parseInt(savedScrollY, 10);
+        // 使用 setTimeout 确保 DOM 已更新
+        setTimeout(() => {
+          window.scrollTo(0, scrollY);
+          sessionStorage.removeItem('scrollY');
+        }, 0);
+      }
+    }
+  }, [searchParams, initialPosts]);
 
   const handleRefresh = async () => {
     if (taskId) return;
