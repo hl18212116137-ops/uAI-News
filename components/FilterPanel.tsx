@@ -15,7 +15,16 @@ const categoryMap: Record<string, string> = {
   "Other": "其他",
 };
 
-export default function FilterPanel() {
+type Source = {
+  handle: string;
+  name: string;
+};
+
+type FilterPanelProps = {
+  sources?: Source[];
+};
+
+export default function FilterPanel({ sources = [] }: FilterPanelProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [hoveredFilter, setHoveredFilter] = useState<string | null>(null);
@@ -40,6 +49,10 @@ export default function FilterPanel() {
 
   // 获取分类的中文名称
   const categoryLabel = category ? categoryMap[category] || category : null;
+
+  // 获取作者的名字
+  const sourceInfo = source ? sources.find(s => s.handle === source) : null;
+  const sourceName = sourceInfo?.name || source;
 
   return (
     <div className="w-[180px] flex-shrink-0">
@@ -76,7 +89,7 @@ export default function FilterPanel() {
             onMouseEnter={() => setHoveredFilter("source")}
             onMouseLeave={() => setHoveredFilter(null)}
           >
-            <span># {source}</span>
+            <span># {sourceName}</span>
             {hoveredFilter === "source" && (
               <button
                 onClick={() => handleClearFilter("source")}

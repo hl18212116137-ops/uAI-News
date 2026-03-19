@@ -127,7 +127,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
           <div className="flex justify-center" style={{ marginTop: '38px' }}>
             <div style={{ position: 'relative', width: '100%', maxWidth: '896px' }}>
               <div style={{ position: 'absolute', right: '100%', top: 0 }}>
-                <FilterPanel />
+                <FilterPanel sources={sources} />
               </div>
               <div className="bg-white px-6 pt-4 pb-10">
                 <NewsList posts={initialPosts} sources={sources} />
