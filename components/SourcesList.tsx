@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AddSourceModal from "./AddSourceModal";
 
 type Source = {
@@ -36,6 +36,7 @@ export default function SourcesList({ sources, currentSource, totalCount }: Sour
   const [isHoveringCollapsed, setIsHoveringCollapsed] = useState(false);
 
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // 检查是否为活跃源
   const isActive = (handle?: string) => {
@@ -106,7 +107,9 @@ export default function SourcesList({ sources, currentSource, totalCount }: Sour
             <button
               key={source.handle}
               onClick={() => {
-                router.push(`?source=${source.handle}`);
+                const params = new URLSearchParams(searchParams);
+                params.set("source", source.handle);
+                router.push(`?${params.toString()}`);
                 setIsCollapsed(false);
               }}
               title={source.name}
@@ -180,7 +183,11 @@ export default function SourcesList({ sources, currentSource, totalCount }: Sour
               {filteredSources.map((source) => (
                 <div
                   key={source.handle}
-                  onClick={() => router.push(`?source=${source.handle}`)}
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams);
+                    params.set("source", source.handle);
+                    router.push(`?${params.toString()}`);
+                  }}
                   className={`
                     pt-[14px] pb-[14px] pl-[10px] pr-[10px] rounded-[10px] cursor-pointer transition-all duration-200
                     ${isActive(source.handle) ? 'bg-white' : 'hover:bg-[#f9fafb]'}
