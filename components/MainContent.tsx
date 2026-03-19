@@ -72,14 +72,12 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
       const savedScrollY = sessionStorage.getItem('scrollY');
       if (savedScrollY) {
         const scrollY = parseInt(savedScrollY, 10);
-        // 使用 setTimeout 确保 DOM 已更新
-        setTimeout(() => {
-          window.scrollTo(0, scrollY);
-          sessionStorage.removeItem('scrollY');
-        }, 0);
+        // 立即恢复滚动位置，不使用 setTimeout
+        window.scrollTo({ top: scrollY, behavior: 'auto' });
+        sessionStorage.removeItem('scrollY');
       }
     }
-  }, [searchParams, initialPosts]);
+  }, [searchParams]);
 
   const handleRefresh = async () => {
     if (taskId) return;
