@@ -54,7 +54,7 @@ export default function FilterPanel() {
       <div className="flex flex-col gap-3">
         {categoryLabel && (
           <div
-            className="h-[32px] flex items-center justify-between px-5 py-0 text-[14px] font-normal leading-[20px] text-[#4a5565] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
+            className="h-[32px] flex items-center justify-between px-4 py-0 text-[14px] font-normal leading-[20px] text-[#4a5565] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
             onMouseEnter={() => setHoveredFilter("category")}
             onMouseLeave={() => setHoveredFilter(null)}
           >
@@ -72,7 +72,7 @@ export default function FilterPanel() {
         )}
         {source && (
           <div
-            className="h-[32px] flex items-center justify-between px-5 py-0 text-[14px] font-normal leading-[20px] text-[#4a5565] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
+            className="h-[32px] flex items-center justify-between px-4 py-0 text-[14px] font-normal leading-[20px] text-[#4a5565] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
             onMouseEnter={() => setHoveredFilter("source")}
             onMouseLeave={() => setHoveredFilter(null)}
           >
