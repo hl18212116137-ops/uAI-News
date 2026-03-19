@@ -65,22 +65,6 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
     }
   }, []);
 
-  // 保存滚动位置，当 URL 参数变化时恢复
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // 从 sessionStorage 读取保存的滚动位置
-      const savedScrollY = sessionStorage.getItem('scrollY');
-      if (savedScrollY) {
-        const scrollY = parseInt(savedScrollY, 10);
-        // 立即恢复滚动位置
-        window.scrollTo({ top: scrollY, behavior: 'auto' });
-        // 移除滚动锁定
-        document.documentElement.style.overflow = 'auto';
-        sessionStorage.removeItem('scrollY');
-      }
-    }
-  }, [searchParams]);
-
   const handleRefresh = async () => {
     if (taskId) return;
     try {
@@ -116,6 +100,44 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
     });
   }, [sources]);
 
+  // 在客户端进行筛选，避免服务端重新渲染
+  const filteredPosts = useMemo(() => {
+    let posts = initialPosts;
+
+    // 按分类筛选
+    const category = searchParams.get("category");
+    if (category && category !== "all") {
+      posts = posts.filter((post) => post.category === category);
+    }
+
+    // 按作者筛选
+    const source = searchParams.get("source");
+    if (source && source.trim() !== "") {
+      posts = posts.filter((post) => {
+        const handle = typeof post.source === "string" ? post.source : post.source?.handle;
+        return handle && handle.toLowerCase() === source.toLowerCase();
+      });
+    }
+
+    // 按搜索关键词筛选
+    const query = searchParams.get("query");
+    if (query && query.trim() !== "") {
+      const lowerQuery = query.toLowerCase().trim();
+      posts = posts.filter((post) => {
+        return (
+          post.title.toLowerCase().includes(lowerQuery) ||
+          post.summary.toLowerCase().includes(lowerQuery) ||
+          post.content.toLowerCase().includes(lowerQuery)
+        );
+      });
+    }
+
+    // 按发布时间排序
+    return [...posts].sort((a, b) => {
+      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+    });
+  }, [initialPosts, searchParams]);
+
   return (
     <div className="flex min-h-screen bg-white">
       {/* 左侧博主列表 */}
@@ -148,7 +170,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
                 <FilterPanel sources={sources} />
               </div>
               <div className="bg-white px-6 pt-4 pb-10 min-h-screen">
-                <NewsList posts={initialPosts} sources={sources} />
+                <NewsList posts={filteredPosts} sources={sources} />
               </div>
             </div>
           </div>
