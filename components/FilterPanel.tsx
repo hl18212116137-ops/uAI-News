@@ -42,7 +42,7 @@ export default function FilterPanel() {
   const categoryLabel = category ? categoryMap[category] || category : null;
 
   return (
-    <div className="w-[144px] flex-shrink-0">
+    <div className="w-[180px] flex-shrink-0">
       {/* 标题 */}
       <div className="h-[24px] mb-5">
         <p className="text-[14px] font-medium leading-[20px] text-[#99a1af]">
