@@ -23,6 +23,8 @@ export default function CategoryFilter() {
     // 保存当前滚动位置
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('scrollY', window.scrollY.toString());
+      // 锁定滚动，防止页面在内容更新时重排版
+      document.documentElement.style.overflow = 'hidden';
     }
 
     const params = new URLSearchParams(searchParams);

@@ -72,8 +72,10 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
       const savedScrollY = sessionStorage.getItem('scrollY');
       if (savedScrollY) {
         const scrollY = parseInt(savedScrollY, 10);
-        // 立即恢复滚动位置，不使用 setTimeout
+        // 立即恢复滚动位置
         window.scrollTo({ top: scrollY, behavior: 'auto' });
+        // 移除滚动锁定
+        document.documentElement.style.overflow = 'auto';
         sessionStorage.removeItem('scrollY');
       }
     }
