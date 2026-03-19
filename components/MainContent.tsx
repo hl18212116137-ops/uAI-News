@@ -129,7 +129,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
               <div style={{ position: 'absolute', right: '100%', top: 0 }}>
                 <FilterPanel sources={sources} />
               </div>
-              <div className="bg-white px-6 pt-4 pb-10">
+              <div className="bg-white px-6 pt-4 pb-10 min-h-[800px]">
                 <NewsList posts={initialPosts} sources={sources} />
               </div>
             </div>
