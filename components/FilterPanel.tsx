@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import Tooltip from "./Tooltip";
 
 // 分类映射表：英文 value 到中文 label
 const categoryMap: Record<string, string> = {
@@ -40,11 +41,11 @@ export default function FilterPanel({ sources = [] }: FilterPanelProps) {
     const params = new URLSearchParams(searchParams);
     params.delete(filterType);
     const queryString = params.toString();
-    router.push(queryString ? `?${queryString}` : "/");
+    router.push(queryString ? `?${queryString}` : "/", { scroll: false });
   };
 
   const handleClearAll = () => {
-    router.push("/");
+    router.push("/", { scroll: false });
   };
 
   // 获取分类的中文名称
@@ -67,7 +68,7 @@ export default function FilterPanel({ sources = [] }: FilterPanelProps) {
       <div className="flex flex-col gap-3">
         {categoryLabel && (
           <div
-            className="h-[32px] flex items-center justify-between px-4 py-0 text-[14px] font-normal leading-[20px] text-[#4a5565] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
+            className="h-[32px] flex items-center justify-between px-4 py-0 text-[14px] font-normal leading-[20px] text-[#101828] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
             onMouseEnter={() => setHoveredFilter("category")}
             onMouseLeave={() => setHoveredFilter(null)}
           >
@@ -85,7 +86,7 @@ export default function FilterPanel({ sources = [] }: FilterPanelProps) {
         )}
         {source && (
           <div
-            className="h-[32px] flex items-center justify-between px-4 py-0 text-[14px] font-normal leading-[20px] text-[#4a5565] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
+            className="h-[32px] flex items-center justify-between px-4 py-0 text-[14px] font-normal leading-[20px] text-[#101828] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
             onMouseEnter={() => setHoveredFilter("source")}
             onMouseLeave={() => setHoveredFilter(null)}
           >
@@ -104,12 +105,14 @@ export default function FilterPanel({ sources = [] }: FilterPanelProps) {
       </div>
 
       {/* 清除筛选按钮 */}
-      <button
-        onClick={handleClearAll}
-        className="mt-6 text-[12px] font-normal leading-[18px] text-[#99a1af] hover:text-[#101828] transition-colors text-left"
-      >
-        清除筛选
-      </button>
+      <Tooltip content="清除所有筛选条件">
+        <button
+          onClick={handleClearAll}
+          className="mt-6 text-[12px] font-normal leading-[18px] text-[#99a1af] hover:text-[#101828] transition-colors text-left"
+        >
+          清除筛选
+        </button>
+      </Tooltip>
     </div>
   );
 }
