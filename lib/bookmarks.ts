@@ -60,29 +60,41 @@ export async function removeBookmark(userId: string, newsItemId: string): Promis
 
 /**
  * 获取用户收藏的完整新闻列表（供 /bookmarks 页面使用）
+ * 两步查询：先取 news_item_id 列表，再批量查 news_items
  */
 export async function getBookmarkedNews(userId: string): Promise<NewsItem[]> {
   try {
-    const { data, error } = await supabase
+    // 第一步：获取收藏的 ID 列表（按收藏时间降序）
+    const { data: bookmarks, error: bookmarkError } = await supabase
       .from('user_bookmarks')
-      .select(`
-        created_at,
-        news_items (
-          id, title, summary, content,
-          source_platform, source_name, source_handle, source_url,
-          category, published_at, original_text, created_at, importance_score
-        )
-      `)
+      .select('news_item_id')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Failed to get bookmarked news:', error)
+    if (bookmarkError) {
+      console.error('Failed to get bookmark ids:', bookmarkError)
       return []
     }
 
-    return (data || [])
-      .map(row => row.news_items as any)
+    if (!bookmarks || bookmarks.length === 0) return []
+
+    const ids = bookmarks.map(b => b.news_item_id)
+
+    // 第二步：批量查询新闻详情
+    const { data: items, error: itemsError } = await supabase
+      .from('news_items')
+      .select('*')
+      .in('id', ids)
+
+    if (itemsError) {
+      console.error('Failed to get news items:', itemsError)
+      return []
+    }
+
+    // 按收藏时间顺序排列（保持 ids 的顺序）
+    const itemMap = new Map((items || []).map(item => [item.id, item]))
+    return ids
+      .map(id => itemMap.get(id))
       .filter(Boolean)
       .map((item: any) => ({
         id: item.id,
