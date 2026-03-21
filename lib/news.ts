@@ -182,3 +182,20 @@ export async function getTopImportantNews(days: number = 3, limit: number = 10):
   // 返回前N条
   return sortedByScore.slice(0, limit);
 }
+
+/**
+ * 从已有数据计算最重要新闻（纯函数，不查 Supabase）
+ */
+export function getTopImportantNewsFromPosts(
+  allPosts: NewsItem[],
+  days: number = 3,
+  limit: number = 10
+): NewsItem[] {
+  const cutoffTime = Date.now() - days * 24 * 60 * 60 * 1000;
+  const recentPosts = allPosts.filter(
+    (post) => new Date(post.publishedAt).getTime() >= cutoffTime
+  );
+  return [...recentPosts]
+    .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
+    .slice(0, limit);
+}

@@ -56,6 +56,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [activeSource, setActiveSource] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [posts, setPosts] = useState<NewsItem[]>(initialPosts);
   const newsListRef = useRef<HTMLDivElement>(null);
 
   const isRunning = !!(task && (task.status === 'pending' || task.status === 'running'));
@@ -103,6 +104,14 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
     setActiveSourceTab(type);
   }, []);
 
+  const handleSourceDelete = useCallback((handle: string) => {
+    setPosts(prev => prev.filter(p => {
+      const h = typeof p.source === 'string' ? p.source : p.source?.handle;
+      return h?.toLowerCase() !== handle.toLowerCase();
+    }));
+    setActiveSource(prev => prev.toLowerCase() === handle.toLowerCase() ? '' : prev);
+  }, []);
+
   const sortedSources = useMemo(() => {
     return [...sources].sort((a, b) => {
       if (!a.latestPostTime && !b.latestPostTime) return 0;
@@ -117,14 +126,14 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
 
   // 在客户端进行筛选（纯内存操作，无服务端请求）
   const filteredPosts = useMemo(() => {
-    let posts = initialPosts;
+    let result = posts;
 
     if (activeCategory && activeCategory !== "all") {
-      posts = posts.filter((post) => post.category === activeCategory);
+      result = result.filter((post) => post.category === activeCategory);
     }
 
     if (activeSource && activeSource.trim() !== "") {
-      posts = posts.filter((post) => {
+      result = result.filter((post) => {
         const handle = typeof post.source === "string" ? post.source : post.source?.handle;
         return handle && handle.toLowerCase() === activeSource.toLowerCase();
       });
@@ -132,7 +141,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
 
     if (searchQuery && searchQuery.trim() !== "") {
       const lowerQuery = searchQuery.toLowerCase().trim();
-      posts = posts.filter((post) => {
+      result = result.filter((post) => {
         return (
           post.title.toLowerCase().includes(lowerQuery) ||
           post.summary.toLowerCase().includes(lowerQuery) ||
@@ -141,10 +150,10 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
       });
     }
 
-    return [...posts].sort((a, b) => {
+    return [...result].sort((a, b) => {
       return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
     });
-  }, [initialPosts, activeCategory, activeSource, searchQuery]);
+  }, [posts, activeCategory, activeSource, searchQuery]);
 
   return (
     <div className="flex min-h-screen bg-white">
@@ -154,6 +163,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
         totalCount={totalCount}
         currentSource={activeSource}
         onSourceSelect={(handle) => setActiveSource(handle || "")}
+        onSourceDelete={handleSourceDelete}
       />
 
       {/* 中间主内容区 */}
