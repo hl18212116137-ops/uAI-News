@@ -164,6 +164,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
         currentSource={activeSource}
         onSourceSelect={(handle) => setActiveSource(handle || "")}
         onSourceDelete={handleSourceDelete}
+        onAddSource={() => setShowAddSourceModal(true)}
       />
 
       {/* 中间主内容区 */}

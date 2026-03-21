@@ -22,9 +22,10 @@ type SourcesListProps = {
   totalCount: number;
   onSourceSelect: (handle?: string) => void;
   onSourceDelete?: (handle: string) => void;
+  onAddSource?: () => void;
 };
 
-export default function SourcesList({ sources, currentSource, totalCount, onSourceSelect, onSourceDelete }: SourcesListProps) {
+export default function SourcesList({ sources, currentSource, totalCount, onSourceSelect, onSourceDelete, onAddSource }: SourcesListProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -129,12 +130,12 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
 
       {/* 内容区域 - 折叠时隐藏 */}
       {!isCollapsed && (
-        <div className="mt-[60px] flex flex-col gap-[10px]">
+        <div className="mt-[36px] flex flex-col gap-[10px]">
           {/* 标题区域 */}
-          <div className="flex items-center justify-between mb-4 pl-[14px]">
-            <h2 className="text-lg font-semibold text-[#101828]">已关注信息源</h2>
+          <div className="flex items-center justify-between mb-4 pl-[14px] pr-[14px]">
+            <h2 className="text-xl font-semibold text-[#101828]">已关注信息源</h2>
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => onAddSource ? onAddSource() : setShowAddModal(true)}
               className="w-6 h-6 bg-[#101828] rounded-full flex items-center justify-center text-white hover:bg-[#1a1f2e] transition-colors"
               title="添加信息源"
             >
@@ -251,13 +252,13 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                       </div>
                     )}
                     <div className="flex-1 min-w-0 flex flex-col">
-                      <div className="flex items-center justify-between gap-2 h-[20px]">
-                        <span className="font-semibold text-sm text-[#101828] truncate leading-[20px]">{source.name}</span>
-                        <span className="text-xs text-[#6a7282] flex-shrink-0 leading-[16px] ml-2">{source.postCount}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-sm text-[#101828] truncate leading-5">{source.name}</span>
+                        <span className="text-xs text-[#6a7282] flex-shrink-0 ml-2">{source.postCount}</span>
                       </div>
-                      <div className="text-xs text-[#99a1af] h-[16px] leading-[16px]">@{source.handle}</div>
+                      <div className="text-xs text-[#99a1af] leading-4">@{source.handle}</div>
                       {source.description && (
-                        <div className="text-xs text-[#6a7282] line-clamp-2 h-[39px] leading-[19.5px]">
+                        <div className="text-xs text-[#6a7282] line-clamp-2 leading-[1.5]">
                           {source.description}
                         </div>
                       )}
