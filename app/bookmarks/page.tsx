@@ -114,12 +114,12 @@ export default async function BookmarksPage() {
         ) : (
           <div className="flex flex-col gap-4">
             {bookmarkedNews.map((post) => (
-              // 收藏页的 NewsCard 不需要 onBookmarkToggle（静态展示）
               <NewsCard
                 key={post.id}
                 post={post}
                 sources={sourceMeta}
                 isBookmarked={true}
+                readonly={true}
               />
             ))}
           </div>

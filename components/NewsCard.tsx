@@ -25,11 +25,12 @@ type NewsCardProps = {
   sources?: SourceMeta[];
   isBookmarked?: boolean;
   onBookmarkToggle?: (id: string) => void;
+  readonly?: boolean; // Server Component 环境下使用，不渲染 onClick
 };
 
 export default memo(NewsCard);
 
-function NewsCard({ post, variant = "default", sources = [], isBookmarked = false, onBookmarkToggle }: NewsCardProps) {
+function NewsCard({ post, variant = "default", sources = [], isBookmarked = false, onBookmarkToggle, readonly = false }: NewsCardProps) {
   const sourceHandle = post.source?.handle || '';
   const sourceName = post.source?.name || '未知来源';
   const sourceUrl = post.source?.url || '#';
@@ -60,18 +61,11 @@ function NewsCard({ post, variant = "default", sources = [], isBookmarked = fals
             </>
           )}
         </div>
-        <Tooltip content={isBookmarked ? "取消收藏" : "收藏这篇文章"}>
-          <button
-            className="w-6 h-6 rounded-[10px] flex items-center justify-center hover:bg-gray-100 transition-colors flex-shrink-0"
-            aria-label={isBookmarked ? "取消收藏" : "收藏"}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onBookmarkToggle?.(post.id);
-            }}
-          >
+        {readonly ? (
+          // Server Component 环境：只展示收藏状态，不渲染 onClick
+          <div className="w-6 h-6 rounded-[10px] flex items-center justify-center flex-shrink-0">
             <svg
-              className={`w-4 h-4 transition-colors ${isBookmarked ? 'text-[#d7a220]' : 'text-[#99a1af]'}`}
+              className={`w-4 h-4 ${isBookmarked ? 'text-[#d7a220]' : 'text-[#99a1af]'}`}
               fill={isBookmarked ? "currentColor" : "none"}
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -80,8 +74,31 @@ function NewsCard({ post, variant = "default", sources = [], isBookmarked = fals
                 d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
               />
             </svg>
-          </button>
-        </Tooltip>
+          </div>
+        ) : (
+          <Tooltip content={isBookmarked ? "取消收藏" : "收藏这篇文章"}>
+            <button
+              className="w-6 h-6 rounded-[10px] flex items-center justify-center hover:bg-gray-100 transition-colors flex-shrink-0"
+              aria-label={isBookmarked ? "取消收藏" : "收藏"}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onBookmarkToggle?.(post.id);
+              }}
+            >
+              <svg
+                className={`w-4 h-4 transition-colors ${isBookmarked ? 'text-[#d7a220]' : 'text-[#99a1af]'}`}
+                fill={isBookmarked ? "currentColor" : "none"}
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                />
+              </svg>
+            </button>
+          </Tooltip>
+        )}
       </div>
 
       {/* 标题 */}
