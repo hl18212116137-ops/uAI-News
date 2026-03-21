@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import AddSourceModal from "./AddSourceModal";
+import Tooltip from "./Tooltip";
 
 type Source = {
   handle: string;
@@ -20,9 +21,10 @@ type SourcesListProps = {
   currentSource?: string;
   totalCount: number;
   onSourceSelect: (handle?: string) => void;
+  onSourceDelete?: (handle: string) => void;
 };
 
-export default function SourcesList({ sources, currentSource, totalCount, onSourceSelect }: SourcesListProps) {
+export default function SourcesList({ sources, currentSource, totalCount, onSourceSelect, onSourceDelete }: SourcesListProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -57,6 +59,10 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
       const result = await response.json();
 
       if (result.success) {
+        const deletedSource = sources.find(s => s.id === sourceToDelete.id);
+        if (deletedSource) {
+          onSourceDelete?.(deletedSource.handle);
+        }
         router.refresh();
       } else {
         alert(`删除失败: ${result.error}`);
@@ -197,66 +203,67 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                 );
               })
               .map((source) => (
-              <div
-                key={source.handle}
-                onClick={() => onSourceSelect(source.handle)}
-                onMouseEnter={() => setHoveredSourceId(source.id)}
-                onMouseLeave={() => setHoveredSourceId(null)}
-                className={`
-                  relative h-[115px] pt-[14px] pl-[14px] pr-[14px] rounded-[10px] cursor-pointer transition-all duration-200 bg-white
-                  ${isActive(source.handle)
-                    ? 'bg-white'
-                    : 'hover:bg-[#f9fafb]'
-                  }
-                `}
-              >
-              {/* 删除按钮 */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(source.id, source.name);
-                }}
-                disabled={deletingId === source.id}
-                className={`
-                  absolute top-2 right-2 w-6 h-6
-                  border-none rounded
-                  ${deletingId === source.id ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 cursor-pointer'}
-                  text-white text-sm
-                  flex items-center justify-center
-                  transition-opacity duration-200
-                  ${hoveredSourceId === source.id || deletingId === source.id ? 'opacity-100' : 'opacity-0'}
-                `}
-                title="取消关注"
-              >
-                {deletingId === source.id ? '...' : '×'}
-              </button>
+              <Tooltip key={source.handle} content="点击查看作者推文">
+                <div
+                  onClick={() => onSourceSelect(source.handle)}
+                  onMouseEnter={() => setHoveredSourceId(source.id)}
+                  onMouseLeave={() => setHoveredSourceId(null)}
+                  className={`
+                    relative h-[115px] pt-[14px] pl-[14px] pr-[14px] rounded-[10px] cursor-pointer transition-all duration-200 bg-white
+                    ${isActive(source.handle)
+                      ? 'bg-white'
+                      : 'hover:bg-[#f9fafb]'
+                    }
+                  `}
+                >
+                  {/* 删除按钮 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(source.id, source.name);
+                    }}
+                    disabled={deletingId === source.id}
+                    className={`
+                      absolute top-2 right-2 w-6 h-6
+                      border-none rounded
+                      ${deletingId === source.id ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 cursor-pointer'}
+                      text-white text-sm
+                      flex items-center justify-center
+                      transition-opacity duration-200
+                      ${hoveredSourceId === source.id || deletingId === source.id ? 'opacity-100' : 'opacity-0'}
+                    `}
+                    title="取消关注"
+                  >
+                    {deletingId === source.id ? '...' : '×'}
+                  </button>
 
-              <div className="flex items-start gap-3 h-[87px]">
-                {source.avatar ? (
-                  <img
-                    src={source.avatar}
-                    alt={source.name}
-                    className="w-10 h-10 rounded-full flex-shrink-0"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold flex-shrink-0">
-                    {source.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0 flex flex-col h-[87px]">
-                  <div className="flex items-center justify-between gap-2 h-[20px]">
-                    <span className="font-semibold text-sm text-[#101828] truncate leading-[20px]">{source.name}</span>
-                    <span className="text-xs text-[#6a7282] flex-shrink-0 leading-[16px] ml-2">{source.postCount}</span>
-                  </div>
-                  <div className="text-xs text-[#99a1af] h-[16px] leading-[16px]">@{source.handle}</div>
-                  {source.description && (
-                    <div className="text-xs text-[#6a7282] line-clamp-2 h-[39px] leading-[19.5px]">
-                      {source.description}
+                  <div className="flex items-start gap-3 h-[87px]">
+                    {source.avatar ? (
+                      <img
+                        src={source.avatar}
+                        alt={source.name}
+                        className="w-10 h-10 rounded-full flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                        {source.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 flex flex-col h-[87px]">
+                      <div className="flex items-center justify-between gap-2 h-[20px]">
+                        <span className="font-semibold text-sm text-[#101828] truncate leading-[20px]">{source.name}</span>
+                        <span className="text-xs text-[#6a7282] flex-shrink-0 leading-[16px] ml-2">{source.postCount}</span>
+                      </div>
+                      <div className="text-xs text-[#99a1af] h-[16px] leading-[16px]">@{source.handle}</div>
+                      {source.description && (
+                        <div className="text-xs text-[#6a7282] line-clamp-2 h-[39px] leading-[19.5px]">
+                          {source.description}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
+              </Tooltip>
           ))}
           </div>
         </div>
