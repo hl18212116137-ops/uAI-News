@@ -86,9 +86,9 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
     <div
       className={`
         ${isCollapsed ? 'w-[80px]' : 'w-[320px]'}
-        h-screen sticky top-0 overflow-y-auto overflow-x-hidden
+        h-screen sticky top-0 overflow-y-auto overflow-x-hidden sidebar-scroll
         ${isCollapsed ? 'px-[22px] py-5' : 'pl-[6px] pr-0 py-5'}
-        bg-white
+        bg-white group
         transition-all duration-200 ease-in-out
       `}
       style={{ borderRight: isCollapsed ? 'none' : '1px solid #e5e7eb' }}
@@ -96,7 +96,9 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
       {/* 折叠/展开按钮 */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="fixed top-1/2 -translate-y-1/2 w-7 h-7 bg-white rounded-full border border-[#e5e7eb] flex items-center justify-center shadow-sm z-10 cursor-pointer hover:bg-gray-50 transition-colors"
+        className={`fixed top-1/2 -translate-y-1/2 w-7 h-7 bg-white rounded-full border border-[#e5e7eb] flex items-center justify-center z-10 cursor-pointer hover:bg-gray-50 transition-all duration-200 ${
+          isCollapsed ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
+        }`}
         style={{ left: isCollapsed ? 'calc(80px + 8px)' : 'calc(320px + 8px)' }}
         title={isCollapsed ? "展开侧边栏" : "收起侧边栏"}
         aria-label={isCollapsed ? "展开侧边栏" : "收起侧边栏"}
@@ -104,16 +106,18 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
         <span className="text-[#6a7282] flex-shrink-0" style={{ width: '14px', height: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>{isCollapsed ? '›' : '‹'}</span>
       </button>
 
-      {/* 收拢态：显示头像缩略图 */}
+      {/* 收拢态：整体作为点击区域展开，头像仅作展示 */}
       {isCollapsed && (
-        <div className="flex flex-col items-center gap-4 overflow-y-auto h-full justify-center">
+        <div
+          className="flex flex-col items-center gap-4 h-full justify-center cursor-pointer"
+          onClick={() => setIsCollapsed(false)}
+        >
           {sources.slice(0, 7).map((source) => (
-            <button
+            <div
               key={source.handle}
-              onClick={() => { onSourceSelect(source.handle); setIsCollapsed(false); }}
               title={source.name}
-              className={`w-9 h-9 rounded-full flex-shrink-0 overflow-hidden transition-all duration-200 ${
-                isActive(source.handle) ? 'ring-2 ring-[#101828]' : 'hover:ring-2 hover:ring-[#e5e7eb]'
+              className={`w-9 h-9 rounded-full flex-shrink-0 overflow-hidden transition-all duration-200 pointer-events-none ${
+                isActive(source.handle) ? 'ring-2 ring-[#101828]' : ''
               }`}
             >
               {source.avatar ? (
@@ -123,7 +127,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                   {source.name.charAt(0).toUpperCase()}
                 </div>
               )}
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -254,7 +258,9 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                     <div className="flex-1 min-w-0 flex flex-col">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-sm text-[#101828] truncate leading-5">{source.name}</span>
-                        <span className="text-xs text-[#6a7282] flex-shrink-0 ml-2">{source.postCount}</span>
+                        <Tooltip content="已收录推文">
+                          <span className="text-xs text-[#6a7282] flex-shrink-0 ml-2 cursor-default">{source.postCount}</span>
+                        </Tooltip>
                       </div>
                       <div className="text-xs text-[#99a1af] leading-4">@{source.handle}</div>
                       {source.description && (
