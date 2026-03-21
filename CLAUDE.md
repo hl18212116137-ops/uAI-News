@@ -95,7 +95,7 @@ animation: {
 
 ## 2. Component Library
 
-**Location:** `components/` (17 components, all flat — no subdirectories)
+**Location:** `components/` (19 components, all flat — no subdirectories)
 
 All components are:
 - Functional React components with TypeScript
@@ -107,18 +107,24 @@ All components are:
 | File | Purpose |
 |------|---------|
 | `NewsCard.tsx` | News item card (compact/default variants) |
+| `NewsList.tsx` | News list wrapper |
 | `StatsCards.tsx` | Stat counters row |
 | `SiteHeader.tsx` | App header with title and stats |
-| `MainContent.tsx` | Three-column layout shell |
-| `SourcesList.tsx` | Left sidebar source list |
-| `CategoryFilter.tsx` | Horizontal category tab bar |
+| `MainContent.tsx` | **Core client component** — holds all interactive state |
+| `SourcesList.tsx` | Left sidebar source list (collapsible) |
+| `CategoryFilter.tsx` | Horizontal category tab bar (sticky) |
 | `SearchBox.tsx` | Search input |
 | `StatusIndicator.tsx` | Refresh status display |
 | `FloatingButton.tsx` | Fixed right-side action button |
 | `WeeklyReportModal.tsx` | Full-screen modal overlay |
-| `FilterPanel.tsx` | Filter controls panel |
+| `FilterPanel.tsx` | Active filter display with clear buttons |
+| `FilterList.tsx` | Filter list UI |
 | `EmptyState.tsx` | Empty/no-results state |
 | `TopImportantNews.tsx` | Featured news section |
+| `AddSourceModal.tsx` | Draggable modal to add new information sources |
+| `RefreshButton.tsx` | Refresh with progress polling |
+| `Tooltip.tsx` | Custom tooltip — use instead of native `title=` attribute |
+| `ImportFromUrl.tsx` | Manual URL import UI |
 
 ### Component Pattern
 
@@ -224,21 +230,30 @@ When implementing Figma designs with images:
 ```
 ainews-v2/
 ├── app/
-│   ├── api/           # Next.js API routes
-│   ├── news/          # News sub-routes
+│   ├── api/           # Next.js API routes (refresh, sources, task-status, import-from-url)
+│   ├── news/          # News detail page (news/[id]/page.tsx)
 │   ├── globals.css    # Global Tailwind styles + component classes
 │   ├── layout.tsx     # Root layout (fonts, metadata)
-│   └── page.tsx       # Home page
-├── components/        # All UI components (flat, no subdirs)
+│   ├── loading.tsx    # Skeleton screen shown during page load (streaming)
+│   └── page.tsx       # Home page (Server Component, revalidate=60)
+├── components/        # All UI components (flat, no subdirs) — 19 files
 ├── lib/               # Business logic, utilities, types
-│   └── types.ts       # Shared TypeScript types
+│   ├── ai/            # AI service layer (claude-service, minimax-service, ai-factory)
+│   ├── deduplication/ # 3-layer deduplication pipeline
+│   ├── import/        # Manual URL import pipeline
+│   ├── types.ts       # ⭐ Shared TypeScript types (NewsItem, NewsSource, NewsCategory)
+│   ├── db.ts          # Supabase DB read/write (server-only)
+│   ├── sources.ts     # Sources CRUD (server-only)
+│   ├── news.ts        # News filtering, sorting, pure functions
+│   └── stats.ts       # Statistics computation (pure functions)
 ├── data/              # JSON data cache files
-├── database/          # SQLite database files
 ├── scripts/           # Utility scripts
 ├── tailwind.config.ts # Design tokens
 ├── next.config.js     # Next.js config (minimal)
 └── tsconfig.json      # TypeScript config
 ```
+
+> **Database:** Supabase (PostgreSQL) — accessed via `lib/db.ts` and `lib/sources.ts`. There is no SQLite in production.
 
 **New components go in:** `components/ComponentName.tsx`
 **New pages go in:** `app/route-name/page.tsx`
@@ -345,3 +360,57 @@ export type NewsItem = {
 ```
 
 Always import types from `@/lib/types` — do not redefine them.
+
+---
+
+## 9. 核心架构速览
+
+### 数据流（一句话）
+
+> **Server Component** (`app/page.tsx`) 并行拉取 Supabase 数据 → 传给 **Client Component** (`MainContent.tsx`) 管理所有交互状态 → 子组件只接收 props，不持有状态。
+
+### 状态中枢：`MainContent.tsx`
+
+`MainContent` 是唯一持有全局 UI 状态的组件：
+
+| 状态 | 作用 |
+|------|------|
+| `posts` | 当前全量帖子列表（可被 delete 操作更新） |
+| `activeCategory` | 当前选中分类 |
+| `activeSource` | 当前选中信息源 handle |
+| `searchQuery` | 搜索关键词 |
+| `isSourcesListCollapsed` | sidebar 折叠状态 |
+| `showAddSourceModal` | 全局添加信息源弹窗开关 |
+
+筛选逻辑：纯客户端 `useMemo`，不触发服务端请求。
+
+### AI 服务
+
+- **主力**：Minimax（`lib/ai/minimax-service.ts`）
+- **降级**：Claude（`lib/ai/claude-service.ts`）
+- **入口**：`lib/ai/ai-factory.ts`（含重试和 fallback 逻辑）
+
+### Tooltip 使用规范
+
+- **禁止**使用原生 `title=` 属性（浏览器样式不统一）
+- **一律**使用 `<Tooltip content="...">` 组件（`components/Tooltip.tsx`）
+- 支持 `excludeSelector` prop 解决嵌套 Tooltip 冲突
+
+---
+
+## 10. 快速上手索引（给下一个 Claude）
+
+拿到任务后，按以下顺序读文件，可以在最少 token 内建立完整上下文：
+
+| 优先级 | 文件 | 读取目的 |
+|--------|------|----------|
+| ⭐⭐⭐ | `CLAUDE.md`（本文） | 设计系统、规范、架构总览 |
+| ⭐⭐⭐ | `lib/types.ts` | 所有共享类型定义 |
+| ⭐⭐⭐ | `components/MainContent.tsx` | 状态中枢，理解数据流 |
+| ⭐⭐ | `app/page.tsx` | 服务端数据获取入口 |
+| ⭐⭐ | 任务相关的组件文件 | 按需读取 |
+| ⭐ | `app/globals.css` | 仅需确认 CSS 类时查阅 |
+| ⭐ | `tailwind.config.ts` | 仅需确认 token 时查阅 |
+
+**不需要**在开始时读所有 19 个组件文件——按任务需要查。
+
