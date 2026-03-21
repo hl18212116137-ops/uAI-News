@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { NewsItem } from "@/lib/types";
 import type { Task } from "@/lib/task-manager";
 import type { User } from "@supabase/supabase-js";
 import { useBookmark } from "@/hooks/useBookmark";
+import { useSubscription } from "@/hooks/useSubscription";
 import SiteHeader from "./SiteHeader";
 import RefreshProgress from "./RefreshButton";
 import CategoryFilter from "./CategoryFilter";
@@ -30,7 +32,8 @@ type Source = {
 type MainContentProps = {
   initialPosts: NewsItem[];
   topImportantNews: NewsItem[];
-  sources: Source[];
+  sources: Source[];                    // 已订阅信息源列表
+  recommendedSources?: Source[];        // 推荐关注的信息源
   totalCount: number;
   stats: {
     bloggerCount: number;
@@ -41,9 +44,22 @@ type MainContentProps = {
   };
   user: User | null;
   initialBookmarkedIds: string[];
+  initialSubscribedSourceIds: string[];
+  isPersonalFeed: boolean;              // true = 个性化 feed；false = 推荐 feed
 };
 
-export default function MainContent({ initialPosts, topImportantNews, sources, totalCount, stats, user, initialBookmarkedIds }: MainContentProps) {
+export default function MainContent({
+  initialPosts,
+  topImportantNews,
+  sources,
+  recommendedSources = [],
+  stats,
+  user,
+  initialBookmarkedIds,
+  initialSubscribedSourceIds,
+  isPersonalFeed,
+}: MainContentProps) {
+  const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
   const [isSourcesListCollapsed, setIsSourcesListCollapsed] = useState(false);
@@ -53,7 +69,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [activeSource, setActiveSource] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [posts, setPosts] = useState<NewsItem[]>(initialPosts);
+  const [posts] = useState<NewsItem[]>(initialPosts);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
 
   const handleNeedAuth = useCallback(() => setShowAuthPrompt(true), []);
@@ -61,6 +77,13 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   // 收藏功能（乐观更新）
   const { bookmarkedIds, toggleBookmark } = useBookmark(
     new Set(initialBookmarkedIds),
+    user,
+    handleNeedAuth
+  );
+
+  // 订阅功能（乐观更新 + router.refresh 刷新 feed）
+  const { subscribedIds, toggleSubscription } = useSubscription(
+    new Set(initialSubscribedSourceIds),
     user,
     handleNeedAuth
   );
@@ -101,15 +124,6 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
     setActiveSourceTab(type);
   }, [user]);
 
-  const sortedSources = useMemo(() => {
-    return [...sources].sort((a, b) => {
-      if (!a.latestPostTime && !b.latestPostTime) return 0;
-      if (!a.latestPostTime) return 1;
-      if (!b.latestPostTime) return -1;
-      return new Date(b.latestPostTime).getTime() - new Date(a.latestPostTime).getTime();
-    });
-  }, [sources]);
-
   // 计算 sidebar 宽度
   const sidebarWidth = isSourcesListCollapsed ? 100 : 320;
 
@@ -146,13 +160,15 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
 
   return (
     <div className="flex min-h-screen bg-white">
-      {/* 左侧博主列表 */}
+      {/* 左侧信息源列表（已订阅 + 推荐） */}
       <SourcesList
-        sources={sortedSources}
-        totalCount={totalCount}
+        sources={sources}
+        recommendedSources={recommendedSources}
         currentSource={activeSource}
         onSourceSelect={(handle) => setActiveSource(handle || "")}
         onAddSource={() => setShowAddSourceModal(true)}
+        subscribedIds={subscribedIds}
+        onToggleSubscription={toggleSubscription}
       />
 
       {/* 中间主内容区 */}
@@ -173,7 +189,23 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
             }}
           />
         </div>
-        <div style={{ marginTop: '50px' }}>
+
+        {/* 未登录 / 无订阅时的引导 banner */}
+        {!isPersonalFeed && (
+          <div className="max-w-[900px] mx-auto px-6 mb-4">
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#f9fafb] border border-[#f3f4f6] text-sm text-[#6a7282]">
+              <span className="text-base">📡</span>
+              <span>
+                {user
+                  ? '关注左侧信息源后，首页将只显示你关注的内容。以下为精选推荐文章：'
+                  : '以下为精选推荐文章。登录并关注信息源后，即可获取专属 Feed：'
+                }
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: isPersonalFeed ? '50px' : '0' }}>
           {/* sticky 行：CategoryFilter */}
           <div className="sticky top-0 z-10 bg-transparent flex justify-center w-full">
             <div className="max-w-[800px] w-full bg-white">
@@ -210,7 +242,14 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
 
               {/* 推文模块居中 */}
               <div className="bg-white px-6 pt-4 pb-10 min-h-screen">
-                <NewsList posts={filteredPosts} sources={sources} bookmarkedIds={bookmarkedIds} onBookmarkToggle={toggleBookmark} />
+                <NewsList
+                  posts={filteredPosts}
+                  sources={sources}
+                  bookmarkedIds={bookmarkedIds}
+                  onBookmarkToggle={toggleBookmark}
+                  subscribedIds={subscribedIds}
+                  onSubscriptionToggle={toggleSubscription}
+                />
               </div>
             </div>
           </div>

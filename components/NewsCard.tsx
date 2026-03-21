@@ -26,11 +26,14 @@ type NewsCardProps = {
   isBookmarked?: boolean;
   onBookmarkToggle?: (id: string) => void;
   readonly?: boolean; // Server Component 环境下使用，不渲染 onClick
+  isSourceSubscribed?: boolean; // undefined = 不显示订阅按钮
+  onSubscriptionToggle?: (sourceId: string, sourceHandle: string) => void;
+  sourceId?: string; // 对应 sources 表的 id，用于订阅操作
 };
 
 export default memo(NewsCard);
 
-function NewsCard({ post, variant = "default", sources = [], isBookmarked = false, onBookmarkToggle, readonly = false }: NewsCardProps) {
+function NewsCard({ post, variant = "default", sources = [], isBookmarked = false, onBookmarkToggle, readonly = false, isSourceSubscribed, onSubscriptionToggle, sourceId }: NewsCardProps) {
   const sourceHandle = post.source?.handle || '';
   const sourceName = post.source?.name || '未知来源';
   const sourceUrl = post.source?.url || '#';
@@ -118,7 +121,7 @@ function NewsCard({ post, variant = "default", sources = [], isBookmarked = fals
         {formatTypography(post.summary)}
       </p>
 
-      {/* 底部元数据：头像 · 作者名 · 日期 · 阅读时间 */}
+      {/* 底部元数据：头像 · 作者名 · 关注按钮 · 日期 · 阅读时间 */}
       <div className="flex items-center gap-2 text-xs text-[#b5bcc4]" style={{ marginBottom: '12px' }}>
         {avatar ? (
           <Image
@@ -132,6 +135,40 @@ function NewsCard({ post, variant = "default", sources = [], isBookmarked = fals
           <div className="w-4 h-4 rounded-full bg-gray-200 flex-shrink-0" />
         )}
         <span>{sourceName}</span>
+        {/* 关注/取消关注按钮（仅在非 readonly 模式且有订阅回调时显示） */}
+        {!readonly && onSubscriptionToggle && isSourceSubscribed !== undefined && (
+          <Tooltip content={isSourceSubscribed ? "取消关注" : "关注此信息源"}>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onSubscriptionToggle(sourceId ?? sourceHandle, sourceHandle);
+              }}
+              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                isSourceSubscribed
+                  ? 'text-[#fb2c36] hover:text-[#99a1af]'
+                  : 'text-[#99a1af] hover:text-[#fb2c36]'
+              }`}
+              aria-label={isSourceSubscribed ? "取消关注" : "关注"}
+            >
+              {isSourceSubscribed ? (
+                <>
+                  <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  已关注
+                </>
+              ) : (
+                <>
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  关注
+                </>
+              )}
+            </button>
+          </Tooltip>
+        )}
         <span className="text-[#d1d5dc]">·</span>
         <span>{formatDateZH(post.publishedAt)}</span>
         <span className="text-[#d1d5dc]">·</span>

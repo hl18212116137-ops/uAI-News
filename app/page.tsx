@@ -7,58 +7,106 @@ import { getAllPosts } from "@/lib/db";
 import { getStatsFromData } from "@/lib/stats";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getUserBookmarkIds } from "@/lib/bookmarks";
+import {
+  getUserSubscribedHandles,
+  getUserSubscribedSourceIds,
+  getSubscribedFeed,
+  getSubscribedSourcesMeta,
+  getRecommendedSources,
+  getTopRecommendedPosts,
+} from "@/lib/subscriptions";
 
 type PageProps = {
   searchParams: { category?: string; query?: string; source?: string };
 };
 
 export default async function Home({ searchParams }: PageProps) {
-  // 先获取用户 session（后续并行查询依赖 user.id）
+  // 先获取用户 session
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // 并行获取业务数据（收藏列表按用户是否登录条件查询）
-  const [
-    allPosts,
-    sources,
-    initialBookmarkedIds,
-  ] = await Promise.all([
-    getAllPosts(),
-    getSources(),
-    user ? getUserBookmarkIds(user.id) : Promise.resolve([]),
-  ]);
+  // 判断是否有订阅（决定 feed 模式）
+  const subscribedHandles = user ? await getUserSubscribedHandles(user.id) : [];
+  const isPersonalFeed = user !== null && subscribedHandles.length > 0;
 
-  // 从已有数据派生，不重复查询 Supabase
-  const topImportantNews = (!searchParams.category && !searchParams.query)
-    ? getTopImportantNewsFromPosts(allPosts, 3, 10)
-    : [];
+  if (isPersonalFeed) {
+    // 已登录且有订阅：并行获取个性化数据
+    const [
+      subFeed,
+      subSourcesMeta,
+      recommendedSrcs,
+      bookmarkedIds,
+      subscribedSourceIds,
+      allSources,
+      allPosts,
+    ] = await Promise.all([
+      getSubscribedFeed(user!.id),
+      getSubscribedSourcesMeta(user!.id),
+      getRecommendedSources(user!.id, 8),
+      getUserBookmarkIds(user!.id),
+      getUserSubscribedSourceIds(user!.id),
+      getSources(),
+      getAllPosts(),
+    ]);
 
-  const postCounts = getPostCountBySource(allPosts);
-  const latestPostTimes = getLatestPostTimeBySource(allPosts);
-  const stats = getStatsFromData(allPosts, sources);
+    const stats = getStatsFromData(allPosts, allSources);
 
-  const sourcesWithCounts = sources
-    .filter((s) => s.enabled !== false)
-    .map((s) => ({
-      id: s.id,
-      handle: s.handle,
-      name: s.name,
-      avatar: s.avatar,
-      description: s.description,
-      postCount: postCounts[s.handle.toLowerCase()] || 0,
-      latestPostTime: latestPostTimes[s.handle.toLowerCase()],
-      sourceType: s.sourceType,
-    }));
+    const topImportantNews = (!searchParams.category && !searchParams.query)
+      ? getTopImportantNewsFromPosts(subFeed, 3, 10)
+      : [];
 
-  return (
-    <MainContent
-      initialPosts={allPosts}
-      topImportantNews={topImportantNews}
-      sources={sourcesWithCounts}
-      totalCount={allPosts.length}
-      stats={stats}
-      user={user}
-      initialBookmarkedIds={initialBookmarkedIds}
-    />
-  );
+    return (
+      <MainContent
+        initialPosts={subFeed}
+        topImportantNews={topImportantNews}
+        sources={subSourcesMeta}
+        recommendedSources={recommendedSrcs}
+        totalCount={subFeed.length}
+        stats={stats}
+        user={user}
+        initialBookmarkedIds={bookmarkedIds}
+        initialSubscribedSourceIds={subscribedSourceIds}
+        isPersonalFeed={true}
+      />
+    );
+  } else {
+    // 未登录 或 登录但无订阅：展示精选推荐内容
+    const [
+      recommendedPosts,
+      allSources,
+      allPosts,
+      bookmarkedIds,
+      subscribedSourceIds,
+      recommendedSrcs,
+    ] = await Promise.all([
+      getTopRecommendedPosts(40),
+      getSources(),
+      getAllPosts(),
+      user ? getUserBookmarkIds(user.id) : Promise.resolve([]),
+      user ? getUserSubscribedSourceIds(user.id) : Promise.resolve([]),
+      getRecommendedSources(user?.id ?? null, 10),
+    ]);
+
+    const stats = getStatsFromData(allPosts, allSources);
+
+    const topImportantNews = (!searchParams.category && !searchParams.query)
+      ? getTopImportantNewsFromPosts(recommendedPosts, 3, 10)
+      : [];
+
+    // 未登录 / 无订阅时，SourcesList 已订阅区为空，仅显示推荐区
+    return (
+      <MainContent
+        initialPosts={recommendedPosts}
+        topImportantNews={topImportantNews}
+        sources={[]}
+        recommendedSources={recommendedSrcs}
+        totalCount={recommendedPosts.length}
+        stats={stats}
+        user={user}
+        initialBookmarkedIds={bookmarkedIds}
+        initialSubscribedSourceIds={subscribedSourceIds}
+        isPersonalFeed={false}
+      />
+    );
+  }
 }

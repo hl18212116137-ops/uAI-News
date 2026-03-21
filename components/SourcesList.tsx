@@ -17,16 +17,25 @@ type Source = {
 };
 
 type SourcesListProps = {
-  sources: Source[];
+  sources: Source[];              // 已订阅的信息源
+  recommendedSources?: Source[];  // 推荐关注的信息源（未订阅）
   currentSource?: string;
-  totalCount: number;
   onSourceSelect: (handle?: string) => void;
   onAddSource?: () => void;
+  subscribedIds?: Set<string>;
+  onToggleSubscription?: (sourceId: string, sourceHandle: string) => void;
 };
 
-export default function SourcesList({ sources, currentSource, totalCount, onSourceSelect, onAddSource }: SourcesListProps) {
+export default function SourcesList({
+  sources,
+  recommendedSources = [],
+  currentSource,
+  onSourceSelect,
+  onAddSource,
+  subscribedIds = new Set(),
+  onToggleSubscription,
+}: SourcesListProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'blogger' | 'media' | 'academic'>('blogger');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -34,6 +43,115 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
     if (!handle && !currentSource) return true;
     return handle === currentSource;
   };
+
+  const filteredSubscribed = sources.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.handle.toLowerCase().includes(q) ||
+      (s.description && s.description.toLowerCase().includes(q))
+    );
+  });
+
+  const filteredRecommended = recommendedSources.filter(s => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.handle.toLowerCase().includes(q) ||
+      (s.description && s.description.toLowerCase().includes(q))
+    );
+  });
+
+  const SourceCard = ({
+    source,
+    isSubscribed,
+  }: {
+    source: Source;
+    isSubscribed: boolean;
+  }) => (
+    <Tooltip
+      content={`点击查看 ${source.name} 的推文`}
+      excludeSelector="[data-tooltip-exclude]"
+    >
+      <div
+        onClick={() => onSourceSelect(source.handle)}
+        className={`
+          relative pt-[14px] pb-[14px] pl-[15px] pr-[12px] rounded-[10px] cursor-pointer transition-all duration-200 bg-white
+          ${isActive(source.handle) ? 'bg-white' : 'hover:bg-[#f9fafb]'}
+        `}
+      >
+        <div className="flex items-start gap-3">
+          {source.avatar ? (
+            <Image
+              src={source.avatar}
+              alt={source.name}
+              width={40}
+              height={40}
+              className="rounded-full flex-shrink-0"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+              {source.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-sm text-[#101828] truncate leading-5">{source.name}</span>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Tooltip content="已收录推文数">
+                  <span
+                    className="text-xs text-[#6a7282] cursor-default"
+                    data-tooltip-exclude=""
+                  >
+                    {source.postCount}
+                  </span>
+                </Tooltip>
+                {/* 订阅/取消按钮 */}
+                {onToggleSubscription && (
+                  <Tooltip content={isSubscribed ? "取消关注" : "关注此信息源"}>
+                    <button
+                      data-tooltip-exclude=""
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onToggleSubscription(source.id, source.handle);
+                      }}
+                      className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
+                        isSubscribed
+                          ? 'text-[#fb2c36] hover:text-[#99a1af]'
+                          : 'text-[#99a1af] hover:text-[#fb2c36]'
+                      }`}
+                      aria-label={isSubscribed ? "取消关注" : "关注"}
+                    >
+                      {isSubscribed ? (
+                        // 已关注：实心勾
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        // 未关注：加号
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      )}
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+            <div className="text-xs text-[#99a1af] leading-4">@{source.handle}</div>
+            {source.description && (
+              <div className="text-xs text-[#6a7282] line-clamp-2 leading-[1.5]">
+                {source.description}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </Tooltip>
+  );
 
   return (
     <div
@@ -53,19 +171,18 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
           isCollapsed ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
         }`}
         style={{ left: isCollapsed ? 'calc(80px + 8px)' : 'calc(320px + 8px)' }}
-        title={isCollapsed ? "展开侧边栏" : "收起侧边栏"}
         aria-label={isCollapsed ? "展开侧边栏" : "收起侧边栏"}
       >
         <span className="text-[#6a7282] flex-shrink-0" style={{ width: '14px', height: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>{isCollapsed ? '›' : '‹'}</span>
       </button>
 
-      {/* 收拢态：整体作为点击区域展开，头像仅作展示 */}
+      {/* 收拢态：头像网格 */}
       {isCollapsed && (
         <div
           className="flex flex-col items-center gap-4 h-full justify-center cursor-pointer"
           onClick={() => setIsCollapsed(false)}
         >
-          {sources.slice(0, 7).map((source) => (
+          {[...sources, ...recommendedSources].slice(0, 7).map((source) => (
             <div
               key={source.handle}
               title={source.name}
@@ -85,12 +202,12 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
         </div>
       )}
 
-      {/* 内容区域 - 折叠时隐藏 */}
+      {/* 展开态：完整列表 */}
       {!isCollapsed && (
         <div className="mt-[36px] flex flex-col gap-[10px]">
           {/* 标题区域 */}
           <div className="flex items-center justify-between mb-4 pl-[14px] pr-[14px]">
-            <h2 className="text-xl font-semibold text-[#101828]">已关注信息源</h2>
+            <h2 className="text-xl font-semibold text-[#101828]">我的信息源</h2>
             <Tooltip content="添加信息源">
               <button
                 onClick={() => onAddSource ? onAddSource() : setShowAddModal(true)}
@@ -101,112 +218,50 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
             </Tooltip>
           </div>
 
-          {/* 标签页切换 */}
-          <div className="flex border-b border-[#e5e7eb] mb-4 -ml-[14px] pl-[14px]">
-            <div className="flex flex-1">
-              <button
-                onClick={() => setActiveTab('blogger')}
-                className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                  activeTab === 'blogger'
-                    ? 'text-[#101828] border-b-2 border-[#99a1af]'
-                    : 'text-[#99a1af] hover:text-[#101828]'
-                }`}
-              >
-                博主
-              </button>
-              <button
-                onClick={() => setActiveTab('media')}
-                className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                  activeTab === 'media'
-                    ? 'text-[#101828] border-b-2 border-[#99a1af]'
-                    : 'text-[#99a1af] hover:text-[#101828]'
-                }`}
-              >
-                媒体
-              </button>
-              <button
-                onClick={() => setActiveTab('academic')}
-                className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                  activeTab === 'academic'
-                    ? 'text-[#101828] border-b-2 border-[#99a1af]'
-                    : 'text-[#99a1af] hover:text-[#101828]'
-                }`}
-              >
-                学术
-              </button>
-            </div>
-          </div>
-
           {/* 搜索框 */}
           <div className="mb-4 relative pl-[14px] pr-[14px]">
             <input
               type="text"
-              placeholder="搜索关注列表"
+              placeholder="搜索信息源"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-3 pr-3 py-2 text-xs bg-[#f9fafb] rounded-full placeholder-[#99a1af] focus:outline-none focus:ring-2 focus:ring-[#101828] transition-all duration-200"
             />
           </div>
 
-          {/* 各个数据源卡片 */}
-          <div className="flex flex-col gap-[10px]">
-            {sources
-              .filter(s => s.sourceType === activeTab)
-              .filter(s => {
-                if (!searchQuery) return true;
-                const query = searchQuery.toLowerCase();
-                return (
-                  s.name.toLowerCase().includes(query) ||
-                  s.handle.toLowerCase().includes(query) ||
-                  (s.description && s.description.toLowerCase().includes(query))
-                );
-              })
-              .map((source) => (
-              <Tooltip key={source.handle} content={`点击查看 ${source.name} 的推文`} excludeSelector="[data-tooltip-exclude='post-count']">
-                <div
-                  onClick={() => onSourceSelect(source.handle)}
-                  className={`
-                    relative pt-[14px] pb-[14px] pl-[15px] pr-[18px] rounded-[10px] cursor-pointer transition-all duration-200 bg-white
-                    ${isActive(source.handle)
-                      ? 'bg-white'
-                      : 'hover:bg-[#f9fafb]'
-                    }
-                  `}
-                >
+          {/* 已关注信息源 */}
+          {filteredSubscribed.length > 0 && (
+            <div className="flex flex-col gap-[4px]">
+              <div className="px-[14px] mb-1">
+                <span className="text-xs font-medium text-[#99a1af] uppercase tracking-wide">已关注</span>
+              </div>
+              {filteredSubscribed.map((source) => (
+                <SourceCard key={source.handle} source={source} isSubscribed={subscribedIds.has(source.id)} />
+              ))}
+            </div>
+          )}
 
-                  <div className="flex items-start gap-3">
-                    {source.avatar ? (
-                      <Image
-                        src={source.avatar}
-                        alt={source.name}
-                        width={40}
-                        height={40}
-                        className="rounded-full flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold flex-shrink-0">
-                        {source.name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0 flex flex-col">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-sm text-[#101828] truncate leading-5">{source.name}</span>
-                        <Tooltip content="已收录推文">
-                          <span className="text-xs text-[#6a7282] flex-shrink-0 ml-2 cursor-default" data-tooltip-exclude="post-count">{source.postCount}</span>
-                        </Tooltip>
-                      </div>
-                      <div className="text-xs text-[#99a1af] leading-4">@{source.handle}</div>
-                      {source.description && (
-                        <div className="text-xs text-[#6a7282] line-clamp-2 leading-[1.5]">
-                          {source.description}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Tooltip>
-          ))}
-          </div>
+          {/* 未关注任何源时的提示（非搜索状态下显示） */}
+          {filteredSubscribed.length === 0 && !searchQuery && (
+            <div className="px-[14px] py-3 text-center">
+              <p className="text-xs text-[#99a1af] leading-relaxed">
+                还没有关注任何信息源<br />
+                在下方发现并关注感兴趣的博主
+              </p>
+            </div>
+          )}
+
+          {/* 推荐关注 */}
+          {filteredRecommended.length > 0 && (
+            <div className="flex flex-col gap-[4px] mt-2">
+              <div className="px-[14px] mb-1">
+                <span className="text-xs font-medium text-[#99a1af] uppercase tracking-wide">推荐关注</span>
+              </div>
+              {filteredRecommended.map((source) => (
+                <SourceCard key={source.handle} source={source} isSubscribed={subscribedIds.has(source.id)} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

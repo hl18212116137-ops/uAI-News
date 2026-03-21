@@ -27,10 +27,6 @@ export default async function BookmarksPage() {
     getSources(),
   ])
 
-  console.log('[Bookmarks] user.id:', user.id)
-  console.log('[Bookmarks] bookmarksResult.data:', JSON.stringify(bookmarksResult.data))
-  console.log('[Bookmarks] bookmarksResult.error:', JSON.stringify(bookmarksResult.error))
-
   const ids = (bookmarksResult.data || []).map((r: any) => r.news_item_id)
 
   let bookmarkedNews: NewsItem[] = []
@@ -39,8 +35,6 @@ export default async function BookmarksPage() {
       .from('news_items')
       .select('*')
       .in('id', ids)
-
-    console.log('[Bookmarks] news_items found:', items?.length, 'error:', JSON.stringify(itemsErr))
 
     if (items && items.length > 0) {
       const itemMap = new Map(items.map((item: any) => [item.id, item]))
