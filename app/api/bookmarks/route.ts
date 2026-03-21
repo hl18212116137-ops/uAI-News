@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { supabase } from '@/lib/supabase'
 
 /**
  * GET /api/bookmarks
@@ -11,7 +11,6 @@ export async function GET() {
   if (errorResponse) return errorResponse
 
   try {
-    const supabase = createSupabaseServerClient()
     const { data, error } = await supabase
       .from('user_bookmarks')
       .select('news_item_id')
@@ -42,7 +41,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: '请提供有效的 news_item_id' }, { status: 400 })
     }
 
-    const supabase = createSupabaseServerClient()
     const { error } = await supabase
       .from('user_bookmarks')
       .insert({ user_id: user!.id, news_item_id })
@@ -71,7 +69,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: '请提供 news_item_id' }, { status: 400 })
     }
 
-    const supabase = createSupabaseServerClient()
     const { error } = await supabase
       .from('user_bookmarks')
       .delete()

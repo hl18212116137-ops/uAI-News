@@ -3,20 +3,21 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { supabase } from '@/lib/supabase'
 import { getSources } from '@/lib/sources'
 import NewsCard from '@/components/NewsCard'
 import { NewsItem } from '@/lib/types'
 
 export default async function BookmarksPage() {
-  const supabase = createSupabaseServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // 用带 session 的客户端验证用户身份
+  const sessionClient = createSupabaseServerClient()
+  const { data: { user } } = await sessionClient.auth.getUser()
 
-  // 未登录重定向到登录页
   if (!user) {
     redirect('/login?redirectTo=/bookmarks')
   }
 
-  // 用带用户 session 的 supabase 客户端查询（RLS 自动过滤当前用户）
+  // 用 service_role key 查询（绕过 RLS，安全性由上面的 getUser 保证）
   const [bookmarksResult, sources] = await Promise.all([
     supabase
       .from('user_bookmarks')
@@ -28,7 +29,6 @@ export default async function BookmarksPage() {
 
   const ids = (bookmarksResult.data || []).map((r: any) => r.news_item_id)
 
-  // 批量查询新闻详情
   let bookmarkedNews: NewsItem[] = []
   if (ids.length > 0) {
     const { data: items } = await supabase
@@ -70,7 +70,6 @@ export default async function BookmarksPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* 页头 */}
       <div className="mt-[70px] border-b border-[#e5e7eb]">
         <div className="max-w-[900px] mx-auto px-6 py-6 flex items-center gap-3">
           <Link
@@ -93,7 +92,6 @@ export default async function BookmarksPage() {
         </div>
       </div>
 
-      {/* 内容区 */}
       <div className="max-w-[900px] mx-auto px-6 py-8">
         {bookmarkedNews.length === 0 ? (
           <div className="text-center py-20 px-5 text-[#6a7282]">
@@ -110,6 +108,7 @@ export default async function BookmarksPage() {
         ) : (
           <div className="flex flex-col gap-4">
             {bookmarkedNews.map((post) => (
+              // 收藏页的 NewsCard 不需要 onBookmarkToggle（静态展示）
               <NewsCard
                 key={post.id}
                 post={post}
