@@ -1,46 +1,25 @@
-import 'server-only';
-import fs from 'fs/promises';
-import path from 'path';
+import 'server-only'
+import { supabase } from './supabase'
 
-/**
- * 源（博主/频道）类型定义
- * 支持多平台和多种抓取方式（为未来扩展预留）
- */
-export type PlatformType = 'X' | 'YouTube' | 'Reddit' | 'RSS' | 'Blog';
-export type FetchMethod = 'api' | 'rss' | 'scraper' | 'webhook';
-export type SourceType = 'blogger' | 'media' | 'academic';  // 区分博主、媒体和学术网站
+export type PlatformType = 'X' | 'YouTube' | 'Reddit' | 'RSS' | 'Blog'
+export type FetchMethod = 'api' | 'rss' | 'scraper' | 'webhook'
+export type SourceType = 'blogger' | 'media' | 'academic'
 
 export interface Source {
-  id: string;              // 唯一标识（使用handle作为ID）
-  sourceType: SourceType;  // 新增：源类型（博主或媒体）
-  platform: PlatformType;  // 平台类型
-  handle: string;          // 用户名（如 sama）
-  name: string;            // 显示名称（如 Sam Altman）
-  url: string;             // 主页链接
-  avatar?: string;         // 头像URL（可选）
-  description?: string;    // 博主简介（可选，手动配置，不随抓取更新）
-  enabled: boolean;        // 是否启用
-  addedAt: string;         // 添加时间
-  lastFetchedAt?: string;  // 最后抓取时间
-
-  // 抓取配置（为未来多种抓取方式预留）
+  id: string
+  sourceType: SourceType
+  platform: PlatformType
+  handle: string
+  name: string
+  url: string
+  avatar?: string
+  description?: string
+  enabled: boolean
+  addedAt: string
+  lastFetchedAt?: string
   fetchConfig?: {
-    method: FetchMethod;   // 抓取方式
-    interval?: number;     // 抓取间隔（分钟），默认60
-  };
-}
-
-const SOURCES_FILE = path.join(process.cwd(), 'data', 'sources.json');
-
-/**
- * 确保data目录存在
- */
-async function ensureDataDir(): Promise<void> {
-  const dataDir = path.join(process.cwd(), 'data');
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
+    method: FetchMethod
+    interval?: number
   }
 }
 
@@ -49,78 +28,85 @@ async function ensureDataDir(): Promise<void> {
  */
 export async function getSources(): Promise<Source[]> {
   try {
-    const content = await fs.readFile(SOURCES_FILE, 'utf-8');
-    return JSON.parse(content);
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-    throw error;
-  }
-}
+    const { data, error } = await supabase
+      .from('sources')
+      .select('*')
+      .order('added_at', { ascending: false })
 
-/**
- * 保存源列表
- */
-async function saveSources(sources: Source[]): Promise<void> {
-  await ensureDataDir();
-  await fs.writeFile(SOURCES_FILE, JSON.stringify(sources, null, 2), 'utf-8');
+    if (error) {
+      console.error('Failed to fetch sources:', error)
+      return []
+    }
+
+    return (data || []).map(row => ({
+      id: row.id,
+      sourceType: row.source_type,
+      platform: row.platform,
+      handle: row.handle,
+      name: row.name,
+      url: row.url,
+      avatar: row.avatar,
+      description: row.description,
+      enabled: row.enabled,
+      addedAt: row.added_at,
+      lastFetchedAt: row.last_fetched_at,
+      fetchConfig: row.fetch_config,
+    })) as Source[]
+  } catch (error) {
+    console.error('Failed to fetch sources:', error)
+    return []
+  }
 }
 
 /**
  * 从URL提取源信息
- * 支持推文链接和主页链接
  */
 export async function extractSourceFromUrl(url: string): Promise<Partial<Source>> {
-  // 规范化URL
-  const normalizedUrl = url.trim().toLowerCase();
+  const normalizedUrl = url.trim().toLowerCase()
 
-  // 检测平台
-  let platform: PlatformType;
-  let handle: string;
-  let profileUrl: string;
-  let name: string;
-  let avatar: string | undefined;
-  let description: string | undefined;  // 新增：博主简介
+  let platform: PlatformType
+  let handle: string
+  let profileUrl: string
+  let name: string
+  let avatar: string | undefined
+  let description: string | undefined
 
   // X / Twitter
   if (normalizedUrl.includes('x.com') || normalizedUrl.includes('twitter.com')) {
-    platform = 'X';
+    platform = 'X'
 
-    // 提取handle
-    const urlObj = new URL(url);
-    const pathParts = urlObj.pathname.split('/').filter(p => p);
+    const urlObj = new URL(url)
+    const pathParts = urlObj.pathname.split('/').filter(p => p)
 
     if (pathParts.length === 0) {
-      throw new Error('无法从URL中提取用户名');
+      throw new Error('无法从URL中提取用户名')
     }
 
-    handle = pathParts[0];
-    profileUrl = `https://x.com/${handle}`;
+    handle = pathParts[0]
+    profileUrl = `https://x.com/${handle}`
 
-    // 通过API获取用户真实名称
     try {
-      const { fetchUserInfoFromX } = await import('./x');
-      const userInfo = await fetchUserInfoFromX(handle);
-      name = userInfo.name;
-      avatar = userInfo.avatar;
-      description = userInfo.description;  // 提取博主简介
+      const { fetchUserInfoFromX } = await import('./x')
+      const userInfo = await fetchUserInfoFromX(handle)
+      name = userInfo.name
+      avatar = userInfo.avatar
+      description = userInfo.description
     } catch (error) {
-      console.error('Failed to fetch user info, using handle as name:', error);
-      name = handle; // 降级方案：使用handle作为名称
+      console.error('Failed to fetch user info, using handle as name:', error)
+      name = handle
     }
   } else {
-    throw new Error('暂不支持该平台');
+    throw new Error('暂不支持该平台')
   }
 
   return {
     id: `${platform.toLowerCase()}-${handle}`,
-    sourceType: 'blogger',  // 新增：X 平台的源类型为 blogger
+    sourceType: 'blogger',
     platform,
     handle,
     name,
     avatar,
-    description,  // 添加博主简介
+    description,
     url: profileUrl,
     enabled: true,
     addedAt: new Date().toISOString(),
@@ -128,58 +114,130 @@ export async function extractSourceFromUrl(url: string): Promise<Partial<Source>
       method: 'api',
       interval: 60,
     },
-  };
+  }
 }
 
 /**
  * 添加源
  */
 export async function addSource(source: Source): Promise<void> {
-  const sources = await getSources();
+  try {
+    const { error } = await supabase.from('sources').upsert(
+      {
+        id: source.id,
+        source_type: source.sourceType,
+        platform: source.platform,
+        handle: source.handle,
+        name: source.name,
+        url: source.url,
+        avatar: source.avatar ?? null,
+        description: source.description ?? null,
+        enabled: source.enabled,
+        added_at: source.addedAt,
+        fetch_config: source.fetchConfig ?? null,
+      },
+      { onConflict: 'id' }
+    )
 
-  // 检查是否已存在
-  const exists = sources.some(s => s.id === source.id);
-  if (exists) {
-    throw new Error(`博主 @${source.handle} 已存在`);
+    if (error) {
+      console.error('Failed to add source:', error)
+      if (error.message?.includes('unique')) {
+        throw new Error(`博主 @${source.handle} 已存在`)
+      }
+      throw error
+    }
+  } catch (error) {
+    console.error('Failed to add source:', error)
+    throw error
   }
-
-  sources.push(source);
-  await saveSources(sources);
 }
 
 /**
  * 删除源
  */
 export async function deleteSource(id: string): Promise<void> {
-  const sources = await getSources();
-  const filtered = sources.filter(s => s.id !== id);
+  try {
+    const { count, error } = await supabase.from('sources').delete().eq('id', id)
 
-  if (filtered.length === sources.length) {
-    throw new Error('源不存在');
+    if (error) {
+      console.error('Failed to delete source:', error)
+      throw error
+    }
+
+    if ((count ?? 0) === 0) {
+      throw new Error('源不存在')
+    }
+  } catch (error) {
+    console.error('Failed to delete source:', error)
+    throw error
   }
-
-  await saveSources(filtered);
 }
 
 /**
  * 更新源
  */
 export async function updateSource(id: string, updates: Partial<Source>): Promise<void> {
-  const sources = await getSources();
-  const index = sources.findIndex(s => s.id === id);
+  try {
+    const updateData: Record<string, any> = {}
 
-  if (index === -1) {
-    throw new Error('源不存在');
+    // Convert camelCase to snake_case
+    if (updates.sourceType !== undefined) updateData.source_type = updates.sourceType
+    if (updates.platform !== undefined) updateData.platform = updates.platform
+    if (updates.handle !== undefined) updateData.handle = updates.handle
+    if (updates.name !== undefined) updateData.name = updates.name
+    if (updates.url !== undefined) updateData.url = updates.url
+    if (updates.avatar !== undefined) updateData.avatar = updates.avatar
+    if (updates.description !== undefined) updateData.description = updates.description
+    if (updates.enabled !== undefined) updateData.enabled = updates.enabled
+    if (updates.lastFetchedAt !== undefined) updateData.last_fetched_at = updates.lastFetchedAt
+    if (updates.fetchConfig !== undefined) updateData.fetch_config = updates.fetchConfig
+
+    const { error } = await supabase.from('sources').update(updateData).eq('id', id)
+
+    if (error) {
+      console.error('Failed to update source:', error)
+      throw error
+    }
+  } catch (error) {
+    console.error('Failed to update source:', error)
+    throw error
   }
-
-  sources[index] = { ...sources[index], ...updates };
-  await saveSources(sources);
 }
 
 /**
  * 获取单个源
  */
 export async function getSourceById(id: string): Promise<Source | null> {
-  const sources = await getSources();
-  return sources.find(s => s.id === id) || null;
+  try {
+    const { data, error } = await supabase.from('sources').select('*').eq('id', id).single()
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows found
+        return null
+      }
+      console.error('Failed to fetch source by ID:', error)
+      return null
+    }
+
+    if (!data) return null
+
+    return {
+      id: data.id,
+      sourceType: data.source_type,
+      platform: data.platform,
+      handle: data.handle,
+      name: data.name,
+      url: data.url,
+      avatar: data.avatar,
+      description: data.description,
+      enabled: data.enabled,
+      addedAt: data.added_at,
+      lastFetchedAt: data.last_fetched_at,
+      fetchConfig: data.fetch_config,
+    } as Source
+  } catch (error) {
+    console.error('Failed to fetch source by ID:', error)
+    return null
+  }
 }
