@@ -8,6 +8,8 @@ database/*.db
 .claude/
 *.md
 !README.md
+!PROJECT.md
+!CLAUDE.md
 scripts/
 check-duplicates.ts
 list-posts.ts
