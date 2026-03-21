@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { NewsItem } from "@/lib/types";
 import NewsCard from "./NewsCard";
 import EmptyState from "./EmptyState";
@@ -14,7 +15,9 @@ type NewsListProps = {
   sources?: SourceMeta[];
 };
 
-export default function NewsList({ posts, sources = [] }: NewsListProps) {
+export default memo(NewsList);
+
+function NewsList({ posts, sources = [] }: NewsListProps) {
   if (posts.length === 0) {
     return <EmptyState />;
   }

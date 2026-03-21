@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { NewsItem } from "@/lib/types";
 import { isNewPost, formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
@@ -34,8 +35,9 @@ type NewsCardProps = {
   sources?: SourceMeta[];
 };
 
-export default function NewsCard({ post, variant = "default", sources = [] }: NewsCardProps) {
-  const sourceHandle = post.source?.handle || '';
+export default memo(NewsCard);
+
+function NewsCard({ post, variant = "default", sources = [] }: NewsCardProps) {
   const sourceName = post.source?.name || '未知来源';
   const sourceUrl = post.source?.url || '#';
   const isNew = isNewPost(post.createdAt);
