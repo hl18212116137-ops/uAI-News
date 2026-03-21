@@ -1,0 +1,20 @@
+export default function Loading() {
+  return (
+    <div className="flex min-h-screen bg-white">
+      {/* Sidebar 骨架 */}
+      <div className="w-[320px] h-screen flex-shrink-0 bg-white border-r border-[#e5e7eb]" />
+
+      {/* 主内容骨架 */}
+      <div className="flex-1 px-6 pt-[120px] pb-10">
+        <div className="max-w-[896px] mx-auto space-y-4">
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="h-[160px] bg-[#f9fafb] rounded-2xl animate-pulse"
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

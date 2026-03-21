@@ -1,31 +1,30 @@
-export const revalidate = 0
+export const revalidate = 60
 
 import MainContent from "@/components/MainContent";
-import { getPostCountBySource, getLatestPostTimeBySource, getTopImportantNews } from "@/lib/news";
+import { getPostCountBySource, getLatestPostTimeBySource, getTopImportantNewsFromPosts } from "@/lib/news";
 import { getSources } from "@/lib/sources";
 import { getAllPosts } from "@/lib/db";
-import { getStats } from "@/lib/stats";
+import { getStatsFromData } from "@/lib/stats";
 
 type PageProps = {
   searchParams: { category?: string; query?: string; source?: string };
 };
 
 export default async function Home({ searchParams }: PageProps) {
-  // 获取所有推文（不进行筛选，筛选在客户端进行）
-  const allPosts = await getAllPosts();
+  // 并行获取数据，避免串行等待
+  const [allPosts, sources] = await Promise.all([
+    getAllPosts(),
+    getSources(),
+  ]);
 
-  // 新增：获取最值得关注的新闻（仅在无筛选条件时显示）
+  // 从已有数据派生，不重复查询 Supabase
   const topImportantNews = (!searchParams.category && !searchParams.query)
-    ? await getTopImportantNews(3, 10)
+    ? getTopImportantNewsFromPosts(allPosts, 3, 10)
     : [];
 
-  // 获取博主列表和推文数量
-  const sources = await getSources();
   const postCounts = getPostCountBySource(allPosts);
   const latestPostTimes = getLatestPostTimeBySource(allPosts);
-
-  // 获取统计数据
-  const stats = await getStats();
+  const stats = getStatsFromData(allPosts, sources);
 
   const sourcesWithCounts = sources
     .filter((s) => s.enabled !== false)

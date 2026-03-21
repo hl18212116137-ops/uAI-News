@@ -84,19 +84,19 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
   return (
     <div
       className={`
-        ${isCollapsed ? 'w-[80px]' : 'w-[319px]'}
+        ${isCollapsed ? 'w-[80px]' : 'w-[320px]'}
         h-screen sticky top-0 overflow-y-auto overflow-x-hidden
-        ${isCollapsed ? 'px-[22px] py-5' : 'p-5'}
+        ${isCollapsed ? 'px-[22px] py-5' : 'pl-[6px] pr-0 py-5'}
         bg-white
         transition-all duration-200 ease-in-out
       `}
-      style={{ borderRight: isCollapsed ? 'none' : '1px solid #e5e7eb', paddingRight: isCollapsed ? '22px' : 'calc(20px - 1px)' }}
+      style={{ borderRight: isCollapsed ? 'none' : '1px solid #e5e7eb' }}
     >
       {/* 折叠/展开按钮 */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="fixed top-1/2 -translate-y-1/2 w-7 h-7 bg-white rounded-full border border-[#e5e7eb] flex items-center justify-center shadow-sm z-10 cursor-pointer hover:bg-gray-50 transition-colors"
-        style={{ left: isCollapsed ? 'calc(80px + 8px)' : 'calc(319px + 8px)' }}
+        style={{ left: isCollapsed ? 'calc(80px + 8px)' : 'calc(320px + 8px)' }}
         title={isCollapsed ? "展开侧边栏" : "收起侧边栏"}
         aria-label={isCollapsed ? "展开侧边栏" : "收起侧边栏"}
       >
@@ -209,7 +209,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                   onMouseEnter={() => setHoveredSourceId(source.id)}
                   onMouseLeave={() => setHoveredSourceId(null)}
                   className={`
-                    relative h-[115px] pt-[14px] pl-[14px] pr-[14px] rounded-[10px] cursor-pointer transition-all duration-200 bg-white
+                    relative pt-[14px] pb-[14px] pl-[15px] pr-[18px] rounded-[10px] cursor-pointer transition-all duration-200 bg-white
                     ${isActive(source.handle)
                       ? 'bg-white'
                       : 'hover:bg-[#f9fafb]'
@@ -237,7 +237,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                     {deletingId === source.id ? '...' : '×'}
                   </button>
 
-                  <div className="flex items-start gap-3 h-[87px]">
+                  <div className="flex items-start gap-3">
                     {source.avatar ? (
                       <img
                         src={source.avatar}
@@ -249,7 +249,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                         {source.name.charAt(0).toUpperCase()}
                       </div>
                     )}
-                    <div className="flex-1 min-w-0 flex flex-col h-[87px]">
+                    <div className="flex-1 min-w-0 flex flex-col">
                       <div className="flex items-center justify-between gap-2 h-[20px]">
                         <span className="font-semibold text-sm text-[#101828] truncate leading-[20px]">{source.name}</span>
                         <span className="text-xs text-[#6a7282] flex-shrink-0 leading-[16px] ml-2">{source.postCount}</span>
