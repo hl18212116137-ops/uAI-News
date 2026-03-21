@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import { NewsItem } from "@/lib/types";
 import type { Task } from "@/lib/task-manager";
 import type { User } from "@supabase/supabase-js";
+import { useBookmark } from "@/hooks/useBookmark";
 import SiteHeader from "./SiteHeader";
 import RefreshProgress from "./RefreshButton";
 import CategoryFilter from "./CategoryFilter";
@@ -39,9 +40,10 @@ type MainContentProps = {
     todayPosts: number;
   };
   user: User | null;
+  initialBookmarkedIds: string[];
 };
 
-export default function MainContent({ initialPosts, topImportantNews, sources, totalCount, stats, user }: MainContentProps) {
+export default function MainContent({ initialPosts, topImportantNews, sources, totalCount, stats, user, initialBookmarkedIds }: MainContentProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
   const [isSourcesListCollapsed, setIsSourcesListCollapsed] = useState(false);
@@ -53,6 +55,15 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [posts, setPosts] = useState<NewsItem[]>(initialPosts);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
+
+  const handleNeedAuth = useCallback(() => setShowAuthPrompt(true), []);
+
+  // 收藏功能（乐观更新）
+  const { bookmarkedIds, toggleBookmark } = useBookmark(
+    new Set(initialBookmarkedIds),
+    user,
+    handleNeedAuth
+  );
 
   const isRunning = !!(task && (task.status === 'pending' || task.status === 'running'));
 
@@ -199,7 +210,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
 
               {/* 推文模块居中 */}
               <div className="bg-white px-6 pt-4 pb-10 min-h-screen">
-                <NewsList posts={filteredPosts} sources={sources} />
+                <NewsList posts={filteredPosts} sources={sources} bookmarkedIds={bookmarkedIds} onBookmarkToggle={toggleBookmark} />
               </div>
             </div>
           </div>

@@ -13,11 +13,13 @@ type SourceMeta = {
 type NewsListProps = {
   posts: NewsItem[];
   sources?: SourceMeta[];
+  bookmarkedIds?: Set<string>;
+  onBookmarkToggle?: (id: string) => void;
 };
 
 export default memo(NewsList);
 
-function NewsList({ posts, sources = [] }: NewsListProps) {
+function NewsList({ posts, sources = [], bookmarkedIds, onBookmarkToggle }: NewsListProps) {
   if (posts.length === 0) {
     return <EmptyState />;
   }
@@ -25,7 +27,13 @@ function NewsList({ posts, sources = [] }: NewsListProps) {
   return (
     <div className="flex flex-col gap-4">
       {posts.map((post) => (
-        <NewsCard key={post.id} post={post} sources={sources} />
+        <NewsCard
+          key={post.id}
+          post={post}
+          sources={sources}
+          isBookmarked={bookmarkedIds?.has(post.id) ?? false}
+          onBookmarkToggle={onBookmarkToggle}
+        />
       ))}
     </div>
   );

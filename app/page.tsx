@@ -6,22 +6,26 @@ import { getSources } from "@/lib/sources";
 import { getAllPosts } from "@/lib/db";
 import { getStatsFromData } from "@/lib/stats";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getUserBookmarkIds } from "@/lib/bookmarks";
 
 type PageProps = {
   searchParams: { category?: string; query?: string; source?: string };
 };
 
 export default async function Home({ searchParams }: PageProps) {
-  // 并行获取数据：用户 session + 业务数据
+  // 先获取用户 session（后续并行查询依赖 user.id）
   const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // 并行获取业务数据（收藏列表按用户是否登录条件查询）
   const [
-    { data: { user } },
     allPosts,
     sources,
+    initialBookmarkedIds,
   ] = await Promise.all([
-    supabase.auth.getUser(),
     getAllPosts(),
     getSources(),
+    user ? getUserBookmarkIds(user.id) : Promise.resolve([]),
   ]);
 
   // 从已有数据派生，不重复查询 Supabase
@@ -54,6 +58,7 @@ export default async function Home({ searchParams }: PageProps) {
       totalCount={allPosts.length}
       stats={stats}
       user={user}
+      initialBookmarkedIds={initialBookmarkedIds}
     />
   );
 }
