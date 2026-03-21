@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
 import Tooltip from "./Tooltip";
 
 const categories = [
@@ -15,23 +14,16 @@ const categories = [
   { value: "Other", label: "其他", tooltip: "其他相关内容" },
 ];
 
-export default function CategoryFilter() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const currentCategory = searchParams.get("category") || "all";
+type CategoryFilterProps = {
+  activeCategory: string;
+  onCategoryChange: (category: string) => void;
+};
+
+export default function CategoryFilter({ activeCategory, onCategoryChange }: CategoryFilterProps) {
+  const currentCategory = activeCategory || "all";
 
   const handleCategoryChange = (category: string) => {
-    const params = new URLSearchParams(searchParams);
-
-    // 设置分类参数
-    if (category !== "all") {
-      params.set("category", category);
-    } else {
-      params.delete("category");
-    }
-
-    const queryString = params.toString();
-    router.push(queryString ? `/?${queryString}` : "/", { scroll: false });
+    onCategoryChange(category === "all" ? "" : category);
   };
 
   return (

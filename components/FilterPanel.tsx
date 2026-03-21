@@ -1,6 +1,5 @@
 "use client";
 
-import { useSearchParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import Tooltip from "./Tooltip";
 
@@ -23,37 +22,33 @@ type Source = {
 
 type FilterPanelProps = {
   sources?: Source[];
+  activeCategory: string;
+  activeSource: string;
+  onClearCategory: () => void;
+  onClearSource: () => void;
+  onClearAll: () => void;
 };
 
-export default function FilterPanel({ sources = [] }: FilterPanelProps) {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+export default function FilterPanel({
+  sources = [],
+  activeCategory,
+  activeSource,
+  onClearCategory,
+  onClearSource,
+  onClearAll,
+}: FilterPanelProps) {
   const [hoveredFilter, setHoveredFilter] = useState<string | null>(null);
 
-  const category = searchParams.get("category");
-  const source = searchParams.get("source");
-
-  if (!category && !source) {
+  if (!activeCategory && !activeSource) {
     return null;
   }
 
-  const handleClearFilter = (filterType: "category" | "source") => {
-    const params = new URLSearchParams(searchParams);
-    params.delete(filterType);
-    const queryString = params.toString();
-    router.push(queryString ? `?${queryString}` : "/", { scroll: false });
-  };
-
-  const handleClearAll = () => {
-    router.push("/", { scroll: false });
-  };
-
   // 获取分类的中文名称
-  const categoryLabel = category ? categoryMap[category] || category : null;
+  const categoryLabel = activeCategory ? categoryMap[activeCategory] || activeCategory : null;
 
   // 获取作者的名字
-  const sourceInfo = source ? sources.find(s => s.handle === source) : null;
-  const sourceName = sourceInfo?.name || source;
+  const sourceInfo = activeSource ? sources.find(s => s.handle === activeSource) : null;
+  const sourceName = sourceInfo?.name || activeSource;
 
   return (
     <div className="w-[180px] flex-shrink-0">
@@ -75,7 +70,7 @@ export default function FilterPanel({ sources = [] }: FilterPanelProps) {
             <span># {categoryLabel}</span>
             {hoveredFilter === "category" && (
               <button
-                onClick={() => handleClearFilter("category")}
+                onClick={onClearCategory}
                 className="flex-shrink-0 flex items-center justify-center text-[#99a1af] hover:text-[#101828] transition-colors text-[12px] leading-none"
                 title="清除分类筛选"
               >
@@ -84,7 +79,7 @@ export default function FilterPanel({ sources = [] }: FilterPanelProps) {
             )}
           </div>
         )}
-        {source && (
+        {activeSource && (
           <div
             className="h-[32px] flex items-center justify-between px-4 py-0 text-[14px] font-normal leading-[20px] text-[#101828] hover:text-[#101828] transition-colors rounded hover:bg-[#f9fafb]"
             onMouseEnter={() => setHoveredFilter("source")}
@@ -93,7 +88,7 @@ export default function FilterPanel({ sources = [] }: FilterPanelProps) {
             <span># {sourceName}</span>
             {hoveredFilter === "source" && (
               <button
-                onClick={() => handleClearFilter("source")}
+                onClick={onClearSource}
                 className="flex-shrink-0 flex items-center justify-center text-[#99a1af] hover:text-[#101828] transition-colors text-[12px] leading-none"
                 title="清除作者筛选"
               >
@@ -107,7 +102,7 @@ export default function FilterPanel({ sources = [] }: FilterPanelProps) {
       {/* 清除筛选按钮 */}
       <Tooltip content="清除所有筛选条件">
         <button
-          onClick={handleClearAll}
+          onClick={onClearAll}
           className="mt-6 text-[12px] font-normal leading-[18px] text-[#99a1af] hover:text-[#101828] transition-colors text-left"
         >
           清除筛选
