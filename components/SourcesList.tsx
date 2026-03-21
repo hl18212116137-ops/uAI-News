@@ -216,7 +216,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                     }
                   `}
                 >
-                  {/* 删除按钮 */}
+                  {/* 删除按钮 - 暂时封存，待功能稳定后恢复
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -236,6 +236,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                   >
                     {deletingId === source.id ? '...' : '×'}
                   </button>
+                  */}
 
                   <div className="flex items-start gap-3">
                     {source.avatar ? (
