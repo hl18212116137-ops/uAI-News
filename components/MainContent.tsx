@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "next/navigation";
 import { NewsItem } from "@/lib/types";
 import SiteHeader from "./SiteHeader";
 import RefreshProgress from "./RefreshButton";
@@ -54,8 +53,10 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   const [activeSourceTab, setActiveSourceTab] = useState<'blogger' | 'media' | 'academic'>('blogger');
   const [taskId, setTaskId] = useState<string | null>(null);
   const [task, setTask] = useState<Task | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>("");
+  const [activeSource, setActiveSource] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const newsListRef = useRef<HTMLDivElement>(null);
-  const searchParams = useSearchParams();
 
   const isRunning = !!(task && (task.status === 'pending' || task.status === 'running'));
 
@@ -114,29 +115,23 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   // 计算 sidebar 宽度
   const sidebarWidth = isSourcesListCollapsed ? 100 : 320;
 
-  // 在客户端进行筛选，避免服务端重新渲染
+  // 在客户端进行筛选（纯内存操作，无服务端请求）
   const filteredPosts = useMemo(() => {
     let posts = initialPosts;
 
-    // 按分类筛选
-    const category = searchParams.get("category");
-    if (category && category !== "all") {
-      posts = posts.filter((post) => post.category === category);
+    if (activeCategory && activeCategory !== "all") {
+      posts = posts.filter((post) => post.category === activeCategory);
     }
 
-    // 按作者筛选
-    const source = searchParams.get("source");
-    if (source && source.trim() !== "") {
+    if (activeSource && activeSource.trim() !== "") {
       posts = posts.filter((post) => {
         const handle = typeof post.source === "string" ? post.source : post.source?.handle;
-        return handle && handle.toLowerCase() === source.toLowerCase();
+        return handle && handle.toLowerCase() === activeSource.toLowerCase();
       });
     }
 
-    // 按搜索关键词筛选
-    const query = searchParams.get("query");
-    if (query && query.trim() !== "") {
-      const lowerQuery = query.toLowerCase().trim();
+    if (searchQuery && searchQuery.trim() !== "") {
+      const lowerQuery = searchQuery.toLowerCase().trim();
       posts = posts.filter((post) => {
         return (
           post.title.toLowerCase().includes(lowerQuery) ||
@@ -146,11 +141,10 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
       });
     }
 
-    // 按发布时间排序
     return [...posts].sort((a, b) => {
       return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
     });
-  }, [initialPosts, searchParams]);
+  }, [initialPosts, activeCategory, activeSource, searchQuery]);
 
   return (
     <div className="flex min-h-screen bg-white">
@@ -158,12 +152,8 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
       <SourcesList
         sources={sortedSources}
         totalCount={totalCount}
-        onAddSourceClick={() => setShowAddSourceModal(true)}
-        isCollapsed={isSourcesListCollapsed}
-        onCollapsedChange={setIsSourcesListCollapsed}
-        activeTab={activeSourceTab}
-        onActiveTabChange={setActiveSourceTab}
-        isModalOpen={showAddSourceModal}
+        currentSource={activeSource}
+        onSourceSelect={(handle) => setActiveSource(handle || "")}
       />
 
       {/* 中间主内容区 */}
@@ -188,7 +178,10 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
           {/* sticky 行：CategoryFilter */}
           <div className="sticky top-0 z-10 bg-transparent flex justify-center w-full">
             <div className="max-w-[800px] w-full bg-white">
-              <CategoryFilter />
+              <CategoryFilter
+                activeCategory={activeCategory}
+                onCategoryChange={setActiveCategory}
+              />
             </div>
           </div>
 
@@ -206,7 +199,14 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
                 height: 0,
                 overflow: 'visible',
               }}>
-                <FilterPanel sources={sources} />
+                <FilterPanel
+                  sources={sources}
+                  activeCategory={activeCategory}
+                  activeSource={activeSource}
+                  onClearCategory={() => setActiveCategory("")}
+                  onClearSource={() => setActiveSource("")}
+                  onClearAll={() => { setActiveCategory(""); setActiveSource(""); }}
+                />
               </div>
 
               {/* 推文模块居中 */}

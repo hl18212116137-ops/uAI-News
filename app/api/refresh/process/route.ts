@@ -22,11 +22,11 @@ export async function POST(request: Request) {
       startTime: Date.now(),
     })
 
-    // 从 Supabase 读取 raw_posts（每次最多处理50条）
+    // 从 Supabase 读取 raw_posts（每次最多处理100条）
     const { data: rawPosts, error: fetchError } = await supabase
       .from('raw_posts')
       .select('*')
-      .limit(50)
+      .limit(100)
 
     if (fetchError) throw fetchError
 
@@ -42,27 +42,24 @@ export async function POST(request: Request) {
     const aiService = getDefaultAIService()
     let processed = 0
     const total = rawPosts.length
+    const BATCH_SIZE = 5
 
-    for (const rawPost of rawPosts) {
+    // 处理单条 raw_post 的函数
+    async function processOne(rawPost: any): Promise<void> {
       try {
-        // 使用 processNews 一次调用获取 title、summary、category
         const aiResult = await aiService.processNews(
           rawPost.text,
           rawPost.author_name,
           rawPost.handle
         )
 
-        // 如果 AI 判断不重要，跳过
         if (!aiResult.important) {
           await supabase.from('raw_posts').delete().eq('id', rawPost.id)
-          processed++
-          continue
+          return
         }
 
-        // 翻译全文内容
         const translatedContent = await aiService.translateContent(rawPost.text)
 
-        // 构建 NewsItem
         const newsItem: NewsItem = {
           id: rawPost.id,
           title: aiResult.title,
@@ -80,7 +77,6 @@ export async function POST(request: Request) {
           createdAt: new Date().toISOString(),
         }
 
-        // 获取重要性评分
         try {
           const score = await aiService.scoreNewsImportance({
             title: newsItem.title,
@@ -96,22 +92,23 @@ export async function POST(request: Request) {
           // 评分失败不影响保存
         }
 
-        // 保存到 news_items
         await addPost(newsItem)
-
-        // 从 raw_posts 删除已处理的
         await supabase.from('raw_posts').delete().eq('id', rawPost.id)
-
-        processed++
-        const progress = 40 + Math.round((processed / total) * 60)
-        taskManager.updateTask(taskId, {
-          progress,
-          message: `已处理 ${processed}/${total} 条推文`,
-        })
       } catch (error) {
         console.error(`处理 ${rawPost.id} 失败:`, error)
-        processed++
       }
+    }
+
+    // 分批并发处理（每批 5 条）
+    for (let i = 0; i < rawPosts.length; i += BATCH_SIZE) {
+      const batch = rawPosts.slice(i, i + BATCH_SIZE)
+      await Promise.allSettled(batch.map(processOne))
+      processed += batch.length
+      const progress = 40 + Math.round((processed / total) * 60)
+      taskManager.updateTask(taskId, {
+        progress,
+        message: `已处理 ${processed}/${total} 条推文`,
+      })
     }
 
     taskManager.updateTask(taskId, {
