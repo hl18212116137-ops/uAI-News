@@ -38,6 +38,7 @@ type NewsCardProps = {
 export default memo(NewsCard);
 
 function NewsCard({ post, variant = "default", sources = [] }: NewsCardProps) {
+  const sourceHandle = post.source?.handle || '';
   const sourceName = post.source?.name || '未知来源';
   const sourceUrl = post.source?.url || '#';
   const isNew = isNewPost(post.createdAt);
