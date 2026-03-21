@@ -18,7 +18,7 @@ export async function getUserBookmarkIds(userId: string): Promise<string[]> {
       return []
     }
 
-    return (data || []).map(row => row.news_item_id)
+    return (data || []).map(row => row.news_item_id.replace(/^x_/, 'x-'))
   } catch (error) {
     console.error('Failed to get bookmark ids:', error)
     return []
@@ -29,9 +29,10 @@ export async function getUserBookmarkIds(userId: string): Promise<string[]> {
  * 添加收藏
  */
 export async function addBookmark(userId: string, newsItemId: string): Promise<void> {
+  const normalizedId = newsItemId.replace(/^x_/, 'x-')
   const { error } = await supabase
     .from('user_bookmarks')
-    .insert({ user_id: userId, news_item_id: newsItemId })
+    .insert({ user_id: userId, news_item_id: normalizedId })
 
   if (error) {
     // 忽略重复收藏（唯一约束冲突）
@@ -46,11 +47,12 @@ export async function addBookmark(userId: string, newsItemId: string): Promise<v
  * 取消收藏
  */
 export async function removeBookmark(userId: string, newsItemId: string): Promise<void> {
+  const normalizedId = newsItemId.replace(/^x_/, 'x-')
   const { error } = await supabase
     .from('user_bookmarks')
     .delete()
     .eq('user_id', userId)
-    .eq('news_item_id', newsItemId)
+    .eq('news_item_id', normalizedId)
 
   if (error) {
     console.error('Failed to remove bookmark:', error)
@@ -80,20 +82,23 @@ export async function getBookmarkedNews(userId: string): Promise<NewsItem[]> {
 
     const ids = bookmarks.map(b => b.news_item_id)
 
+    // 兼容旧格式：统一将 x_ 前缀转为 x-（与 news_items 表中存储格式一致）
+    const normalizedIds = ids.map(id => id.replace(/^x_/, 'x-'))
+
     // 第二步：批量查询新闻详情
     const { data: items, error: itemsError } = await supabase
       .from('news_items')
       .select('*')
-      .in('id', ids)
+      .in('id', normalizedIds)
 
     if (itemsError) {
       console.error('Failed to get news items:', itemsError)
       return []
     }
 
-    // 按收藏时间顺序排列（保持 ids 的顺序）
+    // 按收藏时间顺序排列（保持 normalizedIds 的顺序）
     const itemMap = new Map((items || []).map(item => [item.id, item]))
-    return ids
+    return normalizedIds
       .map(id => itemMap.get(id))
       .filter(Boolean)
       .map((item: any) => ({
