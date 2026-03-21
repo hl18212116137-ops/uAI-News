@@ -3,9 +3,9 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { getBookmarkedNews } from '@/lib/bookmarks'
 import { getSources } from '@/lib/sources'
 import NewsCard from '@/components/NewsCard'
+import { NewsItem } from '@/lib/types'
 
 export default async function BookmarksPage() {
   const supabase = createSupabaseServerClient()
@@ -16,11 +16,50 @@ export default async function BookmarksPage() {
     redirect('/login?redirectTo=/bookmarks')
   }
 
-  // 并行获取收藏新闻和信息源（信息源用于展示头像）
-  const [bookmarkedNews, sources] = await Promise.all([
-    getBookmarkedNews(user.id),
+  // 用带用户 session 的 supabase 客户端查询（RLS 自动过滤当前用户）
+  const [bookmarksResult, sources] = await Promise.all([
+    supabase
+      .from('user_bookmarks')
+      .select('news_item_id')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false }),
     getSources(),
   ])
+
+  const ids = (bookmarksResult.data || []).map((r: any) => r.news_item_id)
+
+  // 批量查询新闻详情
+  let bookmarkedNews: NewsItem[] = []
+  if (ids.length > 0) {
+    const { data: items } = await supabase
+      .from('news_items')
+      .select('*')
+      .in('id', ids)
+
+    if (items && items.length > 0) {
+      const itemMap = new Map(items.map((item: any) => [item.id, item]))
+      bookmarkedNews = ids
+        .map((id: string) => itemMap.get(id))
+        .filter(Boolean)
+        .map((item: any): NewsItem => ({
+          id: item.id,
+          title: item.title,
+          summary: item.summary,
+          content: item.content,
+          source: {
+            platform: item.source_platform,
+            name: item.source_name,
+            handle: item.source_handle,
+            url: item.source_url,
+          },
+          category: item.category,
+          publishedAt: item.published_at,
+          originalText: item.original_text,
+          createdAt: item.created_at,
+          importanceScore: item.importance_score,
+        }))
+    }
+  }
 
   const sourceMeta = sources.map(s => ({
     id: s.id,
@@ -57,7 +96,6 @@ export default async function BookmarksPage() {
       {/* 内容区 */}
       <div className="max-w-[900px] mx-auto px-6 py-8">
         {bookmarkedNews.length === 0 ? (
-          // 空状态
           <div className="text-center py-20 px-5 text-[#6a7282]">
             <div className="text-5xl mb-4">⭐</div>
             <p className="text-lg font-medium mb-2 text-[#101828]">还没有收藏任何文章</p>
@@ -70,7 +108,6 @@ export default async function BookmarksPage() {
             </Link>
           </div>
         ) : (
-          // 收藏列表
           <div className="flex flex-col gap-4">
             {bookmarkedNews.map((post) => (
               <NewsCard
