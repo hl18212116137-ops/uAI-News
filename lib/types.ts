@@ -8,6 +8,18 @@ export type NewsCategory =
   | 'Open Source'
   | 'Other';
 
+/** 分类英文→中文映射表（全项目共享，请从此处 import） */
+export const CATEGORY_ZH_MAP: Record<NewsCategory, string> = {
+  'Model Update':   '模型更新',
+  'Product Update': '产品发布',
+  'Research':       '研究进展',
+  'Company News':   '行业动态',
+  'Funding':        '融资',
+  'Policy':         '政策',
+  'Open Source':    '开源',
+  'Other':          '其他',
+};
+
 export type NewsSource = {
   platform: 'X' | 'RSS' | 'Blog' | 'YouTube' | 'Reddit';  // 扩展支持多个平台
   name: string;

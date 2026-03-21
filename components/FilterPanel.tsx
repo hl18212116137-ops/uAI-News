@@ -2,18 +2,7 @@
 
 import { useState } from "react";
 import Tooltip from "./Tooltip";
-
-// 分类映射表：英文 value 到中文 label
-const categoryMap: Record<string, string> = {
-  "Model Update": "模型更新",
-  "Product Update": "产品发布",
-  "Research": "研究进展",
-  "Company News": "行业动态",
-  "Funding": "融资",
-  "Policy": "政策",
-  "Open Source": "开源",
-  "Other": "其他",
-};
+import { CATEGORY_ZH_MAP } from "@/lib/types";
 
 type Source = {
   handle: string;
@@ -44,7 +33,7 @@ export default function FilterPanel({
   }
 
   // 获取分类的中文名称
-  const categoryLabel = activeCategory ? categoryMap[activeCategory] || activeCategory : null;
+  const categoryLabel = activeCategory ? CATEGORY_ZH_MAP[activeCategory as keyof typeof CATEGORY_ZH_MAP] || activeCategory : null;
 
   // 获取作者的名字
   const sourceInfo = activeSource ? sources.find(s => s.handle === activeSource) : null;

@@ -155,35 +155,6 @@ export function sortByPublishedDate(posts: NewsItem[]): NewsItem[] {
 }
 
 /**
- * 获取最近N天最值得关注的新闻
- * @param days 天数，默认3天
- * @param limit 返回数量，默认10条
- * @returns Promise<NewsItem[]> 按重要性评分排序的新闻数组
- */
-export async function getTopImportantNews(days: number = 3, limit: number = 10): Promise<NewsItem[]> {
-  const allPosts = await getAllPosts();
-
-  // 计算截止时间
-  const cutoffTime = Date.now() - days * 24 * 60 * 60 * 1000;
-
-  // 筛选最近N天的新闻
-  const recentPosts = allPosts.filter((post) => {
-    const publishedTime = new Date(post.publishedAt).getTime();
-    return publishedTime >= cutoffTime;
-  });
-
-  // 按重要性评分排序（降序）
-  const sortedByScore = [...recentPosts].sort((a, b) => {
-    const scoreA = a.importanceScore ?? 0;
-    const scoreB = b.importanceScore ?? 0;
-    return scoreB - scoreA;
-  });
-
-  // 返回前N条
-  return sortedByScore.slice(0, limit);
-}
-
-/**
  * 从已有数据计算最重要新闻（纯函数，不查 Supabase）
  */
 export function getTopImportantNewsFromPosts(

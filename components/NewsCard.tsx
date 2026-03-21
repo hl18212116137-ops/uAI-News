@@ -1,18 +1,8 @@
 import { memo } from "react";
-import { NewsItem } from "@/lib/types";
+import Image from "next/image";
+import { NewsItem, CATEGORY_ZH_MAP } from "@/lib/types";
 import { isNewPost, formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
-
-const CATEGORY_ZH: Record<string, string> = {
-  'Model Update': '模型更新',
-  'Product Update': '产品发布',
-  'Research': '研究进展',
-  'Company News': '行业动态',
-  'Funding': '融资',
-  'Policy': '政策',
-  'Open Source': '开源',
-  'Other': '其他',
-};
 
 function formatDateZH(dateString: string): string {
   const d = new Date(dateString);
@@ -60,7 +50,7 @@ function NewsCard({ post, variant = "default", sources = [] }: NewsCardProps) {
       {/* 顶部行：分类 · 新推 | 收藏 */}
       <div className="flex items-center justify-between h-6" style={{ marginBottom: '12px' }}>
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-[#99a1af]"># {CATEGORY_ZH[post.category] ?? post.category}</span>
+          <span className="text-[#99a1af]"># {CATEGORY_ZH_MAP[post.category] ?? post.category}</span>
           {isNew && (
             <>
               <span className="text-[#d1d5dc]">·</span>
@@ -102,10 +92,12 @@ function NewsCard({ post, variant = "default", sources = [] }: NewsCardProps) {
       {/* 底部元数据：头像 · 作者名 · 日期 · 阅读时间 */}
       <div className="flex items-center gap-2 text-xs text-[#b5bcc4]" style={{ marginBottom: '12px' }}>
         {avatar ? (
-          <img
+          <Image
             src={avatar}
             alt={sourceName}
-            className="w-4 h-4 rounded-full flex-shrink-0 object-cover"
+            width={16}
+            height={16}
+            className="rounded-full flex-shrink-0 object-cover"
           />
         ) : (
           <div className="w-4 h-4 rounded-full bg-gray-200 flex-shrink-0" />

@@ -2,26 +2,8 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-
-type TaskStatus = 'pending' | 'running' | 'completed' | 'failed';
-
-interface Task {
-  id: string;
-  status: TaskStatus;
-  progress: number;
-  message: string;
-  error?: string;
-  remainingTime?: number;
-}
-
-function formatTime(seconds: number): string {
-  if (seconds === 0) return '0 秒';
-  if (seconds < 60) return `${seconds} 秒`;
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (secs === 0) return `${minutes} 分`;
-  return `${minutes} 分 ${secs} 秒`;
-}
+import type { Task } from "@/lib/task-manager";
+import { formatTime } from "@/lib/utils";
 
 type RefreshProgressProps = {
   taskId: string | null;
@@ -57,7 +39,7 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
       } catch (error) {
         console.error('Failed to fetch task status:', error);
       }
-    }, 1000);
+    }, 2500);
 
     return () => clearInterval(interval);
   }, [taskId, router, onTaskUpdate, onTaskComplete]);

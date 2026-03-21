@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { NewsItem } from "@/lib/types";
+import type { Task } from "@/lib/task-manager";
 import SiteHeader from "./SiteHeader";
 import RefreshProgress from "./RefreshButton";
 import CategoryFilter from "./CategoryFilter";
@@ -21,15 +22,6 @@ type Source = {
   postCount: number;
   latestPostTime?: string;
   sourceType?: 'blogger' | 'media' | 'academic';
-};
-
-type Task = {
-  id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  progress: number;
-  message: string;
-  error?: string;
-  remainingTime?: number;
 };
 
 type MainContentProps = {
@@ -57,20 +49,8 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   const [activeSource, setActiveSource] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [posts, setPosts] = useState<NewsItem[]>(initialPosts);
-  const newsListRef = useRef<HTMLDivElement>(null);
 
   const isRunning = !!(task && (task.status === 'pending' || task.status === 'running'));
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hasRefreshed = sessionStorage.getItem('hasRefreshed');
-      if (hasRefreshed === 'false') {
-        setTimeout(() => {
-          sessionStorage.setItem('hasRefreshed', 'true');
-        }, 100);
-      }
-    }
-  }, []);
 
   const handleRefresh = async () => {
     if (taskId) return;
@@ -102,14 +82,6 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
     setShowAddSourceModal(true);
     setIsSourcesListCollapsed(false);
     setActiveSourceTab(type);
-  }, []);
-
-  const handleSourceDelete = useCallback((handle: string) => {
-    setPosts(prev => prev.filter(p => {
-      const h = typeof p.source === 'string' ? p.source : p.source?.handle;
-      return h?.toLowerCase() !== handle.toLowerCase();
-    }));
-    setActiveSource(prev => prev.toLowerCase() === handle.toLowerCase() ? '' : prev);
   }, []);
 
   const sortedSources = useMemo(() => {
@@ -163,7 +135,6 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
         totalCount={totalCount}
         currentSource={activeSource}
         onSourceSelect={(handle) => setActiveSource(handle || "")}
-        onSourceDelete={handleSourceDelete}
         onAddSource={() => setShowAddSourceModal(true)}
       />
 
@@ -221,7 +192,7 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
               </div>
 
               {/* 推文模块居中 */}
-              <div ref={newsListRef} className="bg-white px-6 pt-4 pb-10 min-h-screen">
+              <div className="bg-white px-6 pt-4 pb-10 min-h-screen">
                 <NewsList posts={filteredPosts} sources={sources} />
               </div>
             </div>

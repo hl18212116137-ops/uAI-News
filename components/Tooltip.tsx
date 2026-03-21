@@ -90,27 +90,15 @@ export default function Tooltip({ content, children, delay = 200, excludeSelecto
       {isVisible && (
         <div
           ref={tooltipRef}
-          className="fixed z-50 px-3 py-2 text-xs text-white bg-[#101828] rounded-lg shadow-lg pointer-events-none whitespace-nowrap opacity-0 animate-fade-in"
+          className="fixed z-50 px-3 py-2 text-xs text-white bg-[#101828] rounded-lg shadow-lg pointer-events-none whitespace-nowrap animate-fade-in"
           style={{
             left: `${position.x}px`,
             top: `${position.y}px`,
-            animation: 'fadeIn 0.2s ease-in-out forwards',
           }}
         >
           {content}
         </div>
       )}
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-      `}</style>
     </>
   );
 }

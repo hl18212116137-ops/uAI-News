@@ -36,7 +36,7 @@ async function compareSimilarityWithCache(
 ): Promise<SimilarityResult[]> {
   const results: SimilarityResult[] = [];
   const uncachedPosts: typeof posts = [];
-  const cacheHits: Map<string, { id1: string; id2: string }> = new Map();
+  const cacheMisses: Map<string, { id1: string; id2: string }> = new Map();
 
   // 生成所有可能的配对
   for (let i = 0; i < posts.length; i++) {
@@ -54,15 +54,15 @@ async function compareSimilarityWithCache(
         });
       } else {
         // 记录需要 AI 计算的配对
-        cacheHits.set(cacheKey, { id1: posts[i].id, id2: posts[j].id });
+        cacheMisses.set(cacheKey, { id1: posts[i].id, id2: posts[j].id });
       }
     }
   }
 
-  log(`Cache hits: ${results.length}, Cache misses: ${cacheHits.size}`);
+  log(`Cache hits: ${results.length}, Cache misses: ${cacheMisses.size}`);
 
   // 如果有未缓存的，调用 AI
-  if (cacheHits.size > 0) {
+  if (cacheMisses.size > 0) {
     const aiResults = await aiService.compareSimilarityBatch(posts);
 
     // 保存到缓存

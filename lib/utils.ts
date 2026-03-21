@@ -1,4 +1,18 @@
 /**
+ * 将秒数格式化为中文时间字符串
+ * @param seconds 秒数
+ * @returns 格式化后的时间字符串，如 "3 分 20 秒"
+ */
+export function formatTime(seconds: number): string {
+  if (seconds === 0) return '0 秒';
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (secs === 0) return `${minutes} 分`;
+  return `${minutes} 分 ${secs} 秒`;
+}
+
+/**
  * 判断推文是否为"最新一批"抓取的
  * 只在抓取完成后的首次页面加载时显示"新"标签
  * 刷新页面后标签消失

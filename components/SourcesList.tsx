@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Image from "next/image";
 import AddSourceModal from "./AddSourceModal";
 import Tooltip from "./Tooltip";
 
@@ -21,65 +21,18 @@ type SourcesListProps = {
   currentSource?: string;
   totalCount: number;
   onSourceSelect: (handle?: string) => void;
-  onSourceDelete?: (handle: string) => void;
   onAddSource?: () => void;
 };
 
-export default function SourcesList({ sources, currentSource, totalCount, onSourceSelect, onSourceDelete, onAddSource }: SourcesListProps) {
+export default function SourcesList({ sources, currentSource, totalCount, onSourceSelect, onAddSource }: SourcesListProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [sourceToDelete, setSourceToDelete] = useState<{ id: string; name: string } | null>(null);
-  const [hoveredSourceId, setHoveredSourceId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'blogger' | 'media' | 'academic'>('blogger');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const router = useRouter();
 
   const isActive = (handle?: string) => {
     if (!handle && !currentSource) return true;
     return handle === currentSource;
-  };
-
-  const handleDeleteClick = (id: string, name: string) => {
-    setSourceToDelete({ id, name });
-    setShowConfirm(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!sourceToDelete) return;
-
-    setDeletingId(sourceToDelete.id);
-    setShowConfirm(false);
-
-    try {
-      const response = await fetch(`/api/sources?id=${sourceToDelete.id}`, {
-        method: 'DELETE',
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        const deletedSource = sources.find(s => s.id === sourceToDelete.id);
-        if (deletedSource) {
-          onSourceDelete?.(deletedSource.handle);
-        }
-        router.refresh();
-      } else {
-        alert(`删除失败: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('删除失败:', error);
-      alert('删除失败，请稍后重试');
-    } finally {
-      setDeletingId(null);
-      setSourceToDelete(null);
-    }
-  };
-
-  const handleCancelDelete = () => {
-    setShowConfirm(false);
-    setSourceToDelete(null);
   };
 
   return (
@@ -121,7 +74,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
               }`}
             >
               {source.avatar ? (
-                <img src={source.avatar} alt={source.name} className="w-full h-full object-cover" />
+                <Image src={source.avatar} alt={source.name} width={36} height={36} className="w-full h-full object-cover rounded-full" />
               ) : (
                 <div className="w-full h-full bg-gray-200 flex items-center justify-center text-xs font-semibold text-[#6a7282]">
                   {source.name.charAt(0).toUpperCase()}
@@ -212,8 +165,6 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
               <Tooltip key={source.handle} content={`点击查看 ${source.name} 的推文`} excludeSelector="[data-tooltip-exclude='post-count']">
                 <div
                   onClick={() => onSourceSelect(source.handle)}
-                  onMouseEnter={() => setHoveredSourceId(source.id)}
-                  onMouseLeave={() => setHoveredSourceId(null)}
                   className={`
                     relative pt-[14px] pb-[14px] pl-[15px] pr-[18px] rounded-[10px] cursor-pointer transition-all duration-200 bg-white
                     ${isActive(source.handle)
@@ -222,34 +173,15 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                     }
                   `}
                 >
-                  {/* 删除按钮 - 暂时封存，待功能稳定后恢复
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(source.id, source.name);
-                    }}
-                    disabled={deletingId === source.id}
-                    className={`
-                      absolute top-2 right-2 w-6 h-6
-                      border-none rounded
-                      ${deletingId === source.id ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 cursor-pointer'}
-                      text-white text-sm
-                      flex items-center justify-center
-                      transition-opacity duration-200
-                      ${hoveredSourceId === source.id || deletingId === source.id ? 'opacity-100' : 'opacity-0'}
-                    `}
-                    title="取消关注"
-                  >
-                    {deletingId === source.id ? '...' : '×'}
-                  </button>
-                  */}
 
                   <div className="flex items-start gap-3">
                     {source.avatar ? (
-                      <img
+                      <Image
                         src={source.avatar}
                         alt={source.name}
-                        className="w-10 h-10 rounded-full flex-shrink-0"
+                        width={40}
+                        height={40}
+                        className="rounded-full flex-shrink-0"
                       />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-sm font-semibold flex-shrink-0">
@@ -274,40 +206,6 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                 </div>
               </Tooltip>
           ))}
-          </div>
-        </div>
-      )}
-
-      {/* 确认删除对话框 */}
-      {showConfirm && sourceToDelete && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000] animate-fade-in"
-          onClick={handleCancelDelete}
-        >
-          <div
-            className="bg-white p-6 rounded-md max-w-md shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="m-0 mb-4 text-lg font-semibold text-[#101828]">
-              确认取消关注
-            </h3>
-            <p className="m-0 mb-6 text-[#6a7282] text-sm">
-              确定要取消关注 <strong>{sourceToDelete.name}</strong> 吗?
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={handleCancelDelete}
-                className="px-4 py-2 bg-gray-100 rounded-md cursor-pointer text-sm hover:bg-gray-200 transition-all duration-200"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                className="px-4 py-2 bg-red-500 text-white rounded-md cursor-pointer text-sm font-medium hover:bg-red-600 transition-all duration-200"
-              >
-                确认删除
-              </button>
-            </div>
           </div>
         </div>
       )}

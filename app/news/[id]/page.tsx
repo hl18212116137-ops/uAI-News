@@ -1,6 +1,8 @@
 import { getPostById } from '@/lib/db';
 import { NewsItem } from '@/lib/types';
 
+export const revalidate = 3600;
+
 export default async function NewsDetailPage({
   params,
 }: {
