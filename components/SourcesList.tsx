@@ -87,7 +87,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
       className={`
         ${isCollapsed ? 'w-[80px]' : 'w-[320px]'}
         h-screen sticky top-0 overflow-y-auto overflow-x-hidden sidebar-scroll
-        ${isCollapsed ? 'px-[22px] py-5' : 'pl-[6px] pr-0 py-5'}
+        ${isCollapsed ? 'py-5' : 'pl-[6px] pr-0 py-5'}
         bg-white group
         transition-all duration-200 ease-in-out
       `}
@@ -138,13 +138,14 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
           {/* 标题区域 */}
           <div className="flex items-center justify-between mb-4 pl-[14px] pr-[14px]">
             <h2 className="text-xl font-semibold text-[#101828]">已关注信息源</h2>
-            <button
-              onClick={() => onAddSource ? onAddSource() : setShowAddModal(true)}
-              className="w-6 h-6 bg-[#101828] rounded-full flex items-center justify-center text-white hover:bg-[#1a1f2e] transition-colors"
-              title="添加信息源"
-            >
-              <span className="text-lg leading-none">+</span>
-            </button>
+            <Tooltip content="添加信息源">
+              <button
+                onClick={() => onAddSource ? onAddSource() : setShowAddModal(true)}
+                className="w-6 h-6 bg-[#101828] rounded-full flex items-center justify-center text-white hover:bg-[#1a1f2e] transition-colors"
+              >
+                <span className="text-lg leading-none">+</span>
+              </button>
+            </Tooltip>
           </div>
 
           {/* 标签页切换 */}
@@ -208,7 +209,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                 );
               })
               .map((source) => (
-              <Tooltip key={source.handle} content="点击查看作者推文">
+              <Tooltip key={source.handle} content={`点击查看 ${source.name} 的推文`} excludeSelector="[data-tooltip-exclude='post-count']">
                 <div
                   onClick={() => onSourceSelect(source.handle)}
                   onMouseEnter={() => setHoveredSourceId(source.id)}
@@ -259,7 +260,7 @@ export default function SourcesList({ sources, currentSource, totalCount, onSour
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-sm text-[#101828] truncate leading-5">{source.name}</span>
                         <Tooltip content="已收录推文">
-                          <span className="text-xs text-[#6a7282] flex-shrink-0 ml-2 cursor-default">{source.postCount}</span>
+                          <span className="text-xs text-[#6a7282] flex-shrink-0 ml-2 cursor-default" data-tooltip-exclude="post-count">{source.postCount}</span>
                         </Tooltip>
                       </div>
                       <div className="text-xs text-[#99a1af] leading-4">@{source.handle}</div>
