@@ -1,3 +1,5 @@
+export const revalidate = 0
+
 import MainContent from "@/components/MainContent";
 import { getPostCountBySource, getLatestPostTimeBySource, getTopImportantNews } from "@/lib/news";
 import { getSources } from "@/lib/sources";
