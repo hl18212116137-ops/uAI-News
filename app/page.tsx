@@ -1,18 +1,25 @@
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
 
 import MainContent from "@/components/MainContent";
 import { getPostCountBySource, getLatestPostTimeBySource, getTopImportantNewsFromPosts } from "@/lib/news";
 import { getSources } from "@/lib/sources";
 import { getAllPosts } from "@/lib/db";
 import { getStatsFromData } from "@/lib/stats";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type PageProps = {
   searchParams: { category?: string; query?: string; source?: string };
 };
 
 export default async function Home({ searchParams }: PageProps) {
-  // 并行获取数据，避免串行等待
-  const [allPosts, sources] = await Promise.all([
+  // 并行获取数据：用户 session + 业务数据
+  const supabase = createSupabaseServerClient();
+  const [
+    { data: { user } },
+    allPosts,
+    sources,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
     getAllPosts(),
     getSources(),
   ]);
@@ -46,6 +53,7 @@ export default async function Home({ searchParams }: PageProps) {
       sources={sourcesWithCounts}
       totalCount={allPosts.length}
       stats={stats}
+      user={user}
     />
   );
 }

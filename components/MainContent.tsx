@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { NewsItem } from "@/lib/types";
 import type { Task } from "@/lib/task-manager";
+import type { User } from "@supabase/supabase-js";
 import SiteHeader from "./SiteHeader";
 import RefreshProgress from "./RefreshButton";
 import CategoryFilter from "./CategoryFilter";
@@ -12,6 +13,7 @@ import SourcesList from "./SourcesList";
 import FloatingButton from "./FloatingButton";
 import WeeklyReportModal from "./WeeklyReportModal";
 import AddSourceModal from "./AddSourceModal";
+import AuthPromptModal from "./AuthPromptModal";
 
 type Source = {
   id: string;
@@ -36,9 +38,10 @@ type MainContentProps = {
     totalPosts: number;
     todayPosts: number;
   };
+  user: User | null;
 };
 
-export default function MainContent({ initialPosts, topImportantNews, sources, totalCount, stats }: MainContentProps) {
+export default function MainContent({ initialPosts, topImportantNews, sources, totalCount, stats, user }: MainContentProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
   const [isSourcesListCollapsed, setIsSourcesListCollapsed] = useState(false);
@@ -49,11 +52,13 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   const [activeSource, setActiveSource] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [posts, setPosts] = useState<NewsItem[]>(initialPosts);
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
 
   const isRunning = !!(task && (task.status === 'pending' || task.status === 'running'));
 
   const handleRefresh = async () => {
     if (taskId) return;
+    if (!user) { setShowAuthPrompt(true); return; }
     try {
       sessionStorage.setItem('lastFetchTimestamp', Date.now().toString());
       sessionStorage.setItem('hasRefreshed', 'false');
@@ -79,10 +84,11 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
   }, []);
 
   const handleAddSource = useCallback((type: 'blogger' | 'media' | 'academic') => {
+    if (!user) { setShowAuthPrompt(true); return; }
     setShowAddSourceModal(true);
     setIsSourcesListCollapsed(false);
     setActiveSourceTab(type);
-  }, []);
+  }, [user]);
 
   const sortedSources = useMemo(() => {
     return [...sources].sort((a, b) => {
@@ -214,6 +220,9 @@ export default function MainContent({ initialPosts, topImportantNews, sources, t
 
       {/* 添加信息源弹窗 */}
       <AddSourceModal isOpen={showAddSourceModal} onClose={() => setShowAddSourceModal(false)} sidebarWidth={sidebarWidth} />
+
+      {/* 登录提示弹窗（未登录用户触发写操作时显示） */}
+      <AuthPromptModal isOpen={showAuthPrompt} onClose={() => setShowAuthPrompt(false)} />
     </div>
   );
 }

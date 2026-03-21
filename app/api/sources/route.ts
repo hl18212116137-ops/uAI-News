@@ -13,6 +13,7 @@ import { addPost, deletePostsByHandle } from '@/lib/db';
 import { getDefaultAIService } from '@/lib/ai/ai-factory';
 import { NewsCategory } from '@/lib/types';
 import { taskManager } from '@/lib/task-manager';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * GET /api/sources
@@ -33,9 +34,13 @@ export async function GET() {
 
 /**
  * POST /api/sources
- * 添加新源（从URL提取博主信息）
+ * 添加新源（从URL提取博主信息）—— 需要登录
  */
 export async function POST(request: NextRequest) {
+  // 鉴权：未登录返回 401
+  const { errorResponse } = await requireAuth();
+  if (errorResponse) return errorResponse;
+
   try {
     const body = await request.json();
     const { url } = body;
@@ -238,9 +243,13 @@ async function fetchAndProcessPostsInBackground(source: Source, taskId: string) 
 
 /**
  * DELETE /api/sources?id=xxx
- * 删除源
+ * 删除源 —— 需要登录
  */
 export async function DELETE(request: NextRequest) {
+  // 鉴权：未登录返回 401
+  const { errorResponse } = await requireAuth();
+  if (errorResponse) return errorResponse;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -281,9 +290,13 @@ export async function DELETE(request: NextRequest) {
 
 /**
  * PATCH /api/sources
- * 更新源（如启用/禁用）
+ * 更新源（如启用/禁用）—— 需要登录
  */
 export async function PATCH(request: NextRequest) {
+  // 鉴权：未登录返回 401
+  const { errorResponse } = await requireAuth();
+  if (errorResponse) return errorResponse;
+
   try {
     const body = await request.json();
     const { id, updates } = body;

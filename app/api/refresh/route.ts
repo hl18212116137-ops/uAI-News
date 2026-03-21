@@ -1,7 +1,12 @@
 import { taskManager } from '@/lib/task-manager'
+import { requireAuth } from '@/lib/auth'
 
-// 启动两步刷新任务：先抓取，再 AI 处理
+// 启动两步刷新任务：先抓取，再 AI 处理（需要登录）
 export async function POST(request: Request) {
+  // 鉴权：未登录返回 401
+  const { errorResponse } = await requireAuth();
+  if (errorResponse) return errorResponse;
+
   try {
     console.log('[Refresh API] 创建抓取任务...')
 
