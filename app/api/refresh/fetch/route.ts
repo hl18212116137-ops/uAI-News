@@ -40,9 +40,11 @@ export async function POST(request: Request) {
       return Response.json({ success: true, taskId, message: '没有源需要抓取', count: 0 })
     }
 
-    // 读取已存在的 raw post IDs（用于去重）
+    // 读取已存在的 raw post IDs 和已处理的 source URLs（双重去重）
     const { data: existingRaw } = await supabase.from('raw_posts').select('id')
+    const { data: existingNews } = await supabase.from('news_items').select('source_url')
     const seenIds = new Set((existingRaw || []).map((p: any) => p.id))
+    const seenUrls = new Set((existingNews || []).map((p: any) => p.source_url))
 
     const newRawPosts: any[] = []
     let processed = 0
@@ -54,9 +56,10 @@ export async function POST(request: Request) {
           // 从 X/Twitter 抓取
           const posts = await fetchPostsFromX(source.handle)
           for (const post of posts) {
-            if (!seenIds.has(post.post_id)) {
+            const normalizedId = post.post_id.replace(/^x_/, 'x-')
+            if (!seenIds.has(normalizedId) && !seenUrls.has(post.post_url)) {
               newRawPosts.push({
-                id: post.post_id,
+                id: normalizedId,
                 platform: 'X',
                 handle: source.handle,
                 author_name: source.name,
@@ -65,7 +68,8 @@ export async function POST(request: Request) {
                 published_at: post.posted_at,
                 fetched_at: new Date().toISOString(),
               })
-              seenIds.add(post.post_id)
+              seenIds.add(normalizedId)
+              seenUrls.add(post.post_url)
             }
           }
         } else if (source.platform === 'RSS' || source.platform === 'Blog') {

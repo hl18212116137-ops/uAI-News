@@ -131,13 +131,28 @@ export async function getPostById(id: string): Promise<NewsItem | null> {
 }
 
 /**
- * 添加新闻项到数据库
+ * 添加新闻项到数据库（按 source_url 去重，防止同一推文重复入库）
  */
 export async function addPost(post: NewsItem): Promise<void> {
   try {
+    // 统一 ID 前缀：x_ → x-，防止同一推文因前缀不同重复入库
+    const normalizedId = post.id.replace(/^x_/, 'x-')
+
+    // 按 source_url 查重，已存在则跳过
+    const { data: existing } = await supabase
+      .from('news_items')
+      .select('id')
+      .eq('source_url', post.source.url)
+      .single()
+
+    if (existing) {
+      // 已存在相同 URL 的新闻，跳过
+      return
+    }
+
     const { error } = await supabase.from('news_items').upsert(
       {
-        id: post.id,
+        id: normalizedId,
         title: post.title,
         summary: post.summary,
         content: post.content,
