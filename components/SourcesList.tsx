@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import type { User } from "@supabase/supabase-js";
 import AddSourceModal from "./AddSourceModal";
 import Tooltip from "./Tooltip";
 
@@ -24,6 +25,7 @@ type SourcesListProps = {
   onAddSource?: () => void;
   subscribedIds?: Set<string>;
   onToggleSubscription?: (sourceId: string, sourceHandle: string) => void;
+  user: User | null;              // 当前用户
 };
 
 export default function SourcesList({
@@ -34,6 +36,7 @@ export default function SourcesList({
   onAddSource,
   subscribedIds = new Set(),
   onToggleSubscription,
+  user,
 }: SourcesListProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -266,7 +269,7 @@ export default function SourcesList({
       )}
 
       {/* 添加信息源弹窗 */}
-      <AddSourceModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
+      <AddSourceModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} user={user} />
     </div>
   );
 }

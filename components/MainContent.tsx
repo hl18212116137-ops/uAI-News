@@ -17,6 +17,7 @@ import FloatingButton from "./FloatingButton";
 import WeeklyReportModal from "./WeeklyReportModal";
 import AddSourceModal from "./AddSourceModal";
 import AuthPromptModal from "./AuthPromptModal";
+import SubscriptionPrompt from "./SubscriptionPrompt";
 
 type Source = {
   id: string;
@@ -71,6 +72,7 @@ export default function MainContent({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [posts] = useState<NewsItem[]>(initialPosts);
   const [showAuthPrompt, setShowAuthPrompt] = useState(false);
+  const [showRecommendedPosts, setShowRecommendedPosts] = useState(false);
 
   const handleNeedAuth = useCallback(() => setShowAuthPrompt(true), []);
 
@@ -169,6 +171,7 @@ export default function MainContent({
         onAddSource={() => setShowAddSourceModal(true)}
         subscribedIds={subscribedIds}
         onToggleSubscription={toggleSubscription}
+        user={user}
       />
 
       {/* 中间主内容区 */}
@@ -205,55 +208,66 @@ export default function MainContent({
           </div>
         )}
 
-        <div style={{ marginTop: isPersonalFeed ? '50px' : '0' }}>
-          {/* sticky 行：CategoryFilter */}
-          <div className="sticky top-0 z-10 bg-transparent flex justify-center w-full">
-            <div className="max-w-[800px] w-full bg-white">
-              <CategoryFilter
-                activeCategory={activeCategory}
-                onCategoryChange={setActiveCategory}
-              />
-            </div>
-          </div>
+        {/* 未登录/无订阅时的引导界面 */}
+        {!isPersonalFeed && !showRecommendedPosts && (
+          <SubscriptionPrompt
+            onSubscribe={() => setShowAddSourceModal(true)}
+            onViewRecommended={() => setShowRecommendedPosts(true)}
+          />
+        )}
 
-          {/* FilterPanel 和 NewsList 并列 */}
-          <div className="flex justify-center">
-            <div style={{ position: 'relative', maxWidth: '896px', width: '100%' }}>
-              {/* FilterPanel sticky 定位在左侧 */}
-              <div style={{
-                position: 'sticky',
-                top: '140px',
-                width: '220px',
-                marginLeft: '-200px',
-                paddingRight: '16px',
-                zIndex: 9,
-                height: 0,
-                overflow: 'visible',
-              }}>
-                <FilterPanel
-                  sources={sources}
+        {/* 推文列表区域 */}
+        {(isPersonalFeed || showRecommendedPosts) && (
+          <div style={{ marginTop: isPersonalFeed ? '50px' : '0' }}>
+            {/* sticky 行：CategoryFilter */}
+            <div className="sticky top-0 z-10 bg-transparent flex justify-center w-full">
+              <div className="max-w-[800px] w-full bg-white">
+                <CategoryFilter
                   activeCategory={activeCategory}
-                  activeSource={activeSource}
-                  onClearCategory={() => setActiveCategory("")}
-                  onClearSource={() => setActiveSource("")}
-                  onClearAll={() => { setActiveCategory(""); setActiveSource(""); }}
-                />
-              </div>
-
-              {/* 推文模块居中 */}
-              <div className="bg-white px-6 pt-4 pb-10 min-h-screen">
-                <NewsList
-                  posts={filteredPosts}
-                  sources={sources}
-                  bookmarkedIds={bookmarkedIds}
-                  onBookmarkToggle={toggleBookmark}
-                  subscribedIds={subscribedIds}
-                  onSubscriptionToggle={toggleSubscription}
+                  onCategoryChange={setActiveCategory}
                 />
               </div>
             </div>
+
+            {/* FilterPanel 和 NewsList 并列 */}
+            <div className="flex justify-center">
+              <div style={{ position: 'relative', maxWidth: '896px', width: '100%' }}>
+                {/* FilterPanel sticky 定位在左侧 */}
+                <div style={{
+                  position: 'sticky',
+                  top: '140px',
+                  width: '220px',
+                  marginLeft: '-200px',
+                  paddingRight: '16px',
+                  zIndex: 9,
+                  height: 0,
+                  overflow: 'visible',
+                }}>
+                  <FilterPanel
+                    sources={sources}
+                    activeCategory={activeCategory}
+                    activeSource={activeSource}
+                    onClearCategory={() => setActiveCategory("")}
+                    onClearSource={() => setActiveSource("")}
+                    onClearAll={() => { setActiveCategory(""); setActiveSource(""); }}
+                  />
+                </div>
+
+                {/* 推文模块居中 */}
+                <div className="bg-white px-6 pt-4 pb-10 min-h-screen">
+                  <NewsList
+                    posts={filteredPosts}
+                    sources={sources}
+                    bookmarkedIds={bookmarkedIds}
+                    onBookmarkToggle={toggleBookmark}
+                    subscribedIds={subscribedIds}
+                    onSubscriptionToggle={toggleSubscription}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 右侧悬浮按钮 */}
@@ -269,7 +283,7 @@ export default function MainContent({
       )}
 
       {/* 添加信息源弹窗 */}
-      <AddSourceModal isOpen={showAddSourceModal} onClose={() => setShowAddSourceModal(false)} sidebarWidth={sidebarWidth} />
+      <AddSourceModal isOpen={showAddSourceModal} onClose={() => setShowAddSourceModal(false)} sidebarWidth={sidebarWidth} user={user} />
 
       {/* 登录提示弹窗（未登录用户触发写操作时显示） */}
       <AuthPromptModal isOpen={showAuthPrompt} onClose={() => setShowAuthPrompt(false)} />

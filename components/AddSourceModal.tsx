@@ -2,20 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
 
 type AddSourceModalProps = {
   isOpen: boolean;
   onClose: () => void;
   sidebarWidth?: number;
+  user: User | null;
 };
 
-export default function AddSourceModal({ isOpen, onClose, sidebarWidth = 320 }: AddSourceModalProps) {
+export default function AddSourceModal({ isOpen, onClose, sidebarWidth = 320, user }: AddSourceModalProps) {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [showGuestWarning, setShowGuestWarning] = useState(false);
   const router = useRouter();
 
   // 初始化弹窗位置（居中）
@@ -86,8 +89,13 @@ export default function AddSourceModal({ isOpen, onClose, sidebarWidth = 320 }: 
 
       if (result.success) {
         setUrl("");
-        onClose();
-        router.refresh();
+        // 如果未登录，显示提示
+        if (!user) {
+          setShowGuestWarning(true);
+        } else {
+          onClose();
+          router.refresh();
+        }
       } else {
         setError(result.error || "添加失败，请重试");
       }
@@ -99,7 +107,74 @@ export default function AddSourceModal({ isOpen, onClose, sidebarWidth = 320 }: 
     }
   };
 
+  const handleGoLogin = () => {
+    setShowGuestWarning(false);
+    onClose();
+    router.push('/login');
+  };
+
+  const handleConfirmGuest = () => {
+    setShowGuestWarning(false);
+    onClose();
+  };
+
   if (!isOpen) return null;
+
+  // 如果显示未登录提示
+  if (showGuestWarning) {
+    return (
+      <>
+        <div
+          className="fixed bg-black/50 z-40 animate-fade-in"
+          style={{
+            left: `${sidebarWidth}px`,
+            top: 0,
+            right: 0,
+            bottom: 0,
+          }}
+          onClick={() => setShowGuestWarning(false)}
+        />
+
+        <div
+          className="fixed bg-white rounded-2xl p-8 w-[480px] shadow-lg animate-scale-in z-50"
+          style={{
+            left: `${(window.innerWidth - 480) / 2}px`,
+            top: `${(window.innerHeight - 300) / 2}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="w-12 h-12 rounded-full bg-[#f9fafb] flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-[#6a7282]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+
+          <h3 className="text-lg font-semibold text-[#101828] text-center mb-2">
+            你尚未登录
+          </h3>
+          <p className="text-sm text-[#6a7282] text-center mb-6">
+            推文数据仅供阅览，不作保留
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleConfirmGuest}
+              className="flex-1 py-2 rounded-full border border-[#e5e7eb] text-sm text-[#6a7282] hover:bg-[#f9fafb] transition-colors"
+            >
+              确认
+            </button>
+            <button
+              onClick={handleGoLogin}
+              className="flex-1 py-2 rounded-full bg-[#101828] text-sm text-white font-medium hover:bg-[#1a1f2e] transition-colors"
+            >
+              去登录
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

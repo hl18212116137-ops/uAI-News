@@ -4,8 +4,8 @@ import {
   addSource,
   deleteSource,
   updateSource,
-  extractSourceFromUrl,
   getSourceById,
+  extractSourceFromUrl,
   Source,
 } from '@/lib/sources';
 import { fetchPostsFromX } from '@/lib/x';
@@ -14,6 +14,8 @@ import { getDefaultAIService } from '@/lib/ai/ai-factory';
 import { NewsCategory } from '@/lib/types';
 import { taskManager } from '@/lib/task-manager';
 import { requireAuth } from '@/lib/auth';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { subscribeSource } from '@/lib/subscriptions';
 
 /**
  * GET /api/sources
@@ -34,12 +36,12 @@ export async function GET() {
 
 /**
  * POST /api/sources
- * 添加新源（从URL提取博主信息）—— 需要登录
+ * 添加新源（从URL提取博主信息）—— 允许未登录用户添加
  */
 export async function POST(request: NextRequest) {
-  // 鉴权：未登录返回 401
-  const { errorResponse } = await requireAuth();
-  if (errorResponse) return errorResponse;
+  // 可选鉴权：获取当前用户（可能为 null）
+  const supabase = createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
   try {
     const body = await request.json();
@@ -73,6 +75,11 @@ export async function POST(request: NextRequest) {
     // 添加到列表
     await addSource(source);
 
+    // 如果已登录，创建订阅关系
+    if (user) {
+      await subscribeSource(user.id, source.id, source.handle);
+    }
+
     // 创建任务
     const taskId = taskManager.createTask();
     taskManager.updateTask(taskId, {
@@ -99,6 +106,7 @@ export async function POST(request: NextRequest) {
       message: `已添加博主 @${source.handle}`,
       source,
       taskId, // 前端可以轮询任务状态
+      isLoggedIn: !!user,
     });
   } catch (error: any) {
     console.error('Failed to add source:', error);
