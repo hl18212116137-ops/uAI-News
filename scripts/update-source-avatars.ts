@@ -21,12 +21,12 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey)
 async function updateSourceAvatars() {
   console.log('开始批量更新信息源头像...\n')
 
-  // 查询所有 X 平台的信息源
+  // 查询所有 X 平台的信息源（处理大小写不一致的问题）
   const { data: sources, error } = await supabase
     .from('sources')
     .select('*')
-    .eq('platform', 'X')
-    .or('avatar.is.null,description.is.null')  // 只更新缺失字段的
+    .in('platform', ['x', 'X'])
+    .or('avatar.is.null,description.is.null')
 
   if (error) {
     console.error('查询信息源失败:', error)
