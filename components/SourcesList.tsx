@@ -26,6 +26,8 @@ type SourcesListProps = {
   subscribedIds?: Set<string>;
   onToggleSubscription?: (sourceId: string, sourceHandle: string) => void;
   user: User | null;              // 当前用户
+  isCollapsed: boolean;            // 受控状态：是否折叠
+  onToggleCollapse: () => void;    // 切换折叠状态的回调
 };
 
 export default function SourcesList({
@@ -37,8 +39,9 @@ export default function SourcesList({
   subscribedIds = new Set(),
   onToggleSubscription,
   user,
+  isCollapsed,
+  onToggleCollapse,
 }: SourcesListProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [isRefreshingRecommended, setIsRefreshingRecommended] = useState(false);
@@ -186,7 +189,7 @@ export default function SourcesList({
     >
       {/* 折叠/展开按钮 */}
       <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
+        onClick={onToggleCollapse}
         className={`fixed top-1/2 -translate-y-1/2 w-7 h-7 bg-white rounded-full border border-[#e5e7eb] flex items-center justify-center z-10 cursor-pointer hover:bg-gray-50 transition-all duration-200 ${
           isCollapsed ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
         }`}
@@ -200,7 +203,7 @@ export default function SourcesList({
       {isCollapsed && (
         <div
           className="flex flex-col items-center gap-4 h-full justify-center cursor-pointer"
-          onClick={() => setIsCollapsed(false)}
+          onClick={onToggleCollapse}
         >
           {[...sources, ...recommendedSources].slice(0, 7).map((source) => (
             <div

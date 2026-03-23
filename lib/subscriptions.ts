@@ -269,8 +269,7 @@ export async function getTopRecommendedPosts(limit = 30): Promise<NewsItem[]> {
     const { data, error } = await supabase
       .from('news_items')
       .select('*')
-      .not('importance_score', 'is', null)
-      .order('importance_score', { ascending: false })
+      .order('importance_score', { ascending: false, nullsFirst: false })
       .order('published_at', { ascending: false })
       .limit(limit)
 

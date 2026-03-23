@@ -172,6 +172,8 @@ export default function MainContent({
         subscribedIds={subscribedIds}
         onToggleSubscription={toggleSubscription}
         user={user}
+        isCollapsed={isSourcesListCollapsed}
+        onToggleCollapse={() => setIsSourcesListCollapsed(!isSourcesListCollapsed)}
       />
 
       {/* 中间主内容区 */}

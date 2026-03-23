@@ -9,7 +9,8 @@
     "fetch": "tsx scripts/fetch-posts.ts",
     "process": "tsx scripts/process-posts.ts",
     "init-db": "tsx scripts/init-db.ts",
-    "mock-data": "tsx scripts/create-mock-data.ts"
+    "mock-data": "tsx scripts/create-mock-data.ts",
+    "update-avatars": "tsx scripts/update-source-avatars.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
