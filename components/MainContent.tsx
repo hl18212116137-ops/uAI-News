@@ -193,25 +193,20 @@ export default function MainContent({
           />
         </div>
 
-        {/* 未登录 / 无订阅时的引导 banner */}
-        {!isPersonalFeed && (
-          <div className="max-w-[900px] mx-auto px-6 mb-4">
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#f9fafb] border border-[#f3f4f6] text-sm text-[#6a7282]">
-              <span className="text-base">📡</span>
-              <span>
-                {user
-                  ? '关注左侧信息源后，首页将只显示你关注的内容。以下为精选推荐文章：'
-                  : '以下为精选推荐文章。登录并关注信息源后，即可获取专属 Feed：'
-                }
-              </span>
-            </div>
+        {/* sticky 行：CategoryFilter - 始终显示 */}
+        <div className="sticky top-0 z-10 bg-transparent flex justify-center w-full">
+          <div className="max-w-[800px] w-full bg-white">
+            <CategoryFilter
+              activeCategory={activeCategory}
+              onCategoryChange={setActiveCategory}
+            />
           </div>
-        )}
+        </div>
 
         {/* 未登录/无订阅时的引导界面 */}
         {!isPersonalFeed && !showRecommendedPosts && (
           <SubscriptionPrompt
-            onSubscribe={() => setShowAddSourceModal(true)}
+            onSubscribe={() => setIsSourcesListCollapsed(false)}
             onViewRecommended={() => setShowRecommendedPosts(true)}
           />
         )}
@@ -219,16 +214,6 @@ export default function MainContent({
         {/* 推文列表区域 */}
         {(isPersonalFeed || showRecommendedPosts) && (
           <div style={{ marginTop: isPersonalFeed ? '50px' : '0' }}>
-            {/* sticky 行：CategoryFilter */}
-            <div className="sticky top-0 z-10 bg-transparent flex justify-center w-full">
-              <div className="max-w-[800px] w-full bg-white">
-                <CategoryFilter
-                  activeCategory={activeCategory}
-                  onCategoryChange={setActiveCategory}
-                />
-              </div>
-            </div>
-
             {/* FilterPanel 和 NewsList 并列 */}
             <div className="flex justify-center">
               <div style={{ position: 'relative', maxWidth: '896px', width: '100%' }}>

@@ -42,6 +42,22 @@ export default function SourcesList({
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [isRefreshingRecommended, setIsRefreshingRecommended] = useState(false);
+  const [displayedRecommended, setDisplayedRecommended] = useState<Source[]>(recommendedSources);
+
+  const handleRefreshRecommended = async () => {
+    setIsRefreshingRecommended(true);
+    try {
+      const response = await fetch('/api/recommended-sources?limit=3');
+      const data = await response.json();
+      if (data.success) {
+        setDisplayedRecommended(data.sources);
+      }
+    } catch (error) {
+      console.error('Failed to refresh recommended sources:', error);
+    } finally {
+      setIsRefreshingRecommended(false);
+    }
+  };
 
   const isActive = (handle?: string) => {
     if (!handle && !currentSource) return true;
@@ -58,7 +74,7 @@ export default function SourcesList({
     );
   });
 
-  const filteredRecommended = recommendedSources.filter(s => {
+  const filteredRecommended = displayedRecommended.filter(s => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -262,7 +278,7 @@ export default function SourcesList({
                 <span className="text-xs font-medium text-[#99a1af] uppercase tracking-wide">推荐关注</span>
                 <Tooltip content="换一批推荐">
                   <button
-                    onClick={() => window.location.reload()}
+                    onClick={handleRefreshRecommended}
                     disabled={isRefreshingRecommended}
                     className="w-4 h-4 text-[#99a1af] hover:text-[#101828] transition-colors disabled:opacity-50"
                     aria-label="刷新推荐"
