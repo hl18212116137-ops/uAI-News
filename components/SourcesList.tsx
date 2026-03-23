@@ -41,6 +41,7 @@ export default function SourcesList({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isRefreshingRecommended, setIsRefreshingRecommended] = useState(false);
 
   const isActive = (handle?: string) => {
     if (!handle && !currentSource) return true;
@@ -257,8 +258,20 @@ export default function SourcesList({
           {/* 推荐关注 */}
           {filteredRecommended.length > 0 && (
             <div className="flex flex-col gap-[4px] mt-2">
-              <div className="px-[14px] mb-1">
+              <div className="px-[14px] mb-1 flex items-center justify-between">
                 <span className="text-xs font-medium text-[#99a1af] uppercase tracking-wide">推荐关注</span>
+                <Tooltip content="换一批推荐">
+                  <button
+                    onClick={() => window.location.reload()}
+                    disabled={isRefreshingRecommended}
+                    className="w-4 h-4 text-[#99a1af] hover:text-[#101828] transition-colors disabled:opacity-50"
+                    aria-label="刷新推荐"
+                  >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </Tooltip>
               </div>
               {filteredRecommended.map((source) => (
                 <SourceCard key={source.handle} source={source} isSubscribed={subscribedIds.has(source.id)} />

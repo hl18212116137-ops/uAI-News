@@ -42,7 +42,7 @@ export default async function Home({ searchParams }: PageProps) {
     ] = await Promise.all([
       getSubscribedFeed(user!.id),
       getSubscribedSourcesMeta(user!.id),
-      getRecommendedSources(user!.id, 8),
+      getRecommendedSources(user!.id, 5),
       getUserBookmarkIds(user!.id),
       getUserSubscribedSourceIds(user!.id),
       getSources(),
@@ -84,7 +84,7 @@ export default async function Home({ searchParams }: PageProps) {
       getAllPosts(),
       user ? getUserBookmarkIds(user.id) : Promise.resolve([]),
       user ? getUserSubscribedSourceIds(user.id) : Promise.resolve([]),
-      getRecommendedSources(user?.id ?? null, 10),
+      getRecommendedSources(user?.id ?? null, 5),
     ]);
 
     const stats = getStatsFromData(allPosts, allSources);
