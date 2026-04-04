@@ -430,17 +430,59 @@ export async function getPersistedInsightForRead(postId: string): Promise<Insigh
       return null
     }
 
-    const doc = parseInsightJsonDoc(data?.insight_json)
-    if (!doc) return null
-    if (doc.global) return doc.global
-    const keys = Object.keys(doc.bySourcesSig).sort()
-    for (const k of keys) {
-      const p = doc.bySourcesSig[k]
-      if (p) return p
-    }
-    return null
+    return insightPayloadFromDoc(parseInsightJsonDoc(data?.insight_json))
   } catch {
     return null
+  }
+}
+
+function insightPayloadFromDoc(doc: InsightJsonDoc | null): InsightAnalysisPayload | null {
+  if (!doc) return null
+  if (doc.global) return doc.global
+  const keys = Object.keys(doc.bySourcesSig).sort()
+  for (const k of keys) {
+    const p = doc.bySourcesSig[k]
+    if (p) return p
+  }
+  return null
+}
+
+const INSIGHT_PREFETCH_IN_CHUNK = 80
+
+/**
+ * 批量读取已持久化的 INSIGHT（仅 global / bySourcesSig 回退），一次或少量 DB 往返。
+ */
+export async function getPersistedInsightsForReadBatch(
+  postIds: string[]
+): Promise<Record<string, InsightAnalysisPayload>> {
+  const unique = [...new Set(postIds.map((id) => normalizeNewsItemId(id)).filter(Boolean))]
+  if (unique.length === 0) return {}
+
+  const out: Record<string, InsightAnalysisPayload> = {}
+
+  try {
+    for (let i = 0; i < unique.length; i += INSIGHT_PREFETCH_IN_CHUNK) {
+      const chunk = unique.slice(i, i + INSIGHT_PREFETCH_IN_CHUNK)
+      const { data, error } = await supabase
+        .from('news_items')
+        .select('id, insight_json')
+        .in('id', chunk)
+
+      if (error) {
+        console.error('getPersistedInsightsForReadBatch:', error)
+        continue
+      }
+
+      for (const row of data ?? []) {
+        const id = typeof row.id === 'string' ? row.id : null
+        if (!id) continue
+        const payload = insightPayloadFromDoc(parseInsightJsonDoc(row.insight_json))
+        if (payload) out[id] = payload
+      }
+    }
+    return out
+  } catch {
+    return out
   }
 }
 

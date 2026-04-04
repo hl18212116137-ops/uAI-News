@@ -254,27 +254,33 @@ export async function fetchUserInfoFromX(handle: string): Promise<XUserInfo> {
     if (tweets.length > 0 && tweets[0].author) {
       const author = tweets[0].author;
 
-      // 调试：打印完整的 author 对象结构
-      console.log('[DEBUG] Twitter API author object for @' + handle + ':', JSON.stringify(author, null, 2));
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[DEBUG] Twitter API author object for @' + handle + ':', JSON.stringify(author, null, 2));
+      }
 
       // 提取原始简介：优先使用 profile_bio.description，然后尝试其他字段
       const rawBio = author.profile_bio?.description || author.description || author.bio || author.biography;
 
-      // 使用AI生成简洁的中文简介摘要
       let description: string | undefined = undefined;
       if (rawBio && rawBio.trim()) {
-        try {
-          const aiService = getDefaultAIService();
-          description = await aiService.summarizeAuthorBio(
-            rawBio,
-            author.name || handle,
-            handle
-          );
-          console.log(`[AI Summary] Generated bio for @${handle}: "${description}"`);
-        } catch (error) {
-          console.error(`[AI Summary] Failed to generate bio for @${handle}:`, error);
-          // 降级方案：使用原始简介的前30个字符
-          description = rawBio.substring(0, 30).replace(/https?:\/\/\S+/g, '').trim();
+        const cleaned = rawBio.replace(/https?:\/\/\S+/g, '').trim();
+        if (cleaned.length <= 120) {
+          description = cleaned.slice(0, 200);
+        } else {
+          try {
+            const aiService = getDefaultAIService();
+            description = await aiService.summarizeAuthorBio(
+              rawBio,
+              author.name || handle,
+              handle
+            );
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`[AI Summary] Generated bio for @${handle}: "${description}"`);
+            }
+          } catch (error) {
+            console.error(`[AI Summary] Failed to generate bio for @${handle}:`, error);
+            description = cleaned.slice(0, 120);
+          }
         }
       }
 

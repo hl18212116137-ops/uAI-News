@@ -19,13 +19,17 @@ function messageFromUnknownError(e: unknown): string {
   return '未知错误'
 }
 
+const devLog = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === 'development') console.log(...args)
+}
+
 /**
  * 创建任务并异步串联 fetch → process（与 POST /api/refresh 行为一致，直接调服务层）
  * @param userId 当前登录用户；抓取仅包含其订阅源（由 ingest-service 过滤）
  */
 export function startBackgroundFullRefresh(_request: Request, userId: string): StartRefreshResult {
   try {
-    console.log('[Refresh API] 创建抓取任务...')
+    devLog('[Refresh API] 创建抓取任务...')
 
     const taskId = taskManager.createTask()
 
@@ -42,7 +46,7 @@ export function startBackgroundFullRefresh(_request: Request, userId: string): S
       try {
         // 直接调服务层，避免对本机 origin 发 HTTP（易触发 ECONNRESET / 自连接问题）
         const fetchData = await runRefreshFetchFromEnabledSources({ taskId, userId })
-        console.log(`[Refresh API] 抓取完成：${fetchData.count} 条新推文`)
+        devLog(`[Refresh API] 抓取完成：${fetchData.count} 条新推文`)
 
         if (taskManager.getTask(taskId)?.status === 'cancelled') {
           return
@@ -54,7 +58,7 @@ export function startBackgroundFullRefresh(_request: Request, userId: string): S
         })
 
         const processData = await runRefreshProcessRawQueue({ taskId })
-        console.log(`[Refresh API] 处理完成：${processData.count} 条`)
+        devLog(`[Refresh API] 处理完成：${processData.count} 条`)
 
         if (taskManager.getTask(taskId)?.status === 'cancelled') {
           return
@@ -80,7 +84,7 @@ export function startBackgroundFullRefresh(_request: Request, userId: string): S
       }
     })()
 
-    console.log(`[Refresh API] 任务已启动，ID: ${taskId}`)
+    devLog(`[Refresh API] 任务已启动，ID: ${taskId}`)
 
     return { ok: true, taskId, message: '抓取任务已启动' }
   } catch (error: unknown) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPersistedInsightForRead, normalizeNewsItemId } from "@/lib/db/news";
+import { getPersistedInsightsForReadBatch, normalizeNewsItemId } from "@/lib/db/news";
 import type { InsightAnalysisPayload } from "@/lib/types";
 
 const MAX_IDS = 48;
@@ -17,15 +17,14 @@ export async function POST(request: Request) {
     }
 
     const ids = raw.slice(0, MAX_IDS).map((x: unknown) => String(x)).filter(Boolean);
-    const analyses: Record<string, InsightAnalysisPayload> = {};
+    const batch = await getPersistedInsightsForReadBatch(ids);
 
-    await Promise.all(
-      ids.map(async (id) => {
-        const normalized = normalizeNewsItemId(id);
-        const payload = await getPersistedInsightForRead(normalized);
-        if (payload) analyses[id] = payload;
-      }),
-    );
+    const analyses: Record<string, InsightAnalysisPayload> = {};
+    for (const id of ids) {
+      const key = normalizeNewsItemId(id);
+      const payload = batch[key] ?? batch[id];
+      if (payload) analyses[id] = payload;
+    }
 
     return NextResponse.json({ success: true, analyses });
   } catch {

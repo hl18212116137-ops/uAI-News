@@ -13,7 +13,6 @@ import SiteHeader from "./SiteHeader";
 import TopBar from "./TopBar";
 import RefreshProgress from "./RefreshButton";
 import CategoryFilter from "./CategoryFilter";
-import FilterPanel from "./FilterPanel";
 import NewsList from "./NewsList";
 import SourcesList from "./SourcesList";
 
@@ -33,6 +32,15 @@ import { useOptionalHomeLayout } from "@/components/HomeLayoutContext";
 
 /** 与 app/globals.css --layout-duration 一致 */
 const ANALYSIS_PANEL_CLOSE_MS = 280;
+
+/** 首屏后空闲再跑，减少与 LCP/交互争抢（无 ric 时尽快延后一帧） */
+function scheduleIdleTask(fn: () => void) {
+  if (typeof requestIdleCallback !== "undefined") {
+    requestIdleCallback(() => fn(), { timeout: 2200 });
+  } else {
+    setTimeout(fn, 1);
+  }
+}
 
 /** 主列滚动条 thumb 在停滚后隐藏前的等待（与动效节奏一致） */
 const MAIN_SCROLL_THUMB_IDLE_MS = 750;
@@ -197,13 +205,16 @@ export default function MainContent({
   useEffect(() => {
     if (!deferRecommendedSources) return;
     let cancelled = false;
-    void fetch("/api/recommended-sources?limit=2", { cache: "no-store", credentials: "same-origin" })
-      .then((res) => res.json())
-      .then((data: { success?: boolean; sources?: Source[] }) => {
-        if (cancelled || !data.success || !Array.isArray(data.sources)) return;
-        setRecommendedState(data.sources);
-      })
-      .catch(() => {});
+    scheduleIdleTask(() => {
+      if (cancelled) return;
+      void fetch("/api/recommended-sources?limit=2", { cache: "no-store", credentials: "same-origin" })
+        .then((res) => res.json())
+        .then((data: { success?: boolean; sources?: Source[] }) => {
+          if (cancelled || !data.success || !Array.isArray(data.sources)) return;
+          setRecommendedState(data.sources);
+        })
+        .catch(() => {});
+    });
     return () => {
       cancelled = true;
     };
@@ -530,30 +541,33 @@ export default function MainContent({
     if (needed.length === 0) return;
     let cancelled = false;
     type InsightPayload = (typeof analysisCache)[string];
-    void (async () => {
-      try {
-        const res = await fetch("/api/analysis/prefetch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ postIds: needed }),
-        });
-        const data = await res.json();
-        if (cancelled || !res.ok || !data.success || !data.analyses) return;
-        const incoming = data.analyses as Record<string, InsightPayload>;
-        setAnalysisCache((prev) => {
-          const next = { ...prev };
-          let changed = false;
-          for (const [id, payload] of Object.entries(incoming)) {
-            if (next[id]) continue;
-            next[id] = payload;
-            changed = true;
-          }
-          return changed ? next : prev;
-        });
-      } catch {
-        /* 预取失败不提示；打开 INSIGHT 时仍走 POST /api/analysis */
-      }
-    })();
+    scheduleIdleTask(() => {
+      if (cancelled) return;
+      void (async () => {
+        try {
+          const res = await fetch("/api/analysis/prefetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ postIds: needed }),
+          });
+          const data = await res.json();
+          if (cancelled || !res.ok || !data.success || !data.analyses) return;
+          const incoming = data.analyses as Record<string, InsightPayload>;
+          setAnalysisCache((prev) => {
+            const next = { ...prev };
+            let changed = false;
+            for (const [id, payload] of Object.entries(incoming)) {
+              if (next[id]) continue;
+              next[id] = payload;
+              changed = true;
+            }
+            return changed ? next : prev;
+          });
+        } catch {
+          /* 预取失败不提示；打开 INSIGHT 时仍走 POST /api/analysis */
+        }
+      })();
+    });
     return () => {
       cancelled = true;
     };
