@@ -617,14 +617,6 @@ export default function MainContent({
   return (
     <>
       <div data-name="Body" data-node-id="3:2330" className={bodyShellClass}>
-        {!isSourcesListCollapsed ? (
-          <button
-            type="button"
-            className="fixed bottom-0 right-0 top-14 z-[88] max-lg:left-[256px] bg-black/35 lg:hidden"
-            aria-label="关闭信息源列表"
-            onClick={() => setIsSourcesListCollapsed(true)}
-          />
-        ) : null}
         {!isShell && (
           <>
             <TopBar
@@ -687,7 +679,7 @@ export default function MainContent({
                     fetchingSourceIds={fetchingSourceIds}
                     user={user}
                     isCollapsed={false}
-                    onToggleCollapse={() => setIsSourcesListCollapsed(false)}
+                    onToggleCollapse={() => setIsSourcesListCollapsed(true)}
                   />
                 </div>
               </div>
@@ -799,6 +791,15 @@ export default function MainContent({
                 </div>
               )}
             </div>
+
+            {!isSourcesListCollapsed ? (
+              <button
+                type="button"
+                className="pointer-events-auto fixed bottom-0 right-0 top-14 z-[15] max-lg:left-[256px] bg-black/35 lg:hidden"
+                aria-label="关闭信息源列表"
+                onClick={() => setIsSourcesListCollapsed(true)}
+              />
+            ) : null}
 
             <div
               className={[
