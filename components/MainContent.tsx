@@ -656,9 +656,14 @@ export default function MainContent({
               id="layout-sources-col"
               data-name="SOURCES Frame"
               data-node-id="43:4890"
-              className={`${MAIN_SIDE_FRAME_CLASS} z-[20] max-lg:pointer-events-none max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:top-14 max-lg:z-[92] max-lg:h-0 max-lg:min-h-0 max-lg:flex-none max-lg:overflow-visible ${!isSourcesListCollapsed ? "max-lg:pointer-events-auto" : ""}`}
+              className={`${MAIN_SIDE_FRAME_CLASS} z-[20] max-lg:h-0 max-lg:min-h-0 max-lg:flex-none max-lg:overflow-visible`}
             >
-              <div className="absolute right-[-0.5px] top-0 z-[20] h-full w-[256px] overflow-hidden bg-white max-lg:left-0 max-lg:right-auto">
+              <div
+                className={[
+                  "absolute right-[-0.5px] top-0 z-[20] h-full w-[256px] overflow-hidden bg-white max-lg:left-0 max-lg:right-auto max-lg:fixed max-lg:top-14 max-lg:bottom-0 max-lg:z-[92] max-lg:h-auto",
+                  !isSourcesListCollapsed ? "max-lg:pointer-events-auto" : "max-lg:pointer-events-none",
+                ].join(" ")}
+              >
                 {/* 以贴中栏的右缘为轴：折叠时 translate-x-full 向右藏入中缝侧，展开时向左铺开 */}
                 <div
                   ref={sourcesSidebarPanelRef}
@@ -814,16 +819,19 @@ export default function MainContent({
                 "z-[20]",
                 analysisPostId == null ? "max-lg:hidden" : "",
                 analysisPostId != null
-                  ? "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:top-14 max-lg:z-[91] max-lg:h-0 max-lg:min-h-0 max-lg:flex-none max-lg:overflow-visible"
+                  ? "max-lg:h-0 max-lg:min-h-0 max-lg:flex-none max-lg:overflow-visible"
                   : "",
-                analysisPostId != null && showAnalysisPanel ? "max-lg:pointer-events-auto" : "",
-                analysisPostId != null && !showAnalysisPanel ? "max-lg:pointer-events-none" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
             >
               {analysisPostId != null ? (
-                <div className="absolute left-0 top-0 z-[20] h-full w-full overflow-hidden">
+                <div
+                  className={[
+                    "absolute left-0 top-0 z-[20] h-full w-full overflow-hidden max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:top-14 max-lg:z-[91] max-lg:h-auto",
+                    showAnalysisPanel ? "max-lg:pointer-events-auto" : "max-lg:pointer-events-none",
+                  ].join(" ")}
+                >
                   {/* 以贴中栏的左缘为轴：折叠时 -translate-x-full 藏到接缝左侧，展开时向右滑入右栏 */}
                   <div
                     ref={analysisSidebarPanelRef}
