@@ -653,7 +653,9 @@ export default function MainContent({
               <div
                 className={[
                   "absolute right-[-0.5px] top-0 z-[20] h-full w-[256px] overflow-hidden bg-white max-lg:left-0 max-lg:right-auto max-lg:fixed max-lg:top-14 max-lg:bottom-0 max-lg:z-[92] max-lg:h-auto",
-                  !isSourcesListCollapsed ? "max-lg:pointer-events-auto" : "max-lg:pointer-events-none",
+                  isSourcesListCollapsed
+                    ? "max-lg:pointer-events-none max-lg:bg-transparent max-lg:w-0 max-lg:min-w-0"
+                    : "max-lg:pointer-events-auto max-lg:bg-white",
                 ].join(" ")}
               >
                 {/* 以贴中栏的右缘为轴：折叠时 translate-x-full 向右藏入中缝侧，展开时向左铺开 */}
