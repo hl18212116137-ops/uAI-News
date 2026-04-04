@@ -246,6 +246,39 @@
   transition: background 0.3s ease-out;
 }
 
+/**
+ * INSIGHT RELEVANCE：与 .sidebar-scroll 同款细条，但 `scrollbar-gutter: auto`。
+ * 避免 `stable` 永久占右侧槽导致正文比 SectionHeading 窄、绝对定位的右引号与标题右缘不齐。
+ */
+.insight-relevance-scroll {
+  scrollbar-gutter: auto;
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+
+.insight-relevance-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.insight-relevance-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.insight-relevance-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.3s ease-out;
+}
+
+.insight-relevance-scroll:hover::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+}
+
+.insight-relevance-scroll:not(:hover)::-webkit-scrollbar-thumb {
+  background: transparent;
+  transition: background 0.3s ease-out;
+}
+
 /* 主内容列：gutter 稳定 + 停滚后隐藏 thumb（.is-scrolling-thumb 由 MainContent onScroll 切换） */
 .main-content-scroll {
   scrollbar-gutter: stable;

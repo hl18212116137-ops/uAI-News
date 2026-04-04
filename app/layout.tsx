@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import WebVitalsReporter from "@/components/WebVitalsReporter";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -74,7 +75,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN">
+      <head>
+        {/* X 源默认头像走 unavatar；提前建连，减轻侧栏/卡片头像晚到 */}
+        <link rel="dns-prefetch" href="https://unavatar.io" />
+        <link rel="preconnect" href="https://unavatar.io" crossOrigin="anonymous" />
+      </head>
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+        <WebVitalsReporter />
         {children}
         {modal}
       </body>

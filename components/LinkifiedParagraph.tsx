@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
+import { formatTypography } from "@/lib/utils";
 
 const URL_RE = /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/gi;
 
@@ -77,8 +78,9 @@ const DEFAULT_LINK_CLASS =
 export default function LinkifiedParagraph({ text, className, linkClassName }: LinkifiedParagraphProps) {
   if (!text) return null;
 
+  const normalized = formatTypography(text);
   const lc = linkClassName ?? DEFAULT_LINK_CLASS;
-  const parts = linkifySegmentToNodes(text, lc, "p");
+  const parts = linkifySegmentToNodes(normalized, lc, "p");
 
   return (
     <p className={className ?? "m-0"}>
@@ -107,8 +109,9 @@ export function BoldLinkifiedInline({
   boldClassName = "font-semibold text-[#101828]",
 }: BoldLinkifiedInlineProps) {
   if (!text) return null;
+  const normalized = formatTypography(text);
   const lc = linkClassName ?? DEFAULT_LINK_CLASS;
-  const parts = splitMarkdownBoldParts(text);
+  const parts = splitMarkdownBoldParts(normalized);
   return (
     <span className={className}>
       {parts.map((part, pi) => {

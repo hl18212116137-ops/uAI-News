@@ -75,35 +75,5 @@ export function mergeSourceProfilesIntoPosts(
     }
   })
 
-  // #region agent log
-  if (typeof fetch !== 'undefined') {
-    const sample = merged.slice(0, 8).map((p) => {
-      const a = p.source?.avatar?.trim() || ''
-      let host = 'none'
-      try {
-        if (a) host = new URL(a).hostname
-      } catch {
-        host = 'bad-url'
-      }
-      return { h: p.source?.handle?.slice(0, 24), host }
-    })
-    fetch('http://127.0.0.1:7244/ingest/bb9e1b63-49d7-497c-83f1-785c798544f6', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': 'a3f67d',
-      },
-      body: JSON.stringify({
-        sessionId: 'a3f67d',
-        hypothesisId: 'H1',
-        location: 'news-source-enrichment.ts:mergeSourceProfilesIntoPosts',
-        message: 'server merged avatar sample',
-        data: { postCount: merged.length, profileMapSize: profiles.size, sample },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-  }
-  // #endregion
-
   return merged
 }

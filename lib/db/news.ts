@@ -108,10 +108,10 @@ export async function getNewsItemsPostCountSummary(): Promise<{
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   try {
     const [allRes, recentRes] = await Promise.all([
-      supabase.from('news_items').select('*', { count: 'exact', head: true }),
+      supabase.from('news_items').select('id', { count: 'exact', head: true }),
       supabase
         .from('news_items')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .gte('created_at', since),
     ])
     if (allRes.error) {
@@ -234,7 +234,7 @@ export type AddPostOptions = {
  */
 export async function addPost(post: NewsItem, options?: AddPostOptions): Promise<void> {
   try {
-    const normalizedId = post.id.replace(/^x_/, 'x-')
+    const normalizedId = normalizeNewsItemId(post.id)
 
     const { data: existing } = await supabase
       .from('news_items')
@@ -288,6 +288,39 @@ export async function addPost(post: NewsItem, options?: AddPostOptions): Promise
 /**
  * 删除指定来源的所有新闻项
  */
+/** 与入库 id 一致（x_ → x-） */
+export function normalizeNewsItemId(id: string): string {
+  return String(id).replace(/^x_/, 'x-')
+}
+
+/**
+ * 删除 published_at 早于保留窗口的 news_items（供 Cron；单帖详情仍可查窗口内由 feed 决定）
+ */
+export async function deleteNewsItemsOlderThanRetention(): Promise<{
+  ok: boolean
+  deleted: number | null
+  error?: string
+}> {
+  const raw = parseInt(process.env.NEWS_RETENTION_DAYS || '30', 10)
+  const days = Number.isFinite(raw) ? Math.min(365, Math.max(7, raw)) : 30
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+  try {
+    const { error, count } = await supabase
+      .from('news_items')
+      .delete({ count: 'exact' })
+      .lt('published_at', cutoff)
+
+    if (error) {
+      console.error('deleteNewsItemsOlderThanRetention:', error)
+      return { ok: false, deleted: null, error: error.message }
+    }
+    return { ok: true, deleted: count ?? null }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, deleted: null, error: message }
+  }
+}
+
 export async function deletePostsByHandle(handle: string): Promise<number> {
   try {
     const { count, error } = await supabase
@@ -307,10 +340,9 @@ export async function deletePostsByHandle(handle: string): Promise<number> {
   }
 }
 
-const INSIGHT_JSON_V = 1 as const
-
 type InsightJsonDoc = {
-  v: typeof INSIGHT_JSON_V
+  v: 1 | 2
+  global?: InsightAnalysisPayload | null
   bySourcesSig: Record<string, InsightAnalysisPayload>
 }
 
@@ -343,13 +375,18 @@ function insightPayloadFromUnknown(v: unknown): InsightAnalysisPayload | null {
 function parseInsightJsonDoc(raw: unknown): InsightJsonDoc | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
-  if (o.v !== INSIGHT_JSON_V || !o.bySourcesSig || typeof o.bySourcesSig !== 'object') return null
+  if (o.v !== 1 && o.v !== 2) return null
+  if (!o.bySourcesSig || typeof o.bySourcesSig !== 'object') return null
   const out: Record<string, InsightAnalysisPayload> = {}
   for (const [k, v] of Object.entries(o.bySourcesSig as Record<string, unknown>)) {
     const parsed = insightPayloadFromUnknown(v)
     if (parsed) out[k] = parsed
   }
-  return { v: INSIGHT_JSON_V, bySourcesSig: out }
+  let global: InsightAnalysisPayload | null | undefined
+  if (o.global !== undefined && o.global !== null) {
+    global = insightPayloadFromUnknown(o.global)
+  }
+  return { v: o.v, bySourcesSig: out, global }
 }
 
 /**
@@ -374,6 +411,34 @@ export async function getInsightPayloadBySourcesSig(
     const doc = parseInsightJsonDoc(data?.insight_json)
     if (!doc) return null
     return doc.bySourcesSig[sourcesSig] ?? null
+  } catch {
+    return null
+  }
+}
+
+/** 优先 global；否则回退任一历史 bySourcesSig 桶（稳定按 key 排序） */
+export async function getPersistedInsightForRead(postId: string): Promise<InsightAnalysisPayload | null> {
+  try {
+    const { data, error } = await supabase
+      .from('news_items')
+      .select('insight_json')
+      .eq('id', postId)
+      .maybeSingle()
+
+    if (error) {
+      console.error('getPersistedInsightForRead:', error)
+      return null
+    }
+
+    const doc = parseInsightJsonDoc(data?.insight_json)
+    if (!doc) return null
+    if (doc.global) return doc.global
+    const keys = Object.keys(doc.bySourcesSig).sort()
+    for (const k of keys) {
+      const p = doc.bySourcesSig[k]
+      if (p) return p
+    }
+    return null
   } catch {
     return null
   }
@@ -413,7 +478,11 @@ export async function mergeInsightPayloadForSourcesSig(
       for (const k of drop) delete bySourcesSig[k]
     }
 
-    const doc: InsightJsonDoc = { v: INSIGHT_JSON_V, bySourcesSig }
+    const doc: InsightJsonDoc = {
+      v: 2,
+      ...(prev != null && prev.global != null ? { global: prev.global } : {}),
+      bySourcesSig,
+    }
 
     const { error: upErr } = await supabase
       .from('news_items')
@@ -425,5 +494,44 @@ export async function mergeInsightPayloadForSourcesSig(
     }
   } catch (e) {
     console.warn('[insight_json] persist skipped', e)
+  }
+}
+
+/**
+ * 写入全站共用的 INSIGHT（译文 + KEY POINTS 等），与订阅无关
+ */
+export async function mergeInsightGlobalPayload(
+  postId: string,
+  payload: InsightAnalysisPayload
+): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .from('news_items')
+      .select('insight_json')
+      .eq('id', postId)
+      .maybeSingle()
+
+    if (error) {
+      console.warn('[insight_json] global read skipped:', error.message)
+      return
+    }
+
+    const prev = parseInsightJsonDoc(data?.insight_json)
+    const doc: InsightJsonDoc = {
+      v: 2,
+      global: payload,
+      bySourcesSig: prev?.bySourcesSig ?? {},
+    }
+
+    const { error: upErr } = await supabase
+      .from('news_items')
+      .update({ insight_json: doc })
+      .eq('id', postId)
+
+    if (upErr) {
+      console.warn('[insight_json] global update skipped:', upErr.message)
+    }
+  } catch (e) {
+    console.warn('[insight_json] global persist skipped', e)
   }
 }

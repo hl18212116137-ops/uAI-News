@@ -23,6 +23,26 @@ export interface Source {
   }
 }
 
+/** 首页全库统计卡片仅需类型与启用状态，避免 select * 拉取 fetch_config 等大字段 */
+export async function getSourcesForStats(): Promise<Pick<Source, 'sourceType' | 'enabled'>[]> {
+  try {
+    const { data, error } = await supabase.from('sources').select('source_type, enabled')
+
+    if (error) {
+      console.error('Failed to fetch sources for stats:', error)
+      return []
+    }
+
+    return (data || []).map((row) => ({
+      sourceType: row.source_type as SourceType,
+      enabled: row.enabled as boolean,
+    }))
+  } catch (error) {
+    console.error('Failed to fetch sources for stats:', error)
+    return []
+  }
+}
+
 /**
  * 读取所有源
  */

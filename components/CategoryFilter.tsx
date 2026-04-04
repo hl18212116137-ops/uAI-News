@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useLayoutEffect, useState, useEffect } from "react";
 import Tooltip from "./Tooltip";
-import { FIGMA_FEED } from "@/lib/figma-feed-assets";
+import { FeedFetchGlyph } from "@/components/feed-inline-icons";
 
 const categories = [
   { value: "all", label: "All", tooltip: "Show all categories" },
@@ -148,12 +148,12 @@ export default function CategoryFilter({
           >
             <span
               className={[
-                "relative h-[12.42px] w-[12.53px] shrink-0",
+                "relative h-[12.42px] w-[12.53px] shrink-0 text-[#0055FF]",
                 isFetchRunning ? "animate-spin" : "",
               ].join(" ")}
               data-node-id="37:4736"
             >
-              <img alt="" src={FIGMA_FEED.fetch} className="absolute block size-full max-w-none" decoding="async" draggable={false} />
+              <FeedFetchGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
             </span>
             <span
               className="font-sans text-[11px] font-semibold uppercase leading-[11px] tracking-[1.1px] text-[#05f]"

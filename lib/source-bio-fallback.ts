@@ -1,3 +1,5 @@
+import { formatTypography } from "@/lib/utils";
+
 /**
  * SOURCES 侧栏作者简介：DB 无简介时的展示兜底（与 Figma 第三行文案风格一致）
  * 可被 Client / Server 同时引用（勿放 server-only 模块内）
@@ -21,6 +23,6 @@ export function defaultBioForSourceNotInDb(handle: string): string {
 /** 优先使用数据库简介，否则走 handle 兜底 */
 export function sourceBioDisplayLine(description: string | undefined | null, handle: string): string {
   const d = description?.trim();
-  if (d) return d;
-  return defaultBioForSourceNotInDb(handle);
+  const line = d ? d : defaultBioForSourceNotInDb(handle);
+  return formatTypography(line);
 }

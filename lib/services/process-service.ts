@@ -5,6 +5,8 @@ import { getDefaultAIService } from '@/lib/ai/ai-factory'
 import {
   addPost,
   mediaUrlsFromDbJson,
+  mergeInsightGlobalPayload,
+  normalizeNewsItemId,
   referencedPostFromDbJson,
   socialEngagementFromDbJson,
 } from '@/lib/db/news'
@@ -22,6 +24,8 @@ import {
   fetchRawPostsExcludingActiveJobs,
 } from '@/lib/db/raw-posts'
 import { isProcessingJobsPipelineEnabled } from '@/lib/processing-jobs-pipeline'
+import { computeInsightAnalysis } from '@/lib/post-insight-compute'
+import { shouldSkipLowSignalRawPost } from '@/lib/raw-post-quality'
 import { NewsItem, NewsCategory } from '@/lib/types'
 import { composeTextForAiProcessing } from '@/lib/x'
 
@@ -78,6 +82,12 @@ async function processOneRawPost(
   const publishedAt = rawPost.published_at as string
 
   try {
+    if (shouldSkipLowSignalRawPost(rawPost)) {
+      await deleteRawPostById(id)
+      if (ctx.job) await markProcessingJobDone(ctx.job.id)
+      return
+    }
+
     const aiResult = await aiService.processNews(text, authorName, handle)
 
     if (!aiResult.important) {
@@ -127,6 +137,18 @@ async function processOneRawPost(
     }
 
     await addPost(newsItem, ctx.persistRawPostId ? { rawPostId: id } : undefined)
+
+    const storedId = normalizeNewsItemId(String(id))
+    try {
+      const insight = await computeInsightAnalysis({
+        postId: storedId,
+        subscribedSourcesLines: '',
+      })
+      if (insight) await mergeInsightGlobalPayload(storedId, insight)
+    } catch (insightErr) {
+      console.warn(`[process] insight precompute skipped for ${storedId}`, insightErr)
+    }
+
     await deleteRawPostById(id)
     if (ctx.job) await markProcessingJobDone(ctx.job.id)
   } catch (error) {

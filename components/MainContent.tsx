@@ -29,6 +29,7 @@ import {
   VERTICAL_DIVIDER_BEFORE_ANALYSIS_CLASS,
 } from "@/lib/main-layout-classes";
 import { OPTIMISTIC_REFRESH_TASK_ID } from "@/lib/fetch-refresh-ui";
+import { useOptionalHomeLayout } from "@/components/HomeLayoutContext";
 
 /** 与 app/globals.css --layout-duration 一致 */
 const ANALYSIS_PANEL_CLOSE_MS = 280;
@@ -63,6 +64,10 @@ type MainContentProps = {
   initialBookmarkedIds: string[];
   initialSubscribedSourceIds: string[];
   isPersonalFeed: boolean;              // true = 个性化 feed；false = 推荐 feed
+  /** 为 true 时顶栏由 HomePageShell 提供，侧栏折叠态走 HomeLayoutContext */
+  useShellLayout?: boolean;
+  /** 挂载后 GET /api/recommended-sources?limit=2，缩短首页服务端 Promise.all */
+  deferRecommendedSources?: boolean;
 };
 
 export default function MainContent({
@@ -74,10 +79,18 @@ export default function MainContent({
   initialBookmarkedIds,
   initialSubscribedSourceIds,
   isPersonalFeed,
+  useShellLayout = false,
+  deferRecommendedSources = false,
 }: MainContentProps) {
+  const optionalShell = useOptionalHomeLayout();
+  const isShell = Boolean(useShellLayout && optionalShell);
+  const [localCollapsed, setLocalCollapsed] = useState(true);
+  const isSourcesListCollapsed = isShell ? optionalShell!.isSourcesListCollapsed : localCollapsed;
+  const setIsSourcesListCollapsed = isShell
+    ? optionalShell!.setIsSourcesListCollapsed
+    : setLocalCollapsed;
+
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
-  // 稿面折叠态：默认收起 SOURCES；用户可点顶栏展开
-  const [isSourcesListCollapsed, setIsSourcesListCollapsed] = useState(true);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [task, setTask] = useState<Task | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>("");
@@ -114,6 +127,15 @@ export default function MainContent({
   /** 与 showAnalysisPanel 组合，首帧保持收起以便 CSS transition 有起点 */
   const [analysisMountReveal, setAnalysisMountReveal] = useState(false);
   const prevShowAnalysisPanelRef = useRef(false);
+  const analysisCacheRef = useRef(analysisCache);
+  analysisCacheRef.current = analysisCache;
+
+  /** 前 N 条预取 INSIGHT：抓取入库后服务端已写入 insight_json 时，点开侧栏几乎无等待 */
+  const insightPrefetchIds = useMemo(
+    () => posts.slice(0, 48).map((p: NewsItem) => p.id),
+    [posts],
+  );
+  const insightPrefetchKey = insightPrefetchIds.join("\0");
 
   const closeAnalysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainScrollThumbIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -167,6 +189,21 @@ export default function MainContent({
     handleNeedAuth,
     handleSubscriptionSynced
   );
+
+  useEffect(() => {
+    if (!deferRecommendedSources) return;
+    let cancelled = false;
+    void fetch("/api/recommended-sources?limit=2", { cache: "no-store", credentials: "same-origin" })
+      .then((res) => res.json())
+      .then((data: { success?: boolean; sources?: Source[] }) => {
+        if (cancelled || !data.success || !Array.isArray(data.sources)) return;
+        setRecommendedState(data.sources);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [deferRecommendedSources]);
 
   const isRunning = !!(task && (task.status === 'pending' || task.status === 'running'));
   /** 含「启动中」乐观态：按钮 FETCHING 与可点「暂停」同步 */
@@ -342,6 +379,19 @@ export default function MainContent({
     clearCloseAnalysisTimer,
   ]);
 
+  useEffect(() => {
+    if (!isShell || !optionalShell) return;
+    optionalShell.setAnalysisPanelOpen(showAnalysisPanel);
+  }, [isShell, optionalShell, showAnalysisPanel]);
+
+  useEffect(() => {
+    if (!isShell || !optionalShell) return;
+    optionalShell.onCollapseAnalysisRef.current = closeAnalysisSession;
+    return () => {
+      optionalShell.onCollapseAnalysisRef.current = null;
+    };
+  }, [isShell, optionalShell, closeAnalysisSession]);
+
   useEffect(
     () => () => {
       clearCloseAnalysisTimer();
@@ -433,6 +483,41 @@ export default function MainContent({
     // cleanup 会把 in-flight 标为 cancelled，finally 不再清 loading → 界面永久「生成中」。
   }, [analysisOpen, analysisPostId, analysisCache]);
 
+  useEffect(() => {
+    if (insightPrefetchIds.length === 0) return;
+    const needed = insightPrefetchIds.filter((id: string) => !analysisCacheRef.current[id]);
+    if (needed.length === 0) return;
+    let cancelled = false;
+    type InsightPayload = (typeof analysisCache)[string];
+    void (async () => {
+      try {
+        const res = await fetch("/api/analysis/prefetch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postIds: needed }),
+        });
+        const data = await res.json();
+        if (cancelled || !res.ok || !data.success || !data.analyses) return;
+        const incoming = data.analyses as Record<string, InsightPayload>;
+        setAnalysisCache((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          for (const [id, payload] of Object.entries(incoming)) {
+            if (next[id]) continue;
+            next[id] = payload;
+            changed = true;
+          }
+          return changed ? next : prev;
+        });
+      } catch {
+        /* 预取失败不提示；打开 INSIGHT 时仍走 POST /api/analysis */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [insightPrefetchKey]);
+
   const retryInsightAnalysis = useCallback(() => {
     if (!analysisPostId) return;
     setAnalysisErrorByPost((prev) => {
@@ -484,29 +569,33 @@ export default function MainContent({
     initialPosts.length > 0 &&
     initialPosts.length <= 5;
 
+  const bodyShellClass = isShell
+    ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden bg-white"
+    : "relative flex h-screen min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-auto overflow-y-hidden bg-white";
+
   return (
     <>
-      <div
-        data-name="Body"
-        data-node-id="3:2330"
-        className="relative flex h-screen min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-auto overflow-y-hidden bg-white"
-      >
-        <TopBar
-          user={user}
-          isSourcesListCollapsed={isSourcesListCollapsed}
-          onToggleSourcesListCollapsed={() => setIsSourcesListCollapsed((v) => !v)}
-          analysisPanelOpen={showAnalysisPanel}
-          onCollapseAnalysisSidebar={closeAnalysisSession}
-        />
+      <div data-name="Body" data-node-id="3:2330" className={bodyShellClass}>
+        {!isShell && (
+          <>
+            <TopBar
+              user={user}
+              isSourcesListCollapsed={isSourcesListCollapsed}
+              onToggleSourcesListCollapsed={() => setIsSourcesListCollapsed((v) => !v)}
+              analysisPanelOpen={showAnalysisPanel}
+              onCollapseAnalysisSidebar={closeAnalysisSession}
+            />
 
-        <div className="w-full shrink-0 pt-14">
-          <div
-            data-name="Horizontal Divider"
-            data-node-id="3:2694"
-            className="h-px w-full bg-[#ebebef]"
-            aria-hidden
-          />
-        </div>
+            <div className="w-full shrink-0 pt-14">
+              <div
+                data-name="Horizontal Divider"
+                data-node-id="3:2694"
+                className="h-px w-full bg-[#ebebef]"
+                aria-hidden
+              />
+            </div>
+          </>
+        )}
 
         <div
           id="layout-grid"

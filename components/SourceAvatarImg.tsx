@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type SourceAvatarImgProps = {
   src?: string;
@@ -25,33 +25,6 @@ export default function SourceAvatarImg({
 }: SourceAvatarImgProps) {
   const [failed, setFailed] = useState(false);
 
-  // #region agent log
-  useEffect(() => {
-    const s = src?.trim() ?? "";
-    let host = "empty";
-    try {
-      if (s) host = new URL(s).hostname;
-    } catch {
-      host = "invalid-url";
-    }
-    fetch("http://127.0.0.1:7244/ingest/bb9e1b63-49d7-497c-83f1-785c798544f6", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "a3f67d",
-      },
-      body: JSON.stringify({
-        sessionId: "a3f67d",
-        hypothesisId: "H1-H3",
-        location: "SourceAvatarImg.tsx:mount",
-        message: "avatar src snapshot",
-        data: { hasSrc: !!s, host, failed, altLen: alt?.length ?? 0 },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  }, [src, failed, alt]);
-  // #endregion
-
   if (!src?.trim() || failed) {
     return (
       <div className={placeholderClassName} aria-hidden>
@@ -73,32 +46,7 @@ export default function SourceAvatarImg({
       fetchPriority={priority ? "high" : "auto"}
       decoding="async"
       referrerPolicy="strict-origin-when-cross-origin"
-      onError={() => {
-        // #region agent log
-        let host = "unknown";
-        try {
-          host = new URL(src.trim()).hostname;
-        } catch {
-          host = "invalid-url";
-        }
-        fetch("http://127.0.0.1:7244/ingest/bb9e1b63-49d7-497c-83f1-785c798544f6", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Debug-Session-Id": "a3f67d",
-          },
-          body: JSON.stringify({
-            sessionId: "a3f67d",
-            hypothesisId: "H2-H5",
-            location: "SourceAvatarImg.tsx:onError",
-            message: "img load failed",
-            data: { host },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        // #endregion
-        setFailed(true);
-      }}
+      onError={() => setFailed(true)}
     />
   );
 }

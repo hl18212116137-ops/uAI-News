@@ -5,7 +5,7 @@ import { NewsItem } from "@/lib/types";
 import { isNewPost, formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
 import SourceAvatarImg from "./SourceAvatarImg";
-import { FIGMA_FEED } from "@/lib/figma-feed-assets";
+import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
 
 function formatDateZH(dateString: string): string {
   const d = new Date(dateString);
@@ -144,7 +144,6 @@ function NewsCard({
         </Tooltip>
       ) : null}
 
-      {/* Linear 式：首行 avatar + meta 垂直居中；正文与 meta 文字左缘对齐（1.5rem 头像 + gap-3） */}
       <div className="flex w-full min-w-0 flex-col gap-[32px]">
         <div className="flex w-full min-w-0 items-start gap-3">
           <div className="shrink-0">
@@ -163,7 +162,7 @@ function NewsCard({
             className="flex min-w-0 flex-1 flex-wrap items-center gap-[4px]"
           >
             <span
-              className="flex h-[17px] items-center font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#05f]"
+              className="flex h-[17px] shrink-0 items-center font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#05f]"
               data-node-id="37:4744"
             >
               # {getCategoryTag(post.category)}
@@ -227,7 +226,7 @@ function NewsCard({
           <p
             data-name="Container"
             data-node-id="37:4756"
-            className="m-0 line-clamp-2 font-sans text-[14px] font-normal leading-[22.4px] text-[#52525b]"
+            className="m-0 line-clamp-2 font-sans text-[14px] font-normal leading-[22px] text-[#52525b]"
           >
             {formatTypography(post.summary)}
           </p>
@@ -256,7 +255,7 @@ function NewsCard({
             ].join(" ")}
           >
             <span className="relative size-[14.667px] shrink-0" data-node-id="37:4760">
-              <img alt="" src={FIGMA_FEED.analysisSparkle} className="absolute block size-full max-w-none" />
+              <FeedInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
             </span>
             INSIGHT
           </button>

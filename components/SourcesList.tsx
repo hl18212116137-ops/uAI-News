@@ -6,7 +6,15 @@ import type { User } from "@supabase/supabase-js";
 import AddSourceModal from "./AddSourceModal";
 import Tooltip from "./Tooltip";
 import { sourceBioDisplayLine } from "@/lib/source-bio-fallback";
-import { FIGMA_SOURCES } from "@/lib/figma-sources-assets";
+import {
+  SourcesAcademiaGlyph,
+  SourcesBloggersGlyph,
+  SourcesChevronRightGlyph,
+  SourcesMediaGlyph,
+  SourcesRecommendGlyph,
+  SourcesSearchGlyph,
+} from "@/components/sources-sidebar-icons";
+import { FIGMA_SOURCES_ACTION_ICONS } from "@/lib/figma-sources-action-icons";
 
 type Source = {
   handle: string;
@@ -116,7 +124,7 @@ function SourcesListSourceCard({
           >
             <span
               className={[
-                "truncate text-[#111113] text-[13px] leading-[13px]",
+                "truncate text-[#111113] text-[12px] leading-[12px]",
                 isRec ? "min-w-0 flex-1 font-semibold tracking-[-0.325px]" : "font-medium",
               ].join(" ")}
             >
@@ -131,12 +139,12 @@ function SourcesListSourceCard({
               {!isRec && (
                 <Tooltip content={isFetching ? "正在抓取推文" : "已收录推文数"}>
                   <span
-                    className="inline-flex min-w-[1rem] cursor-default items-center justify-center font-mono text-[11px] font-medium tabular-nums leading-[11px] text-[#0055FF]"
+                    className="inline-flex min-w-[1em] cursor-default items-center justify-center font-mono text-[10px] font-medium tabular-nums leading-[10px] text-[#0055FF]"
                     data-tooltip-exclude=""
                   >
                     {isFetching ? (
                       <span
-                        className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[#0055FF] border-t-transparent"
+                        className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-[#0055FF] border-t-transparent"
                         aria-hidden
                       />
                     ) : (
@@ -163,7 +171,7 @@ function SourcesListSourceCard({
                     aria-label={isSubscribed ? "取消关注" : "关注"}
                   >
                     {isSubscribed ? (
-                      <svg className="h-[9px] w-[9px] text-[#fb2c36]" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                      <svg className="h-2 w-2 text-[#fb2c36]" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
                         <path
                           fillRule="evenodd"
                           d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -171,13 +179,13 @@ function SourcesListSourceCard({
                         />
                       </svg>
                     ) : (
-                      <span className="relative size-[8.73px] shrink-0" data-node-id="37:4662">
+                      <span className="relative size-2 shrink-0" data-node-id="37:4662">
                         <img
                           alt=""
-                          src={FIGMA_SOURCES.cardSubscribe}
+                          src={FIGMA_SOURCES_ACTION_ICONS.cardSubscribe}
                           loading="eager"
                           decoding="async"
-                          className="absolute block size-full max-w-none"
+                          className="absolute block size-full max-w-none object-contain"
                           aria-hidden
                         />
                       </span>
@@ -189,7 +197,7 @@ function SourcesListSourceCard({
           </div>
           <div
             className={[
-              "w-full min-h-[17px] text-[11px] text-[#8A8A93] leading-[16.5px]",
+              "w-full min-h-[17px] text-[12px] text-[#8A8A93] leading-[20px]",
               isRec ? "font-medium" : "font-normal",
             ].join(" ")}
           >
@@ -197,12 +205,12 @@ function SourcesListSourceCard({
           </div>
           {isRec ? (
             <div className="min-h-[18.8px] w-full min-w-0 shrink-0">
-              <p className="m-0 w-full min-w-0 truncate text-left text-[12px] font-normal leading-[16.8px] text-[#666666]">
+              <p className="m-0 w-full min-w-0 truncate text-left text-[12px] font-normal leading-[20px] text-[#666666]">
                 {bioLine}
               </p>
             </div>
           ) : (
-            <p className="m-0 w-full min-h-[17px] text-left text-[12px] font-normal leading-[16.8px] text-[#666666] line-clamp-2">
+            <p className="m-0 w-full min-h-[17px] text-left text-[12px] font-normal leading-[20px] text-[#666666] line-clamp-2">
               {bioLine}
             </p>
           )}
@@ -259,11 +267,11 @@ const RecommendPanel = memo(function RecommendPanel({
             className="relative flex min-w-0 shrink-0 items-center gap-2"
           >
             <div
-              className="relative h-[14.34px] w-[15.02px] shrink-0"
+              className="relative h-[14.34px] w-[15.02px] shrink-0 text-[#0055FF]"
               data-name="Container"
               data-node-id="37:4648"
             >
-              <img alt="" src={FIGMA_SOURCES.recommend} loading="eager" decoding="async" className="absolute block size-full max-w-none" aria-hidden />
+              <SourcesRecommendGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
             </div>
             <div
               data-node-id="37:4650"
@@ -283,7 +291,14 @@ const RecommendPanel = memo(function RecommendPanel({
               aria-label="刷新推荐"
             >
               <span className="relative h-[10.94px] w-[10.97px] shrink-0" data-name="Container" data-node-id="37:4652">
-                <img alt="" src={FIGMA_SOURCES.refresh} loading="eager" decoding="async" className="absolute block size-full max-w-none" aria-hidden />
+                <img
+                  alt=""
+                  src={FIGMA_SOURCES_ACTION_ICONS.refresh}
+                  loading="eager"
+                  decoding="async"
+                  className="absolute block size-full max-w-none"
+                  aria-hidden
+                />
               </span>
             </button>
           </Tooltip>
@@ -310,7 +325,7 @@ const RecommendPanel = memo(function RecommendPanel({
             />
           ))
         ) : (
-          <p className="m-0 w-full text-[12px] font-normal leading-[16.8px] text-[#8A8A93]">
+          <p className="m-0 w-full text-[12px] font-normal leading-[20px] text-[#8A8A93]">
             暂无推荐信息源。可先添加信息源，或稍后重试。
           </p>
         )}
@@ -447,7 +462,14 @@ export default function SourcesList({
               aria-label="Add source"
             >
               <span className="relative size-[9.604px] shrink-0" data-node-id="37:4558">
-                <img alt="" src={FIGMA_SOURCES.addSource} loading="eager" decoding="async" className="absolute block size-full max-w-none" />
+                <img
+                  alt=""
+                  src={FIGMA_SOURCES_ACTION_ICONS.addSource}
+                  loading="eager"
+                  decoding="async"
+                  className="absolute block size-full max-w-none"
+                  aria-hidden
+                />
               </span>
             </button>
           </Tooltip>
@@ -461,8 +483,8 @@ export default function SourcesList({
         >
           <div className="flex h-full w-full flex-row items-center self-stretch">
             <div className="flex h-full w-full shrink-0 flex-row items-center gap-[10px]">
-              <span className="relative size-[12px] shrink-0" data-name="Container" data-node-id="37:4562" aria-hidden>
-                <img alt="" src={FIGMA_SOURCES.search} loading="eager" decoding="async" className="absolute block size-full max-w-none" />
+              <span className="relative size-[12px] shrink-0 text-[#8A8A93]" data-name="Container" data-node-id="37:4562" aria-hidden>
+                <SourcesSearchGlyph className="absolute inset-0 block size-full max-w-none" />
               </span>
               <input
                 type="text"
@@ -526,24 +548,24 @@ export default function SourcesList({
                   {/* 稿 37:4572：icon 与文字组 gap-8px；组内标题与 (n) 仅 pl-1（4px），避免多占横向 */}
                   <span className="flex min-w-0 items-center gap-2">
                     {section.id === "blogger" ? (
-                      <span className="relative size-[12.351px] shrink-0" data-node-id="37:4573" aria-hidden>
-                        <img alt="" src={FIGMA_SOURCES.bloggers} loading="eager" decoding="async" className="absolute block size-full max-w-none" />
+                      <span className="relative size-[12.351px] shrink-0 text-[#0055FF]" data-node-id="37:4573" aria-hidden>
+                        <SourcesBloggersGlyph className="absolute inset-0 block size-full max-w-none" />
                       </span>
                     ) : section.id === "media" ? (
                       <span
-                        className="relative h-[12.81px] w-[13.767px] shrink-0"
+                        className="relative h-[12.81px] w-[13.767px] shrink-0 text-[#0055FF]"
                         data-node-id="37:4624"
                         aria-hidden
                       >
-                        <img alt="" src={FIGMA_SOURCES.media} loading="eager" decoding="async" className="absolute block size-full max-w-none" />
+                        <SourcesMediaGlyph className="absolute inset-0 block size-full max-w-none" />
                       </span>
                     ) : (
                       <span
-                        className="relative h-[12.273px] w-[15.213px] shrink-0"
+                        className="relative h-[12.273px] w-[15.213px] shrink-0 text-[#0055FF]"
                         data-node-id="37:4635"
                         aria-hidden
                       >
-                        <img alt="" src={FIGMA_SOURCES.academia} loading="eager" decoding="async" className="absolute block size-full max-w-none" />
+                        <SourcesAcademiaGlyph className="absolute inset-0 block size-full max-w-none" />
                       </span>
                     )}
                     <span className="flex min-w-0 items-baseline gap-1">
@@ -573,18 +595,12 @@ export default function SourcesList({
                   >
                     <span
                       className={[
-                        "motion-layout-ease relative h-[7.223px] w-[4.54px] transition-transform",
+                        "motion-layout-ease relative h-[7.223px] w-[4.54px] text-[#8A8A93] transition-transform",
                         open ? "rotate-90" : "rotate-0",
                       ].join(" ")}
                       data-node-id={open ? "37:4579" : section.chevronRightNode}
                     >
-                      <img
-                        alt=""
-                        src={FIGMA_SOURCES.chevronRight}
-                        loading="eager"
-                        decoding="async"
-                        className="absolute block size-full max-w-none"
-                      />
+                      <SourcesChevronRightGlyph className="absolute inset-0 block size-full max-w-none" />
                     </span>
                   </span>
                 </button>

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { FIGMA_TOP_BAR } from "@/lib/figma-top-bar-assets";
+import { TopBarProfileGlyph } from "@/components/top-bar-icons";
 
 type UserMenuProps = {
   user: User;
@@ -99,11 +99,7 @@ export default function UserMenu({
                   className="block size-full rounded-[6px] object-cover"
                 />
               ) : (
-                <img
-                  alt=""
-                  className="block size-full max-w-none object-contain"
-                  src={FIGMA_TOP_BAR.profile}
-                />
+                <TopBarProfileGlyph className="block size-full max-w-none object-contain text-[#111113]" />
               )}
             </span>
           </button>

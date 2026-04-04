@@ -41,7 +41,7 @@ export function getStatsFromSubscribedFeed(
  * 按全库 sources + 已算好的帖子数量统计（避免为 total/today 拉全表 news_items）
  */
 export function getStatsFromSourceListAndPostCounts(
-  sources: Source[],
+  sources: Pick<Source, 'sourceType' | 'enabled'>[],
   totalPosts: number,
   todayPosts: number
 ): Stats {

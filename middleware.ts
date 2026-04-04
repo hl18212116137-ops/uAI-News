@@ -1,8 +1,17 @@
-import { type NextRequest } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
+function appendServerTiming(res: NextResponse, name: string, durMs: number) {
+  const part = `${name};dur=${durMs.toFixed(1)}`
+  const prev = res.headers.get('Server-Timing')
+  res.headers.set('Server-Timing', prev ? `${prev}, ${part}` : part)
+}
+
 export async function middleware(request: NextRequest) {
+  const t0 = performance.now()
   const { supabaseResponse, user } = await updateSession(request)
+  const authMs = performance.now() - t0
+  appendServerTiming(supabaseResponse, 'supabase_auth', authMs)
 
   // 需要登录才能访问的路由（后续阶段新增页面时在此追加）
   const protectedPaths = ['/profile', '/bookmarks']
@@ -13,7 +22,9 @@ export async function middleware(request: NextRequest) {
   if (isProtected && !user) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
-    return Response.redirect(loginUrl)
+    const redirect = NextResponse.redirect(loginUrl)
+    appendServerTiming(redirect, 'supabase_auth', authMs)
+    return redirect
   }
 
   return supabaseResponse

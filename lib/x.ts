@@ -163,9 +163,11 @@ function innerToReferenced(
   const id =
     typeof inner.id === 'string'
       ? inner.id
-      : typeof inner.id_str === 'string'
-        ? inner.id_str
-        : undefined;
+      : typeof inner.id === 'number' && Number.isFinite(inner.id)
+        ? String(inner.id)
+        : typeof inner.id_str === 'string'
+          ? inner.id_str
+          : undefined;
   const mediaUrls = extractTweetMediaUrls(inner);
   return {
     kind,
@@ -334,27 +336,51 @@ export async function fetchPostsFromX(handle: string): Promise<XPost[]> {
     const oneMonthAgo = new Date();
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
-    // 过滤并映射推文，只保留最近1个月的
-    return tweets
-      .filter((tweet: any) => {
-        const postedAt = new Date(tweet.createdAt ?? tweet.created_at ?? new Date());
-        return postedAt >= oneMonthAgo;
-      })
-      .map((tweet: any) => {
+    // 过滤并映射推文，只保留最近1个月的（单条解析失败则跳过，避免整 handle 被清空）
+    const mapped: XPost[] = []
+    for (const tweet of tweets as any[]) {
+      try {
+        const postedAt = new Date(tweet?.createdAt ?? tweet?.created_at ?? new Date())
+        if (postedAt < oneMonthAgo) continue
+
         const t = tweet as Record<string, unknown>
+        const rawId = tweet?.id ?? tweet?.id_str
+        const idStr =
+          typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : ''
+        if (!idStr) continue
+
         const media = extractTweetMediaUrls(t)
         const engagement = extractTweetEngagement(t)
         const referencedPost = extractReferencedPostFromTweet(t)
-        return {
-          post_id: String(tweet.id),
-          post_text: tweet.text ?? '',
-          post_url: `https://x.com/${handle}/status/${tweet.id}`,
-          posted_at: tweet.createdAt ?? tweet.created_at ?? new Date().toISOString(),
+        mapped.push({
+          post_id: idStr,
+          post_text: typeof tweet?.text === 'string' ? tweet.text : '',
+          post_url: `https://x.com/${handle}/status/${idStr}`,
+          posted_at:
+            typeof tweet?.createdAt === 'string'
+              ? tweet.createdAt
+              : typeof tweet?.created_at === 'string'
+                ? tweet.created_at
+                : new Date().toISOString(),
           ...(media.length > 0 ? { media_urls: media } : {}),
           ...(engagement ? { social_engagement: engagement } : {}),
           ...(referencedPost ? { referencedPost } : {}),
-        }
-      });
+        })
+      } catch (rowErr) {
+        console.warn(`[fetchPostsFromX] skip malformed tweet for @${handle}:`, rowErr)
+      }
+    }
+
+    mapped.sort(
+      (a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime()
+    );
+
+    const capRaw = process.env.FETCH_MAX_POSTS_PER_HANDLE_PER_RUN
+    const cap = capRaw != null && capRaw !== '' ? parseInt(capRaw, 10) : NaN
+    if (Number.isFinite(cap) && cap > 0) {
+      return mapped.slice(0, cap)
+    }
+    return mapped;
   } catch (error) {
     console.error(`Error fetching posts from X for ${handle}:`, error);
     return [];

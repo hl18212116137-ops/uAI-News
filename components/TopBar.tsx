@@ -5,7 +5,12 @@ import { useEffect, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import UserMenu from "@/components/UserMenu";
-import { FIGMA_TOP_BAR } from "@/lib/figma-top-bar-assets";
+import {
+  TopBarBookmarkGlyph,
+  TopBarInsightSparkleGlyph,
+  TopBarProfileGlyph,
+  TopBarSettingsGlyph,
+} from "@/components/top-bar-icons";
 
 type TopBarProps = {
   user: User | null;
@@ -130,9 +135,9 @@ export default function TopBar({
             <div
               data-name="Container"
               data-node-id={dualCollapsed ? "43:5034" : "3:2681"}
-              className="relative h-[16.001px] w-[12.467px] shrink-0"
+              className="relative h-[16.001px] w-[12.467px] shrink-0 text-[#111113]"
             >
-              <img alt="" className="absolute block size-full max-w-none" src={FIGMA_TOP_BAR.bookmark} />
+              <TopBarBookmarkGlyph className="absolute inset-0 block size-full max-w-none" />
             </div>
           </Link>
 
@@ -146,9 +151,9 @@ export default function TopBar({
             <div
               data-name="Container"
               data-node-id={dualCollapsed ? "43:5037" : "3:2684"}
-              className="relative h-[17.467px] w-[17.786px] shrink-0"
+              className="relative h-[17.467px] w-[17.786px] shrink-0 text-[#111113]"
             >
-              <img alt="" className="absolute block size-full max-w-none" src={FIGMA_TOP_BAR.settings} />
+              <TopBarSettingsGlyph className="absolute inset-0 block size-full max-w-none" />
             </div>
           </button>
 
@@ -173,9 +178,9 @@ export default function TopBar({
                 <div
                   data-name="Container"
                   data-node-id={dualCollapsed ? "43:5040" : "3:2687"}
-                  className="relative size-[17.467px] shrink-0"
+                  className="relative size-[17.467px] shrink-0 text-[#111113]"
                 >
-                  <img alt="" className="absolute block size-full max-w-none" src={FIGMA_TOP_BAR.profile} />
+                  <TopBarProfileGlyph className="absolute inset-0 block size-full max-w-none" />
                 </div>
               </Link>
             </div>
@@ -215,7 +220,7 @@ export default function TopBar({
             onClick={() => analysisPanelOpen && onCollapseAnalysisSidebar?.()}
           >
             <div data-name="Container" data-node-id="3:2692" className="relative h-[19.016px] w-[19.063px] shrink-0">
-              <img alt="" className="absolute block size-full max-w-none" src={FIGMA_TOP_BAR.aiSparkle} />
+              <TopBarInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" />
             </div>
           </button>
         </div>

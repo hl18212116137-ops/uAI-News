@@ -27,7 +27,7 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // 刷新 session（必须调用，不能删除）
+  // 刷新 session（必须调用，不能删除）。首页 RSC 侧用 getSession 读 cookie，避免同请求再打 Auth API。
   const {
     data: { user },
   } = await supabase.auth.getUser()

@@ -17,6 +17,12 @@ const config: Config = {
           600: '#e11d28',
           700: '#be123c',
         },
+        /** 站点主题金（与 INSIGHT PRO / 强调条一致，见 CLAUDE.md Accent gold） */
+        gold: {
+          DEFAULT: '#d7a220',
+          bright: '#f0c030',
+          signal: '#FFB224',
+        },
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', '-apple-system', 'sans-serif'],

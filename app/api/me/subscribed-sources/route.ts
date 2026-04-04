@@ -7,7 +7,7 @@ export async function GET() {
   if (errorResponse) return errorResponse
 
   try {
-    const sources = await getSubscribedSourcesMeta(user.id)
+    const { sources } = await getSubscribedSourcesMeta(user.id)
     return NextResponse.json({ success: true, sources })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '获取订阅源列表失败'

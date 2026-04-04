@@ -10,6 +10,11 @@ import { mergeDemoPostsIfFeedEmpty } from './demo-feed-posts'
 import { fetchSourceProfilesByHandles, mergeSourceProfilesIntoPosts } from './news-source-enrichment'
 import { defaultBioForSourceNotInDb } from './source-bio-fallback'
 import { expandHandleQueryVariants, resolveSourceAvatarUrl } from './source-avatar'
+import { getFeedPublishedAtGte } from './feed-window'
+
+/** news_items 列：与列表 + INSIGHT 首包映射一致；避免 select('*') 随表膨胀 */
+const NEWS_ITEMS_FEED_COLUMNS =
+  'id,title,summary,content,source_platform,source_name,source_handle,source_url,category,published_at,original_text,created_at,importance_score,media_urls,social_engagement,referenced_post'
 
 type SourceMeta = {
   id: string
@@ -248,10 +253,12 @@ export async function getFeedByHandles(handles: string[]): Promise<NewsItem[]> {
     const normalized = handles.map((h) => h.trim()).filter(Boolean);
     if (normalized.length === 0) return [];
 
+    const feedSince = getFeedPublishedAtGte();
     const { data, error } = await supabase
       .from("news_items")
-      .select("*")
+      .select(NEWS_ITEMS_FEED_COLUMNS)
       .in("source_handle", normalized)
+      .gte("published_at", feedSince)
       .order("published_at", { ascending: false });
 
     if (error) {
@@ -345,11 +352,13 @@ export async function getSubscribedSourcesMetaByHandles(handles: string[]): Prom
     const handleToSource = new Map<string, typeof sources[number]>();
     for (const s of sources) handleToSource.set(String(s.handle).toLowerCase(), s);
 
-    // 2) 聚合 news_items 的 postCount / latestPostTime
+    // 2) 聚合 news_items 的 postCount / latestPostTime（与 feed 可见窗口一致）
+    const feedSinceMeta = getFeedPublishedAtGte();
     const { data: postCounts, error: countsError } = await supabase
       .from("news_items")
       .select("source_handle, published_at")
-      .in("source_handle", normalized);
+      .in("source_handle", normalized)
+      .gte("published_at", feedSinceMeta);
 
     if (countsError) {
       console.error("Failed to aggregate post counts by handles:", countsError);
@@ -459,18 +468,26 @@ export async function unsubscribeSource(userId: string, sourceId: string): Promi
 
 /**
  * 获取用户的个性化 feed
- * 两步查询：先取订阅 handles → 再查 news_items WHERE source_handle IN (handles)
+ * 未传 `subscribedHandles` 时：先查订阅 handles 再拉 news_items；传入时可省一次往返（与首页已算好的 handles 对齐）。
  */
-export async function getSubscribedFeed(userId: string): Promise<NewsItem[]> {
+export async function getSubscribedFeed(
+  userId: string,
+  subscribedHandles?: string[]
+): Promise<NewsItem[]> {
   try {
-    const handles = await getUserSubscribedHandles(userId)
+    const handles =
+      subscribedHandles !== undefined
+        ? subscribedHandles.map((h) => h.trim()).filter(Boolean)
+        : await getUserSubscribedHandles(userId)
 
     if (handles.length === 0) return []
 
+    const feedSinceSub = getFeedPublishedAtGte()
     const { data, error } = await supabase
       .from('news_items')
-      .select('*')
+      .select(NEWS_ITEMS_FEED_COLUMNS)
       .in('source_handle', handles)
+      .gte('published_at', feedSinceSub)
       .order('published_at', { ascending: false })
 
     if (error) {
@@ -507,7 +524,10 @@ export async function getSubscribedFeed(userId: string): Promise<NewsItem[]> {
   } catch (error) {
     console.error('Failed to get subscribed feed:', error)
     try {
-      const handles = await getUserSubscribedHandles(userId)
+      const handles =
+        subscribedHandles !== undefined
+          ? subscribedHandles.map((h) => h.trim()).filter(Boolean)
+          : await getUserSubscribedHandles(userId)
       const demo = mergeDemoPostsIfFeedEmpty([], handles)
       const profiles = await fetchSourceProfilesByHandles(handles)
       return mergeSourceProfilesIntoPosts(demo, profiles)
@@ -517,11 +537,17 @@ export async function getSubscribedFeed(userId: string): Promise<NewsItem[]> {
   }
 }
 
+export type SubscribedSourcesMetaResult = {
+  sources: SourceMeta[]
+  /** 与 `getUserSubscribedSourceIds` 同源（订阅表全量 source_id，含侧栏未展示的孤儿行） */
+  subscribedSourceIds: string[]
+}
+
 /**
  * 获取用户已订阅信息源的元数据（供 SourcesList 展示）
  * 两步查询：先取订阅记录 → 再批量查 sources 表 → 聚合 postCount
  */
-export async function getSubscribedSourcesMeta(userId: string): Promise<SourceMeta[]> {
+export async function getSubscribedSourcesMeta(userId: string): Promise<SubscribedSourcesMetaResult> {
   try {
     // 第一步：取订阅的 source_id 列表
     const { data: subscriptions, error: subError } = await supabase
@@ -529,8 +555,13 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<SourceMe
       .select('source_id, source_handle')
       .eq('user_id', userId)
 
-    if (subError || !subscriptions || subscriptions.length === 0) return []
+    if (subError || !subscriptions || subscriptions.length === 0) {
+      return { sources: [], subscribedSourceIds: [] }
+    }
 
+    const subscribedSourceIds = (subscriptions as { source_id: string }[]).map((s) =>
+      String(s.source_id)
+    )
     const sourceIds = subscriptions.map((s: any) => s.source_id)
     const handles = subscriptions.map((s: any) => s.source_handle)
 
@@ -538,13 +569,14 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<SourceMe
     const [{ data: sourcesData }, { data: postCounts }] = await Promise.all([
       supabase
         .from('sources')
-        .select('*')
+        .select('id,handle,name,avatar,description,platform,source_type')
         .in('id', sourceIds),
-      // 聚合每个 handle 的文章数和最新发布时间
+      // 聚合每个 handle 的文章数和最新发布时间（与 feed 可见窗口一致）
       supabase
         .from('news_items')
         .select('source_handle, published_at')
-        .in('source_handle', handles),
+        .in('source_handle', handles)
+        .gte('published_at', getFeedPublishedAtGte()),
     ])
 
     // 计算 postCount 和 latestPostTime
@@ -579,10 +611,10 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<SourceMe
         sourceType: s.source_type,
       })
     }
-    return ordered
+    return { sources: ordered, subscribedSourceIds }
   } catch (error) {
     console.error('Failed to get subscribed sources meta:', error)
-    return []
+    return { sources: [], subscribedSourceIds: [] }
   }
 }
 
@@ -646,14 +678,20 @@ export async function getRecommendedSources(
   limit = 8,
   options?: GetRecommendedSourcesOptions
 ): Promise<SourceMeta[]> {
+  const recommendedSourcesColumns =
+    'id, handle, name, avatar, description, platform, source_type'
+
   try {
     let allSources: any[] | null = null
 
-    const enabledRes = await supabase.from('sources').select('*').eq('enabled', true)
+    const enabledRes = await supabase
+      .from('sources')
+      .select(recommendedSourcesColumns)
+      .eq('enabled', true)
     if (!enabledRes.error && enabledRes.data?.length) {
       allSources = enabledRes.data
     } else {
-      const anyRes = await supabase.from('sources').select('*').limit(200)
+      const anyRes = await supabase.from('sources').select(recommendedSourcesColumns).limit(200)
       if (!anyRes.error && anyRes.data?.length) {
         allSources = anyRes.data
       }
@@ -683,10 +721,12 @@ export async function getRecommendedSources(
       return await demoRecommendedSourceMetas(limit)
     }
 
+    const feedSinceRec = getFeedPublishedAtGte()
     const { data: postCounts, error: countError } = await supabase
       .from('news_items')
       .select('source_handle')
       .in('source_handle', handles)
+      .gte('published_at', feedSinceRec)
 
     if (countError) {
       console.error('Recommended sources: postCounts query failed', countError)
@@ -751,10 +791,12 @@ export async function getRecommendedSources(
 export async function getTopRecommendedPosts(limit = 30): Promise<NewsItem[]> {
   const demoFallbackHandles = DEFAULT_GUEST_HANDLES
   try {
+    const feedSinceTop = getFeedPublishedAtGte()
     const { data, error } = await supabase
       .from('news_items')
-      .select('*')
+      .select(NEWS_ITEMS_FEED_COLUMNS)
       .not('importance_score', 'is', null)
+      .gte('published_at', feedSinceTop)
       .order('importance_score', { ascending: false })
       .order('published_at', { ascending: false })
       .limit(limit)
