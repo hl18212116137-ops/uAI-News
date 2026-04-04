@@ -120,7 +120,7 @@ function NewsList({
         aria-hidden
         data-name="Analysis gold rail"
       />
-      {posts.map((post, index) => (
+      {posts.map((post) => (
         <div
           key={post.id}
           ref={setRowRef(post.id)}
@@ -132,7 +132,6 @@ function NewsList({
             onBookmarkToggle={onBookmarkToggle}
             analysisActive={analysisActivePostId === post.id}
             onAnalysisToggle={onAnalysisToggle}
-            avatarPriority={index < 8}
           />
         </div>
       ))}

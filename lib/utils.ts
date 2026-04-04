@@ -82,6 +82,33 @@ export function formatOriginalInsightBody(text: string): string {
   return s;
 }
 
+/** ORIGINAL 正文：少量 `**` 包裹，供 `BoldLinkifiedInline` 渲染；全书名/短引/编辑注，全篇合计不超过若干处以免刷屏 */
+const ORIGINAL_INSIGHT_MAX_EMPHASIS = 6;
+
+/**
+ * 将常见「重点外壳」包成 markdown 粗体；与 `formatOriginalInsightBody` 顺序：先格式化再调用本函数。
+ */
+export function emphasizeOriginalInsightKeyPhrases(text: string): string {
+  if (!text) return text;
+  let used = 0;
+  const cap = ORIGINAL_INSIGHT_MAX_EMPHASIS;
+  const take = () => {
+    if (used >= cap) return false;
+    used += 1;
+    return true;
+  };
+  let s = text.replace(/《([^》]{1,50})》/g, (_, inner: string) =>
+    take() ? `**《${inner}》**` : `《${inner}》`,
+  );
+  s = s.replace(/「([^」]{2,35})」/g, (_, inner: string) =>
+    take() ? `**「${inner}」**` : `「${inner}」`,
+  );
+  s = s.replace(/【([^】]{2,40})】/g, (_, inner: string) =>
+    take() ? `**【${inner}】**` : `【${inner}】`,
+  );
+  return s;
+}
+
 /** 互动数紧凑展示（侧栏等） */
 export function formatSocialCount(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";

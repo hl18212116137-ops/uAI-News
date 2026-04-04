@@ -1,11 +1,23 @@
 "use client";
 
 import Image from "next/image";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type MouseEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { NewsItem } from "@/lib/types";
 import { isMostlyChinese } from "@/lib/text-locale";
-import { formatOriginalInsightBody, formatTypography } from "@/lib/utils";
-import LinkifiedParagraph, { BoldLinkifiedInline } from "@/components/LinkifiedParagraph";
+import {
+  emphasizeOriginalInsightKeyPhrases,
+  formatOriginalInsightBody,
+  formatTypography,
+} from "@/lib/utils";
+import { BoldLinkifiedInline } from "@/components/LinkifiedParagraph";
 import SourceAvatarImg from "@/components/SourceAvatarImg";
 import {
   InsightKeyPointsGlyph,
@@ -18,10 +30,10 @@ import { SourcesChevronRightGlyph } from "@/components/sources-sidebar-icons";
 const ORIGINAL_COLLAPSED_MAX_PX = 220;
 
 /**
- * INSIGHT 侧栏三模块正文：与 NewsCard 简介一致 12px / leading-[20px]；ORIGINAL 略浅，分析块近黑。
+ * INSIGHT 侧栏三模块正文：13px / leading-[21px]；ORIGINAL 略浅，分析块近黑。
  */
 const INSIGHT_BODY_TYPE =
-  "font-sans text-[12px] font-normal leading-[20px] tracking-[-0.01em] antialiased whitespace-pre-wrap break-words";
+  "font-sans text-[13px] font-normal leading-[21px] tracking-[-0.01em] antialiased whitespace-pre-wrap break-words";
 const INSIGHT_ORIGINAL_BODY_TEXT = `${INSIGHT_BODY_TYPE} text-[#6a7282]`;
 const INSIGHT_ANALYSIS_BODY_TEXT = `${INSIGHT_BODY_TYPE} text-[#111113]`;
 const INSIGHT_ANALYSIS_BOLD = "font-semibold text-[#111113]";
@@ -66,6 +78,28 @@ function resolveChineseOriginalText(originalTranslation: string, originalBody: s
   return null;
 }
 
+/** ORIGINAL：可点链接 + 书名《》、短引「」、编辑注【】等少量加粗（全文合计有上限，见 `emphasizeOriginalInsightKeyPhrases`） */
+function OriginalInsightBodyParagraph({
+  rawText,
+  paragraphClassName,
+  linkClassName,
+}: {
+  rawText: string;
+  paragraphClassName: string;
+  linkClassName: string;
+}) {
+  const text = emphasizeOriginalInsightKeyPhrases(formatOriginalInsightBody(rawText));
+  return (
+    <p className={paragraphClassName}>
+      <BoldLinkifiedInline
+        text={text}
+        linkClassName={linkClassName}
+        boldClassName="font-semibold text-[#52525b]"
+      />
+    </p>
+  );
+}
+
 function OriginalMediaGallery({
   urls,
   imageWrapClass = "",
@@ -87,7 +121,7 @@ function OriginalMediaGallery({
       {list.map((u, idx) =>
         isVideoMediaUrl(u) ? (
           <div key={u} className="flex flex-col gap-1">
-            <p className="m-0 font-sans text-[12px] font-medium leading-[20px] tracking-[-0.01em] antialiased text-[#6a7282]">
+            <p className="m-0 font-sans text-[13px] font-medium leading-[21px] tracking-[-0.01em] antialiased text-[#6a7282]">
               推文视频
               {videoCount > 1
                 ? `（${list.slice(0, idx + 1).filter((x) => isVideoMediaUrl(x)).length}/${videoCount}）`
@@ -103,7 +137,7 @@ function OriginalMediaGallery({
                 在 X 打开原推文查看视频
               </a>
             ) : (
-              <span className="font-sans text-[12px] leading-[20px] text-[#99a1af]">暂无原推文链接</span>
+              <span className="font-sans text-[13px] leading-[21px] text-[#99a1af]">暂无原推文链接</span>
             )}
           </div>
         ) : (
@@ -175,7 +209,7 @@ function PostMetaRow({
 }) {
   if (!post) {
     return (
-      <p className="m-0 font-sans text-xs leading-4 text-[#99a1af]" aria-live="polite">
+      <p className="m-0 font-sans text-[13px] leading-[21px] text-[#99a1af]" aria-live="polite">
         暂无帖子信息
       </p>
     );
@@ -201,7 +235,7 @@ function PostMetaRow({
           href={titleHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="motion-layout-ease min-w-0 flex-1 truncate font-sans text-[13px] font-medium leading-5 tracking-[-0.02em] text-[#111113] antialiased transition-opacity duration-200 ease-layout-out hover:opacity-65"
+          className="motion-layout-ease min-w-0 flex-1 truncate font-sans text-[13px] font-medium leading-[21px] tracking-[-0.02em] text-[#111113] antialiased transition-opacity duration-200 ease-layout-out hover:opacity-65"
         >
           {formatTypography(name)}
         </a>
@@ -460,7 +494,7 @@ function InsightNumberedBody({
       {items.map((item, i) => (
         <li key={i} className="flex w-full min-w-0 max-w-full gap-1.5" role="listitem">
           <span
-            className="w-2 shrink-0 select-none pt-px text-left font-mono text-[12px] font-normal leading-[20px] text-[#99a1af]"
+            className="w-2 shrink-0 select-none pt-px text-left font-mono text-[13px] font-normal leading-[21px] text-[#99a1af]"
             aria-hidden
           >
             -
@@ -520,7 +554,7 @@ export default function AnalysisPanel({
   const originalFocusMode = originalExpanded && originalOverflows;
   const keyPointsExpanded = originalFocusMode ? false : keyPointsOpen;
   const relevanceExpanded = originalFocusMode ? false : relevanceOpen;
-  /** 仅当两块正文都收起时，与 SOURCES 折叠行同款紧间距；任一块展开则恢复 gap-8 / pt-4 */
+  /** 两块都收起时：KEY POINTS / RELEVANCE 之间用较小 gap；任一块展开时用 gap-4 */
   const insightBottomBothCollapsed = !keyPointsExpanded && !relevanceExpanded;
 
   useEffect(() => {
@@ -529,7 +563,7 @@ export default function AnalysisPanel({
     setRelevanceOpen(true);
   }, [post?.id]);
 
-  const onKeyPointsHeadingClick = () => {
+  const toggleKeyPointsSection = useCallback(() => {
     if (originalFocusMode) {
       setOriginalExpanded(false);
       setKeyPointsOpen(true);
@@ -540,9 +574,9 @@ export default function AnalysisPanel({
       setOriginalExpanded(false);
       return true;
     });
-  };
+  }, [originalFocusMode]);
 
-  const onRelevanceHeadingClick = () => {
+  const toggleRelevanceSection = useCallback(() => {
     if (originalFocusMode) {
       setOriginalExpanded(false);
       setRelevanceOpen(true);
@@ -553,7 +587,31 @@ export default function AnalysisPanel({
       setOriginalExpanded(false);
       return true;
     });
-  };
+  }, [originalFocusMode]);
+
+  const handleKeyPointsBodyClick = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      if (!keyPointsExpanded) return;
+      if (typeof window !== "undefined" && window.getSelection()?.toString().trim()) return;
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("a, button, [role='button'], img, video")) return;
+      toggleKeyPointsSection();
+    },
+    [keyPointsExpanded, toggleKeyPointsSection],
+  );
+
+  const handleRelevanceBodyClick = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      if (!relevanceExpanded) return;
+      if (typeof window !== "undefined" && window.getSelection()?.toString().trim()) return;
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("a, button, [role='button'], img, video")) return;
+      toggleRelevanceSection();
+    },
+    [relevanceExpanded, toggleRelevanceSection],
+  );
 
   const refMediaLen = refPost?.mediaUrls?.length ?? 0;
   useLayoutEffect(() => {
@@ -588,6 +646,18 @@ export default function AnalysisPanel({
     refMediaLen,
   ]);
 
+  const handleOriginalBodyClick = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      if (!originalOverflows) return;
+      if (typeof window !== "undefined" && window.getSelection()?.toString().trim()) return;
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("a, button, [role='button'], img, video")) return;
+      setOriginalExpanded((v) => !v);
+    },
+    [originalOverflows],
+  );
+
   /** ORIGINAL 正文内链接：不加粗，与 KEY POINTS 等处区分 */
   const linkifiedOriginalClass =
     "break-all font-normal text-primary-500 underline decoration-primary-500/40 underline-offset-2 transition-colors hover:text-primary-600 hover:decoration-primary-600";
@@ -600,7 +670,13 @@ export default function AnalysisPanel({
       <div className="relative w-full min-w-0 max-w-full">
         <div
           ref={originalContentRef}
-          className={!originalExpanded && originalOverflows ? "overflow-hidden" : undefined}
+          onClick={handleOriginalBodyClick}
+          className={[
+            !originalExpanded && originalOverflows ? "overflow-hidden" : "",
+            originalOverflows ? "cursor-pointer rounded-sm" : "",
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined}
           style={
             !originalExpanded && originalOverflows
               ? { maxHeight: ORIGINAL_COLLAPSED_MAX_PX }
@@ -614,10 +690,10 @@ export default function AnalysisPanel({
               <>
                 <div>
                   {chineseOuter ? (
-                    <LinkifiedParagraph
-                      text={formatOriginalInsightBody(chineseOuter)}
+                    <OriginalInsightBodyParagraph
+                      rawText={chineseOuter}
+                      paragraphClassName={originalBodyPrimaryClass}
                       linkClassName={linkifiedOriginalClass}
-                      className={originalBodyPrimaryClass}
                     />
                   ) : isLoading ? (
                     <p className={originalBodyMutedClass}>生成中文内容中…</p>
@@ -634,17 +710,17 @@ export default function AnalysisPanel({
             ) : refPost.kind === "retweet" ? (
               <>
                 {refPost.userName ? (
-                  <p className="mb-2 font-sans text-[11px] font-normal leading-4 text-[#99a1af]">
+                  <p className="mb-2 font-sans text-[13px] font-normal leading-[21px] text-[#99a1af]">
                     转发自 @{refPost.userName.replace(/^@/, "")}
                     {refPost.name ? ` · ${formatTypography(refPost.name)}` : ""}
                   </p>
                 ) : null}
                 <div>
                   {chineseRef ?? chineseOuter ? (
-                    <LinkifiedParagraph
-                      text={formatOriginalInsightBody((chineseRef ?? chineseOuter)!)}
+                    <OriginalInsightBodyParagraph
+                      rawText={(chineseRef ?? chineseOuter)!}
+                      paragraphClassName={originalBodyPrimaryClass}
                       linkClassName={linkifiedOriginalClass}
-                      className={originalBodyPrimaryClass}
                     />
                   ) : isLoading ? (
                     <p className={originalBodyMutedClass}>生成中文内容中…</p>
@@ -669,10 +745,10 @@ export default function AnalysisPanel({
               <>
                 <div>
                   {chineseOuter ? (
-                    <LinkifiedParagraph
-                      text={formatOriginalInsightBody(chineseOuter)}
+                    <OriginalInsightBodyParagraph
+                      rawText={chineseOuter}
+                      paragraphClassName={originalBodyPrimaryClass}
                       linkClassName={linkifiedOriginalClass}
-                      className={originalBodyPrimaryClass}
                     />
                   ) : isLoading ? (
                     <p className={originalBodyMutedClass}>生成中文内容中…</p>
@@ -690,17 +766,17 @@ export default function AnalysisPanel({
                     引用原文
                   </p>
                   {refPost.userName ? (
-                    <p className="m-0 mb-2 font-sans text-[11px] font-medium leading-4 text-[#6a7282]">
+                    <p className="m-0 mb-2 font-sans text-[13px] font-medium leading-[21px] text-[#6a7282]">
                       {refPost.name ? `${formatTypography(refPost.name)} ` : ""}@
                       {refPost.userName.replace(/^@/, "")}
                     </p>
                   ) : null}
                   <div>
                     {chineseRef ? (
-                      <LinkifiedParagraph
-                        text={formatOriginalInsightBody(chineseRef)}
+                      <OriginalInsightBodyParagraph
+                        rawText={chineseRef}
+                        paragraphClassName={originalBodyPrimaryClass}
                         linkClassName={linkifiedOriginalClass}
-                        className={originalBodyPrimaryClass}
                       />
                     ) : isLoading ? (
                       <p className={originalBodyMutedClass}>生成中文内容中…</p>
@@ -735,7 +811,7 @@ export default function AnalysisPanel({
             <button
               type="button"
               onClick={() => setOriginalExpanded((v) => !v)}
-              className="motion-layout-ease rounded-sm font-sans text-[11px] font-medium text-[#0055FF] underline decoration-[#0055FF]/40 outline-none transition-colors hover:text-primary-600 hover:decoration-primary-600 focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
+              className="motion-layout-ease rounded-sm font-sans text-[13px] font-medium leading-[21px] text-[#6a7282] underline decoration-[#e5e7eb] underline-offset-2 outline-none transition-colors duration-150 hover:text-[#111113] hover:decoration-[#d1d5db] focus-visible:ring-2 focus-visible:ring-[#9ca3af] focus-visible:ring-offset-1"
             >
               {originalExpanded ? "收起正文" : "展开正文"}
             </button>
@@ -745,7 +821,7 @@ export default function AnalysisPanel({
               href={sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-sans text-[11px] font-medium leading-4 text-[#6a7282] underline decoration-[#e5e7eb] underline-offset-2 transition-colors duration-150 hover:text-[#0055FF] hover:decoration-[#0055FF]/40"
+              className="inline-flex items-center gap-1 font-sans text-[13px] font-medium leading-[21px] text-[#6a7282] underline decoration-[#e5e7eb] underline-offset-2 transition-colors duration-150 hover:text-[#0055FF] hover:decoration-[#0055FF]/40"
             >
               访问原文
               <svg
@@ -826,7 +902,7 @@ export default function AnalysisPanel({
           className="mb-3 mr-4 flex shrink-0 flex-col gap-2 rounded-md border border-primary-100 bg-primary-50/80 px-3 py-2.5"
           role="alert"
         >
-          <p className="m-0 font-sans text-[14px] font-normal leading-[22.4px] text-[#101828]">{analysisError}</p>
+          <p className="m-0 font-sans text-[13px] font-normal leading-[20.8px] text-[#101828]">{analysisError}</p>
           {onRetryAnalysis ? (
             <button
               type="button"
@@ -842,7 +918,7 @@ export default function AnalysisPanel({
       {/* 中区：ORIGINAL 占满剩余高度内滚；KEY POINTS 编号 + RELEVANCE 单句 */}
       <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col self-stretch overflow-hidden pr-4">
         <section
-          className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col items-stretch gap-2 pt-4 pb-3"
+          className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col items-stretch gap-4 pt-4 pb-3"
           aria-labelledby="analysis-original-heading"
         >
           <SectionHeading
@@ -889,11 +965,14 @@ export default function AnalysisPanel({
         <div
           className={[
             "flex min-h-0 shrink-0 flex-col pb-8",
-            insightBottomBothCollapsed ? "gap-2 pt-2" : "gap-8 pt-4",
+            insightBottomBothCollapsed ? "gap-2 pt-2" : "gap-4 pt-4",
           ].join(" ")}
         >
           <section
-            className="flex w-full max-w-full min-h-0 min-w-0 flex-col items-stretch overflow-hidden"
+            className={[
+              "flex w-full max-w-full min-h-0 min-w-0 flex-col items-stretch overflow-hidden",
+              keyPointsExpanded ? "gap-4" : "gap-0",
+            ].join(" ")}
             aria-labelledby="analysis-highlights-heading"
           >
             <InsightCollapsibleSectionHeading
@@ -902,7 +981,7 @@ export default function AnalysisPanel({
               headingId="analysis-highlights-heading"
               controlsId="insight-key-points-body"
               expanded={keyPointsExpanded}
-              onToggle={onKeyPointsHeadingClick}
+              onToggle={toggleKeyPointsSection}
             />
             <div
               className={[
@@ -915,19 +994,27 @@ export default function AnalysisPanel({
                   id="insight-key-points-body"
                   className="sidebar-scroll max-h-[28vh] min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-contain"
                 >
-                  <InsightNumberedBody
-                    items={highlightLines}
-                    isLoading={isLoading}
-                    loadingLabel="正在生成要点…"
-                    emptyLabel="暂无要点"
-                  />
+                  <div
+                    onClick={handleKeyPointsBodyClick}
+                    className={keyPointsExpanded ? "min-h-0 w-full cursor-pointer rounded-sm" : "min-h-0 w-full"}
+                  >
+                    <InsightNumberedBody
+                      items={highlightLines}
+                      isLoading={isLoading}
+                      loadingLabel="正在生成要点…"
+                      emptyLabel="暂无要点"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </section>
 
           <section
-            className="box-border flex w-full min-w-0 max-w-full min-h-0 flex-col items-stretch overflow-hidden"
+            className={[
+              "box-border flex w-full min-w-0 max-w-full min-h-0 flex-col items-stretch overflow-hidden",
+              relevanceExpanded ? "gap-4" : "gap-0",
+            ].join(" ")}
             aria-labelledby="analysis-relevance-heading"
           >
             <InsightCollapsibleSectionHeading
@@ -936,7 +1023,7 @@ export default function AnalysisPanel({
               headingId="analysis-relevance-heading"
               controlsId="insight-relevance-body"
               expanded={relevanceExpanded}
-              onToggle={onRelevanceHeadingClick}
+              onToggle={toggleRelevanceSection}
             />
             <div
               className={[
@@ -949,12 +1036,17 @@ export default function AnalysisPanel({
                   id="insight-relevance-body"
                   className="insight-relevance-scroll box-border max-h-[28vh] min-h-0 w-full min-w-0 max-w-full overflow-y-auto overflow-x-hidden overscroll-contain"
                 >
-                  <InsightRelevanceSingle
-                    text={contextText}
-                    isLoading={isLoading}
-                    loadingLabel="正在生成一句启发…"
-                    emptyLabel="暂无启发"
-                  />
+                  <div
+                    onClick={handleRelevanceBodyClick}
+                    className={relevanceExpanded ? "min-h-0 w-full cursor-pointer rounded-sm" : "min-h-0 w-full"}
+                  >
+                    <InsightRelevanceSingle
+                      text={contextText}
+                      isLoading={isLoading}
+                      loadingLabel="正在生成一句启发…"
+                      emptyLabel="暂无启发"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

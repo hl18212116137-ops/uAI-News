@@ -4,7 +4,6 @@ import { memo, useEffect, useState } from "react";
 import { NewsItem } from "@/lib/types";
 import { isNewPost, formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
-import SourceAvatarImg from "./SourceAvatarImg";
 import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
 
 function formatDateZH(dateString: string): string {
@@ -53,7 +52,6 @@ type NewsCardProps = {
   readonly?: boolean;
   analysisActive?: boolean;
   onAnalysisToggle?: (postId: string) => void;
-  avatarPriority?: boolean;
 };
 
 export default memo(NewsCard);
@@ -66,12 +64,9 @@ function NewsCard({
   readonly = false,
   analysisActive = false,
   onAnalysisToggle,
-  avatarPriority = false,
 }: NewsCardProps) {
   const sourceName = post.source?.name || "未知来源";
   const sourceUrl = post.source?.url || "#";
-  const sourceAvatar = post.source?.avatar;
-  const avatarLetter = (sourceName || post.source?.handle || "?").charAt(0).toUpperCase();
   /** isNewPost 依赖 sessionStorage，SSR 与首帧客户端必须一致，故挂载后再算 */
   const [showNewBadge, setShowNewBadge] = useState(false);
   useEffect(() => {
@@ -145,22 +140,11 @@ function NewsCard({
       ) : null}
 
       <div className="flex w-full min-w-0 flex-col gap-[32px]">
-        <div className="flex w-full min-w-0 items-start gap-3">
-          <div className="shrink-0">
-            <SourceAvatarImg
-              src={sourceAvatar}
-              alt={sourceName}
-              letter={avatarLetter}
-              imgClassName="h-6 w-6 rounded-[2px] border border-[#F0F0F2] object-cover shadow-xs"
-              placeholderClassName="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-[2px] border border-[#F0F0F2] bg-gray-200 text-[11px] font-semibold text-[#6a7282] shadow-xs"
-              priority={avatarPriority}
-            />
-          </div>
-          <div
-            data-name="Container"
-            data-node-id="37:4742"
-            className="flex min-w-0 flex-1 flex-wrap items-center gap-[4px]"
-          >
+        <div
+          data-name="Container"
+          data-node-id="37:4742"
+          className="flex min-w-0 w-full flex-wrap items-center gap-[4px]"
+        >
             <span
               className="flex h-[17px] shrink-0 items-center font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#05f]"
               data-node-id="37:4744"
@@ -170,6 +154,18 @@ function NewsCard({
             <span
               className="flex h-[17px] items-center font-mono text-[11px] font-normal uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]"
               data-node-id="37:4746"
+            >
+              /
+            </span>
+            <span
+              className="flex min-h-[17px] min-w-0 items-center font-mono text-[11px] font-normal leading-[16.5px] tracking-[1.1px] text-[#8a8a93]"
+              data-node-id="37:4742-author"
+            >
+              {formatTypography(sourceName)}
+            </span>
+            <span
+              className="flex h-[17px] items-center font-mono text-[11px] font-normal uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]"
+              aria-hidden
             >
               /
             </span>
@@ -201,13 +197,12 @@ function NewsCard({
                 </span>
               </>
             ) : null}
-          </div>
         </div>
 
         <div
           data-name="Container"
           data-node-id="37:4753"
-          className="flex min-w-0 w-full max-w-full flex-col gap-[16px] pl-9"
+          className="flex min-w-0 w-full max-w-full flex-col gap-[16px]"
         >
           <h2
             data-name="Heading 1"

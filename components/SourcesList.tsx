@@ -5,7 +5,7 @@ import SourceAvatarImg from "./SourceAvatarImg";
 import type { User } from "@supabase/supabase-js";
 import AddSourceModal from "./AddSourceModal";
 import Tooltip from "./Tooltip";
-import { sourceBioDisplayLine } from "@/lib/source-bio-fallback";
+import { sourceBioTagsLine } from "@/lib/source-bio-fallback";
 import {
   SourcesAcademiaGlyph,
   SourcesBloggersGlyph,
@@ -73,7 +73,7 @@ function SourcesListSourceCard({
   isFetching = false,
 }: SourcesListSourceCardProps) {
   const isRec = variant === "recommended";
-  const bioLine = sourceBioDisplayLine(source.description, source.handle);
+  const bioTagsLine = sourceBioTagsLine(source.description, source.handle);
   const rowActive = !isRec && isSourceRowActive(source.handle, currentSource);
 
   return (
@@ -206,12 +206,12 @@ function SourcesListSourceCard({
           {isRec ? (
             <div className="min-h-[18.8px] w-full min-w-0 shrink-0">
               <p className="m-0 w-full min-w-0 truncate text-left text-[12px] font-normal leading-[20px] text-[#666666]">
-                {bioLine}
+                {bioTagsLine}
               </p>
             </div>
           ) : (
-            <p className="m-0 w-full min-h-[17px] text-left text-[12px] font-normal leading-[20px] text-[#666666] line-clamp-2">
-              {bioLine}
+            <p className="m-0 w-full min-h-[20px] min-w-0 truncate text-left text-[12px] font-normal leading-[20px] text-[#666666]">
+              {bioTagsLine}
             </p>
           )}
         </div>

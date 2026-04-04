@@ -140,6 +140,10 @@ export default function MainContent({
   const closeAnalysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainScrollThumbIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  /** 主列滚动容器；顶栏/左右留白等处滚轮委托到此（侧栏展开且指针在侧栏内时不委托） */
+  const mainScrollRef = useRef<HTMLDivElement | null>(null);
+  const sourcesSidebarPanelRef = useRef<HTMLDivElement | null>(null);
+  const analysisSidebarPanelRef = useRef<HTMLDivElement | null>(null);
 
   const [mainScrollThumbVisible, setMainScrollThumbVisible] = useState(false);
 
@@ -351,6 +355,43 @@ export default function MainContent({
     }
     setAnalysisMountReveal((prev) => (prev ? prev : true));
   }, [analysisPostId, showAnalysisPanel]);
+
+  useEffect(() => {
+    const main = mainScrollRef.current;
+    if (!main) return;
+
+    const wheelDeltaPixels = (e: WheelEvent): number => {
+      let dy = e.deltaY;
+      if (e.deltaMode === WheelEvent.DOM_DELTA_LINE) dy *= 16;
+      else if (e.deltaMode === WheelEvent.DOM_DELTA_PAGE) dy *= main.clientHeight || 0;
+      return dy;
+    };
+
+    const onWheelCapture = (e: WheelEvent) => {
+      if (e.ctrlKey) return;
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+
+      const rawTarget = e.target;
+      if (!(rawTarget instanceof Node)) return;
+
+      if (main.contains(rawTarget)) return;
+
+      if (!isSourcesListCollapsed && sourcesSidebarPanelRef.current?.contains(rawTarget)) return;
+
+      if (analysisSlidesOpen && analysisSidebarPanelRef.current?.contains(rawTarget)) return;
+
+      const el = rawTarget instanceof Element ? rawTarget : rawTarget.parentElement;
+      if (el?.closest("input, textarea, select, [contenteditable='true'], [aria-modal='true']")) return;
+
+      e.preventDefault();
+      const dy = wheelDeltaPixels(e);
+      if (dy === 0) return;
+      main.scrollTop += dy;
+    };
+
+    window.addEventListener("wheel", onWheelCapture, { capture: true, passive: false });
+    return () => window.removeEventListener("wheel", onWheelCapture, true);
+  }, [isSourcesListCollapsed, analysisSlidesOpen]);
 
   /**
    * 顶栏仙女棒 / 卡片再次点 ANALYSIS：先 analysisOpen=false 保留 postId，让右栏与 SOURCES 一样
@@ -612,6 +653,7 @@ export default function MainContent({
               <div className="absolute right-[-0.5px] top-0 z-[20] h-full w-[256px] overflow-hidden bg-white">
                 {/* 以贴中栏的右缘为轴：折叠时 translate-x-full 向右藏入中缝侧，展开时向左铺开 */}
                 <div
+                  ref={sourcesSidebarPanelRef}
                   className={[
                     "flex h-full w-[256px] flex-col overflow-hidden bg-white",
                     "layout-sidebar-motion",
@@ -649,6 +691,7 @@ export default function MainContent({
             />
 
             <div
+              ref={mainScrollRef}
               id="layout-content-col"
               data-name="uAI News (800*1024)"
               data-node-id="37:4683"
@@ -764,6 +807,7 @@ export default function MainContent({
                 <div className="absolute left-0 top-0 z-[20] h-full w-full overflow-hidden">
                   {/* 以贴中栏的左缘为轴：折叠时 -translate-x-full 藏到接缝左侧，展开时向右滑入右栏 */}
                   <div
+                    ref={analysisSidebarPanelRef}
                     data-name="ANALYSIS (336×viewport)"
                     className={[
                       "absolute left-0 top-0 box-border flex h-full min-h-0 w-[336px] min-w-[336px] max-w-[336px] flex-col items-stretch overflow-hidden bg-white",
