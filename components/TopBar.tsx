@@ -98,7 +98,7 @@ export default function TopBar({
           data-name="Container"
           data-node-id={dualCollapsed ? "43:5029" : "3:2671"}
           className={[
-            "motion-layout-ease absolute z-20 flex h-[53px] w-9 shrink-0 items-center justify-center transition-colors hover:bg-[#f5f5f5]",
+            "topbar-m-left motion-layout-ease absolute z-20 flex h-[53px] w-9 shrink-0 items-center justify-center transition-colors hover:bg-[#f5f5f5]",
             isSourcesListCollapsed ? "text-[#6a7282]" : "text-[#0055FF]",
           ].join(" ")}
           style={leftToggleStyle}
@@ -122,7 +122,7 @@ export default function TopBar({
 
         {/* 右侧工具条：Figma 3:2668 — ANALYSIS 开时为 336 宽条内 justify-end + gap-8 + px-8；收起时靠中栏右内沿 */}
         <div
-          className={`absolute z-20 flex h-[53px] min-w-0 items-center overflow-visible ${analysisPanelOpen ? "justify-end gap-2 px-2" : "justify-end gap-2 px-2"}`}
+          className={`topbar-m-right absolute z-20 flex h-[53px] min-w-0 items-center overflow-visible ${analysisPanelOpen ? "justify-end gap-2 px-2" : "justify-end gap-2 px-2"}`}
           style={rightClusterStyle}
         >
           <Link

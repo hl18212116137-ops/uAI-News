@@ -21,7 +21,7 @@ export default function SiteHeader({ stats }: SiteHeaderProps) {
       >
         <div data-name="Heading 1" data-node-id="37:4685" className="flex w-full flex-col items-start">
           <h1
-            className="m-0 w-full font-sans text-[32px] font-semibold leading-8 tracking-[-0.64px] text-[#111113]"
+            className="m-0 w-full font-sans text-[26px] font-semibold leading-8 tracking-[-0.52px] text-[#111113] sm:text-[28px] sm:tracking-[-0.56px] lg:text-[32px] lg:tracking-[-0.64px]"
             data-node-id="37:4686"
           >
             uAI News

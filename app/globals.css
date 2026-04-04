@@ -311,3 +311,21 @@
 .main-content-scroll.is-scrolling-thumb::-webkit-scrollbar-thumb:hover {
   background-color: #c4c4c4;
 }
+
+/* 顶栏：桌面仍用内联 left/right（对齐 800px 中栏）；窄屏覆盖为常规左右贴边 */
+@media (max-width: 1023px) {
+  .topbar-m-left {
+    left: 12px !important;
+    right: auto !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .topbar-m-right {
+    left: auto !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: min(68vw, 280px);
+    transform: translateY(-50%) !important;
+    justify-content: flex-end !important;
+  }
+}

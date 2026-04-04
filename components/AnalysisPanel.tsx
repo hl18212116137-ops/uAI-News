@@ -846,7 +846,7 @@ export default function AnalysisPanel({
   return (
     <aside
       data-name="INSIGHT (336*1024)"
-      className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-white pt-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-6 pr-0"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-white pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-4 pr-0 pt-5 sm:pl-5 sm:pt-6 lg:pl-6"
       aria-label="Insight"
     >
       <div

@@ -18,7 +18,7 @@ function HomePageShellInner({
     <div
       data-name="Body"
       data-node-id="3:2330"
-      className="relative flex h-screen min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-auto overflow-y-hidden bg-white"
+      className="relative flex h-screen min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-hidden overflow-y-hidden bg-white lg:overflow-x-auto"
     >
       <TopBar
         user={user}

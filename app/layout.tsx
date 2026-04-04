@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import WebVitalsReporter from "@/components/WebVitalsReporter";
@@ -32,6 +32,12 @@ function metadataBaseUrl(): URL {
 const siteTitle = "uAI News | AI 资讯聚合";
 const siteDescription =
   "订阅 AI 领域信息源，中文摘要与 INSIGHT 解读，个性化信息流与书签。";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   metadataBase: metadataBaseUrl(),

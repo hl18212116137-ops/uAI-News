@@ -611,12 +611,20 @@ export default function MainContent({
     initialPosts.length <= 5;
 
   const bodyShellClass = isShell
-    ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-hidden bg-white"
-    : "relative flex h-screen min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-auto overflow-y-hidden bg-white";
+    ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-hidden bg-white lg:overflow-x-auto"
+    : "relative flex h-screen min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-hidden overflow-y-hidden bg-white lg:overflow-x-auto";
 
   return (
     <>
       <div data-name="Body" data-node-id="3:2330" className={bodyShellClass}>
+        {!isSourcesListCollapsed ? (
+          <button
+            type="button"
+            className="fixed inset-x-0 bottom-0 top-14 z-[88] bg-black/35 lg:hidden"
+            aria-label="关闭信息源列表"
+            onClick={() => setIsSourcesListCollapsed(true)}
+          />
+        ) : null}
         {!isShell && (
           <>
             <TopBar
@@ -648,9 +656,9 @@ export default function MainContent({
               id="layout-sources-col"
               data-name="SOURCES Frame"
               data-node-id="43:4890"
-              className={`${MAIN_SIDE_FRAME_CLASS} z-[20]`}
+              className={`${MAIN_SIDE_FRAME_CLASS} z-[20] max-lg:pointer-events-none max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:top-14 max-lg:z-[92] ${!isSourcesListCollapsed ? "max-lg:pointer-events-auto" : ""}`}
             >
-              <div className="absolute right-[-0.5px] top-0 z-[20] h-full w-[256px] overflow-hidden bg-white">
+              <div className="absolute right-[-0.5px] top-0 z-[20] h-full w-[256px] overflow-hidden bg-white max-lg:left-0 max-lg:right-auto">
                 {/* 以贴中栏的右缘为轴：折叠时 translate-x-full 向右藏入中缝侧，展开时向左铺开 */}
                 <div
                   ref={sourcesSidebarPanelRef}
@@ -696,7 +704,7 @@ export default function MainContent({
               data-name="uAI News (800*1024)"
               data-node-id="37:4683"
               className={[
-                "main-content-scroll relative z-0 box-border flex min-h-0 w-full flex-col items-stretch overflow-x-hidden overflow-y-auto bg-white px-8 py-[24px]",
+                "main-content-scroll relative z-0 box-border flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col items-stretch overflow-x-hidden overflow-y-auto bg-white px-4 py-5 sm:px-6 lg:max-w-none lg:flex-none lg:px-8 lg:py-[24px]",
                 mainScrollThumbVisible ? "is-scrolling-thumb" : "",
               ].join(" ")}
               onScroll={handleMainContentScroll}
@@ -801,7 +809,15 @@ export default function MainContent({
               id="layout-analysis-col"
               data-name="ANALYSIS Frame"
               data-node-id="43:4891"
-              className={`${MAIN_SIDE_FRAME_CLASS} z-[20]`}
+              className={[
+                MAIN_SIDE_FRAME_CLASS,
+                "z-[20]",
+                analysisPostId != null ? "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:top-14 max-lg:z-[91]" : "",
+                analysisPostId != null && showAnalysisPanel ? "max-lg:pointer-events-auto" : "",
+                analysisPostId != null && !showAnalysisPanel ? "max-lg:pointer-events-none" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             >
               {analysisPostId != null ? (
                 <div className="absolute left-0 top-0 z-[20] h-full w-full overflow-hidden">
@@ -812,6 +828,7 @@ export default function MainContent({
                     className={[
                       "absolute left-0 top-0 box-border flex h-full min-h-0 w-[336px] min-w-[336px] max-w-[336px] flex-col items-stretch overflow-hidden bg-white",
                       "layout-sidebar-motion",
+                      "max-lg:left-0 max-lg:right-0 max-lg:w-full max-lg:min-w-0 max-lg:max-w-none",
                       analysisSlidesOpen
                         ? "pointer-events-auto translate-x-0 opacity-100"
                         : "pointer-events-none -translate-x-full opacity-0",

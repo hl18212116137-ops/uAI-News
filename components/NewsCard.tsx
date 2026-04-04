@@ -76,7 +76,7 @@ function NewsCard({
   const articlePad =
     variant === "compact"
       ? "pt-10 pb-12"
-      : "pt-[48px] pb-[64px]";
+      : "pt-8 pb-12 sm:pt-[40px] sm:pb-14 lg:pt-[48px] lg:pb-[64px]";
 
   return (
     <article
@@ -93,7 +93,7 @@ function NewsCard({
       {/* Figma 无收藏位；产品保留为右上角绝对定位，不挤占 meta 行 */}
       {readonly ? (
         <div
-          className="absolute right-[32px] top-[48px] z-[1] flex h-6 w-6 items-center justify-center rounded-[10px]"
+          className="absolute right-3 top-8 z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]"
           aria-hidden
         >
           <svg
@@ -114,7 +114,7 @@ function NewsCard({
         <Tooltip content={isBookmarked ? "取消收藏" : "收藏这篇文章"}>
           <button
             type="button"
-            className="absolute right-[32px] top-[48px] z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04]"
+            className="absolute right-3 top-8 z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04] sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]"
             aria-label={isBookmarked ? "取消收藏" : "收藏"}
             onClick={(e) => {
               e.preventDefault();
@@ -230,7 +230,7 @@ function NewsCard({
 
       {!readonly && onAnalysisToggle ? (
         <div
-          className="absolute bottom-[24.5px] right-[32px] z-[1]"
+          className="absolute bottom-4 right-3 z-[1] sm:bottom-5 sm:right-5 lg:bottom-[24.5px] lg:right-[32px]"
           data-name={analysisActive ? "Overlay+Border+Shadow" : "Background+Border"}
           data-node-id={analysisActive ? "37:4759" : "37:4781"}
         >
