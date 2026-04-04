@@ -612,7 +612,7 @@ export default function MainContent({
 
   const bodyShellClass = isShell
     ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-hidden bg-white lg:overflow-x-auto"
-    : "relative flex h-screen min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-hidden overflow-y-hidden bg-white lg:overflow-x-auto";
+    : "relative flex h-dvh min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-hidden overflow-y-hidden bg-white lg:overflow-x-auto";
 
   return (
     <>
@@ -656,7 +656,7 @@ export default function MainContent({
               id="layout-sources-col"
               data-name="SOURCES Frame"
               data-node-id="43:4890"
-              className={`${MAIN_SIDE_FRAME_CLASS} z-[20] max-lg:pointer-events-none max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:top-14 max-lg:z-[92] ${!isSourcesListCollapsed ? "max-lg:pointer-events-auto" : ""}`}
+              className={`${MAIN_SIDE_FRAME_CLASS} z-[20] max-lg:pointer-events-none max-lg:fixed max-lg:bottom-0 max-lg:left-0 max-lg:top-14 max-lg:z-[92] max-lg:h-0 max-lg:min-h-0 max-lg:flex-none max-lg:overflow-visible ${!isSourcesListCollapsed ? "max-lg:pointer-events-auto" : ""}`}
             >
               <div className="absolute right-[-0.5px] top-0 z-[20] h-full w-[256px] overflow-hidden bg-white max-lg:left-0 max-lg:right-auto">
                 {/* 以贴中栏的右缘为轴：折叠时 translate-x-full 向右藏入中缝侧，展开时向左铺开 */}
@@ -812,7 +812,10 @@ export default function MainContent({
               className={[
                 MAIN_SIDE_FRAME_CLASS,
                 "z-[20]",
-                analysisPostId != null ? "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:top-14 max-lg:z-[91]" : "",
+                analysisPostId == null ? "max-lg:hidden" : "",
+                analysisPostId != null
+                  ? "max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:top-14 max-lg:z-[91] max-lg:h-0 max-lg:min-h-0 max-lg:flex-none max-lg:overflow-visible"
+                  : "",
                 analysisPostId != null && showAnalysisPanel ? "max-lg:pointer-events-auto" : "",
                 analysisPostId != null && !showAnalysisPanel ? "max-lg:pointer-events-none" : "",
               ]
