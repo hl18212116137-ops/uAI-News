@@ -1,4 +1,9 @@
 import 'server-only'
+import {
+  mediaUrlsFromDbJson,
+  referencedPostFromDbJson,
+  socialEngagementFromDbJson,
+} from '@/lib/db/news'
 import { supabase } from './supabase'
 import { NewsItem } from './types'
 
@@ -112,6 +117,9 @@ export async function getBookmarkedNews(userId: string): Promise<NewsItem[]> {
         originalText: item.original_text,
         createdAt: item.created_at,
         importanceScore: item.importance_score,
+        mediaUrls: mediaUrlsFromDbJson(item.media_urls),
+        socialEngagement: socialEngagementFromDbJson(item.social_engagement),
+        referencedPost: referencedPostFromDbJson(item.referenced_post),
       })) as NewsItem[]
   } catch (error) {
     console.error('Failed to get bookmarked news:', error)

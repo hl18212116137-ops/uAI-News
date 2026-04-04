@@ -1,4 +1,4 @@
-import { AIService, AIProcessedContent } from './ai-service';
+import { AIService, AIProcessedContent, PostInsightContext } from './ai-service';
 import { NewsCategory } from '../types';
 import { MinimaxService } from './minimax-service';
 import { ClaudeService } from './claude-service';
@@ -222,11 +222,20 @@ class AIServiceWithFallback implements AIService {
   async analyzePost(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    insightContext?: PostInsightContext,
+    referencedPost?: import('../types').XReferencedPost | null
   ): Promise<import('../types').PostAnalysis> {
     try {
       return await this.retryWithExponentialBackoff(
-        () => this.primaryService.analyzePost(text, authorName, authorHandle),
+        () =>
+          this.primaryService.analyzePost(
+            text,
+            authorName,
+            authorHandle,
+            insightContext,
+            referencedPost ?? null
+          ),
         3
       );
     } catch (primaryError) {
@@ -237,7 +246,14 @@ class AIServiceWithFallback implements AIService {
 
       try {
         return await this.retryWithExponentialBackoff(
-          () => this.fallbackService.analyzePost(text, authorName, authorHandle),
+          () =>
+            this.fallbackService.analyzePost(
+              text,
+              authorName,
+              authorHandle,
+              insightContext,
+              referencedPost ?? null
+            ),
           2
         );
       } catch (fallbackError) {
@@ -249,7 +265,11 @@ class AIServiceWithFallback implements AIService {
           eventType: 'other',
           sourceType: 'user',
           importanceScore: 50,
-          noveltyScore: 50
+          noveltyScore: 50,
+          translatedText: undefined,
+          translatedTextReferenced: undefined,
+          highlights: undefined,
+          relevance: undefined,
         };
       }
     }

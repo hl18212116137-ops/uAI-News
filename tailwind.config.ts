@@ -4,6 +4,8 @@ const config: Config = {
   content: [
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    // lib/ holds MAIN_FRAME_CLASS etc.; must be scanned or grid-cols-[…] is never generated
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
@@ -18,6 +20,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       spacing: {
         '70': '280px',
@@ -70,8 +73,15 @@ const config: Config = {
         '150': '150ms',
         '200': '200ms',
         '250': '250ms',
+        '280': '280ms',
         '300': '300ms',
         '350': '350ms',
+        // 与 globals.css --layout-duration 一致，供非 var 场景
+        layout: '280ms',
+      },
+      transitionTimingFunction: {
+        // Linear 类产品常用 ease-out
+        'layout-out': 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
     },
   },

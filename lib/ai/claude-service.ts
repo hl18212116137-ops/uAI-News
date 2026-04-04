@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { AIService, AIProcessedContent } from './ai-service';
+import { AIService, AIProcessedContent, PostInsightContext } from './ai-service';
+import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
 
@@ -420,24 +421,85 @@ ${postsList}
   async analyzePost(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    insightContext?: PostInsightContext,
+    referencedPost?: import('../types').XReferencedPost | null
   ): Promise<import('../types').PostAnalysis> {
+    const persona =
+      (insightContext?.persona && insightContext.persona.trim()) || DEFAULT_INSIGHT_PERSONA;
+    const sourcesLines = insightContext?.subscribedSourcesLines?.trim() ?? '';
+    const sourcesSection = sourcesLines
+      ? `用户常看的信息源（名称与 @handle）：\n${sourcesLines}`
+      : '用户常看的信息源：暂无订阅列表；relevance 仍只输出一句「和这类读者的关系」（见字段说明）。';
+
+    const ref =
+      referencedPost?.text?.trim() && referencedPost
+        ? referencedPost
+        : null;
+    const refAuthorLine =
+      ref && (ref.name || ref.userName)
+        ? [ref.name?.trim(), ref.userName ? `@${String(ref.userName).replace(/^@/, '')}` : '']
+            .filter(Boolean)
+            .join(' ')
+        : '（嵌套作者未知）';
+
+    const bodyIntro = ref
+      ? `推文结构：存在嵌套推文（${ref.kind === 'retweet' ? '转发' : '引用'}）。
+
+发布者：${authorName} (@${authorHandle})
+
+【主帖】为其直接发出的文字（引用时的评论、转发附言；纯转发时可能为空或极短）：
+${text.trim() || '（空）'}
+
+【嵌套推文】为被引用/被转发的原文，作者：${refAuthorLine}
+${ref.text}`
+      : `推文内容：${text}
+作者：${authorName} (@${authorHandle})`;
+
+    const hlDesc =
+      '字符串数组，**2～3 条，最多 3 条**。每条单独一句大白话，20-35 字以内为宜，写清一个信息点（事实、数字、动向）；少用术语。**加粗**仅用于该条里最必要的专有名词、产品/模型名、机构名或关键数字；每条**最多 1 处** Markdown 双星号短语；加粗片段不超过 6 个汉字（英文专名可略长）；禁止加粗半句或整句；避免与译文逐句重复';
+
+    const relDesc =
+      '**单个字符串**（禁止数组、禁止换行）。**只回答一句：这条帖子和这位用户有什么关系**——结合读者画像与常看订阅源（作者在不在列表、话题是否命中其关注领域、是否值得 Ta 点开看等）；无订阅列表时写与「一般关注 AI 前沿的中文读者」的关系即可。不要复述帖子事实、不要写「变化+启发」两段式，**只保留关系这一句**。35 个汉字以内；全句**最多 1 处** Markdown 加粗（如 @handle 或领域词）。若作者 @' +
+      authorHandle +
+      ' 在订阅里可自然点出。';
+
+    const translationRules = ref
+      ? `2. translatedText: 仅【主帖】的完整简体中文译文；主帖无实质内容时用空字符串 ""
+3. translatedTextReferenced: 【嵌套推文】的完整简体中文译文（必填，勿省略句段）。已是中文则略润色
+4. highlights: ${hlDesc}
+5. relevance: ${relDesc}
+6. entities: 实体列表（公司、产品、人物名称，如 ["OpenAI", "GPT-4", "Sam Altman"]）
+7. eventType: 事件类型（announcement/discussion/analysis/reaction/other）
+8. sourceType: 来源类型（official/media/expert/user）
+9. importanceScore: 重要性评分（0-100，考虑影响力、新颖性、价值）
+10. noveltyScore: 新颖度评分（0-100，是否是新信息）`
+      : `2. translatedText: 必填。将推文全文完整译为简体中文（勿省略句段，勿在字段内保留外文句子）。若原文已是中文，输出与原文一致或略润色后的全文
+3. highlights: ${hlDesc}
+4. relevance: ${relDesc}
+5. entities: 实体列表（公司、产品、人物名称，如 ["OpenAI", "GPT-4", "Sam Altman"]）
+6. eventType: 事件类型（announcement/discussion/analysis/reaction/other）
+7. sourceType: 来源类型（official/media/expert/user）
+8. importanceScore: 重要性评分（0-100，考虑影响力、新颖性、价值）
+9. noveltyScore: 新颖度评分（0-100，是否是新信息）`;
+
     const prompt = `分析以下推文，提取关键信息：
 
-推文内容：${text}
-作者：${authorName} (@${authorHandle})
+${bodyIntro}
+
+读者画像（中文）：${persona}
+${sourcesSection}
 
 请提取以下信息并以JSON格式返回：
-1. canonicalSummary: 标准化摘要（简洁描述核心内容，50字以内）
-2. entities: 实体列表（公司、产品、人物名称，如 ["OpenAI", "GPT-4", "Sam Altman"]）
-3. eventType: 事件类型（announcement/discussion/analysis/reaction/other）
-4. sourceType: 来源类型（official/media/expert/user）
-5. importanceScore: 重要性评分（0-100，考虑影响力、新颖性、价值）
-6. noveltyScore: 新颖度评分（0-100，是否是新信息）
+1. canonicalSummary: 标准化摘要（简洁描述核心内容，50字以内${ref ? '；综合主帖与嵌套推文的信息价值' : ''}）
+${translationRules}
 
 返回格式：
 {
   "canonicalSummary": "...",
+  "translatedText": "...",
+${ref ? '  "translatedTextReferenced": "...",\n' : ''}  "highlights": ["要点一", "要点二", "要点三"],
+  "relevance": "**@作者** 在你订阅里，这条讲模型更新，和你常看的方向相关。",
   "entities": ["...", "..."],
   "eventType": "announcement",
   "sourceType": "official",
@@ -450,8 +512,48 @@ ${postsList}
       const cleanedText = responseText.trim().replace(/```json\n?/g, '').replace(/```\n?/g, '');
       const result = JSON.parse(cleanedText);
 
+      const translatedText =
+        typeof result.translatedText === 'string' && result.translatedText.trim() !== ''
+          ? result.translatedText.trim()
+          : undefined;
+
+      let translatedTextReferenced: string | undefined;
+      if (
+        ref &&
+        typeof result.translatedTextReferenced === 'string' &&
+        result.translatedTextReferenced.trim() !== ''
+      ) {
+        translatedTextReferenced = result.translatedTextReferenced.trim();
+      }
+
+      let highlights: string[] | undefined;
+      if (Array.isArray(result.highlights)) {
+        const h = result.highlights
+          .filter((x: unknown): x is string => typeof x === 'string')
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+          .slice(0, 3);
+        if (h.length > 0) highlights = h;
+      }
+
+      let relevance: string | undefined;
+      const rawRel = result.relevance;
+      if (typeof rawRel === 'string' && rawRel.trim() !== '') {
+        relevance = rawRel.trim();
+      } else if (Array.isArray(rawRel)) {
+        const first = rawRel
+          .filter((x: unknown): x is string => typeof x === 'string')
+          .map((s: string) => s.trim())
+          .filter(Boolean)[0];
+        if (first) relevance = first;
+      }
+
       return {
         canonicalSummary: result.canonicalSummary || text.substring(0, 50),
+        translatedText,
+        translatedTextReferenced,
+        highlights,
+        relevance,
         entities: Array.isArray(result.entities) ? result.entities : [],
         eventType: result.eventType || 'other',
         sourceType: result.sourceType || 'user',

@@ -1,5 +1,6 @@
 import { BaseParser } from './base-parser';
 import { ParsedContent } from '../types';
+import { extractReferencedPostFromTweet } from '@/lib/x';
 
 /**
  * X / Twitter 解析器
@@ -43,16 +44,21 @@ export class XParser implements BaseParser {
       url,
       platform: 'X',
       rawData: tweetData,
+      ...(tweetData.referencedPost ? { referencedPost: tweetData.referencedPost } : {}),
     };
   }
 
   /**
    * 使用 TwitterAPI.io 获取推文数据
    */
-  private async fetchTweetFromAPI(tweetId: string, username: string): Promise<{
+  private async fetchTweetFromAPI(
+    tweetId: string,
+    username: string
+  ): Promise<{
     text: string;
     authorName: string;
     createdAt: string;
+    referencedPost?: import('@/lib/types').XReferencedPost;
   }> {
     const apiKey = process.env.TWITTERAPI_IO_KEY;
 
@@ -84,10 +90,14 @@ export class XParser implements BaseParser {
         throw new Error('Tweet not found in API response');
       }
 
+      const t = tweet as Record<string, unknown>;
+      const referencedPost = extractReferencedPostFromTweet(t);
+
       return {
         text: tweet.text || '',
         authorName: tweet.user?.name || username,
         createdAt: tweet.createdAt || tweet.created_at || new Date().toISOString(),
+        ...(referencedPost ? { referencedPost } : {}),
       };
     } catch (error) {
       console.error(`Error fetching tweet ${tweetId}:`, error);

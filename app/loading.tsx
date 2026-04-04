@@ -2,7 +2,7 @@ export default function Loading() {
   return (
     <div className="flex min-h-screen bg-white">
       {/* Sidebar 骨架 */}
-      <div className="w-[280px] h-screen flex-shrink-0 bg-white border-r border-[#e5e7eb]" />
+      <div className="w-[256px] h-screen flex-shrink-0 bg-white border-r border-[#e5e7eb]" />
 
       {/* 主内容骨架 */}
       <div className="flex-1 min-w-0">

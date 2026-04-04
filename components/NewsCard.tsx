@@ -1,179 +1,267 @@
-import { memo } from "react";
-import Image from "next/image";
-import { NewsItem, CATEGORY_ZH_MAP } from "@/lib/types";
+"use client";
+
+import { memo, useEffect, useState } from "react";
+import { NewsItem } from "@/lib/types";
 import { isNewPost, formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
+import SourceAvatarImg from "./SourceAvatarImg";
+import { FIGMA_FEED } from "@/lib/figma-feed-assets";
 
 function formatDateZH(dateString: string): string {
   const d = new Date(dateString);
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${y}/${m}/${day}`;
 }
 
-type SourceMeta = {
-  id: string;
-  handle: string;
-  name: string;
-  avatar?: string;
-};
+/** 本地时区，24 小时制 */
+function formatTimeLocalHM(dateString: string): string {
+  const d = new Date(dateString);
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${h}:${min}`;
+}
+
+function getCategoryTag(category: NewsItem["category"]) {
+  switch (category) {
+    case "Model Update":
+      return "MODELS";
+    case "Company News":
+      return "INDUSTRY";
+    case "Funding":
+      return "FUNDING";
+    case "Policy":
+      return "POLICY";
+    case "Research":
+      return "RESEARCH";
+    case "Product Update":
+      return "PRODUCTS";
+    case "Open Source":
+      return "OPEN SOURCE";
+    case "Other":
+    default:
+      return "OTHER";
+  }
+}
 
 type NewsCardProps = {
   post: NewsItem;
   variant?: "default" | "compact";
-  sources?: SourceMeta[];
   isBookmarked?: boolean;
   onBookmarkToggle?: (id: string) => void;
-  readonly?: boolean; // Server Component 环境下使用，不渲染 onClick
-  isSourceSubscribed?: boolean; // undefined = 不显示订阅按钮
-  onSubscriptionToggle?: (sourceId: string, sourceHandle: string) => void;
-  sourceId?: string; // 对应 sources 表的 id，用于订阅操作
+  readonly?: boolean;
+  analysisActive?: boolean;
+  onAnalysisToggle?: (postId: string) => void;
+  avatarPriority?: boolean;
 };
 
 export default memo(NewsCard);
 
-function NewsCard({ post, variant = "default", sources = [], isBookmarked = false, onBookmarkToggle, readonly = false, isSourceSubscribed, onSubscriptionToggle, sourceId }: NewsCardProps) {
-  const sourceHandle = post.source?.handle || '';
-  const sourceName = post.source?.name || '未知来源';
-  const sourceUrl = post.source?.url || '#';
-  const isNew = isNewPost(post.createdAt);
+function NewsCard({
+  post,
+  variant = "default",
+  isBookmarked = false,
+  onBookmarkToggle,
+  readonly = false,
+  analysisActive = false,
+  onAnalysisToggle,
+  avatarPriority = false,
+}: NewsCardProps) {
+  const sourceName = post.source?.name || "未知来源";
+  const sourceUrl = post.source?.url || "#";
+  const sourceAvatar = post.source?.avatar;
+  const avatarLetter = (sourceName || post.source?.handle || "?").charAt(0).toUpperCase();
+  /** isNewPost 依赖 sessionStorage，SSR 与首帧客户端必须一致，故挂载后再算 */
+  const [showNewBadge, setShowNewBadge] = useState(false);
+  useEffect(() => {
+    setShowNewBadge(isNewPost(post.createdAt));
+  }, [post.createdAt]);
 
-  // 从 sources 列表匹配头像
-  const matched = sources.find(s => s.handle?.toLowerCase() === sourceHandle.toLowerCase());
-  const avatar = matched?.avatar;
-
-  // 计算阅读时间（粗略估算：按平均阅读速度 200 字/分钟）
-  const wordCount = post.summary?.length || 0;
-  const readTime = Math.max(1, Math.ceil(wordCount / 200));
-
-  const containerClass = variant === "compact"
-    ? "rounded-2xl px-[28px] py-[14px] bg-white border border-[#f3f4f6]"
-    : "rounded-2xl px-[28px] pt-[20px] pb-[14px] bg-white border border-[#f3f4f6]";
+  const articlePad =
+    variant === "compact"
+      ? "pt-10 pb-12"
+      : "pt-[48px] pb-[64px]";
 
   return (
-    <div className={containerClass}>
-      {/* 顶部行：分类 · 新推 | 收藏 */}
-      <div className="flex items-center justify-between h-6" style={{ marginBottom: '12px' }}>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-[#99a1af]"># {CATEGORY_ZH_MAP[post.category] ?? post.category}</span>
-          {isNew && (
-            <>
-              <span className="text-[#d1d5dc]">·</span>
-              <span className="text-[#fb2c36] font-medium">新推</span>
-            </>
-          )}
+    <article
+      data-name="Article"
+      data-node-id="37:4741"
+      className={[
+        "relative flex w-full shrink-0 flex-col items-start gap-[32px] rounded-[2px]",
+        analysisActive ? "bg-[rgba(255,178,36,0.02)]" : "bg-white",
+        articlePad,
+      ].join(" ")}
+    >
+      {/* 右侧金条由 NewsList 统一绘制并平移 */}
+
+      {/* Figma 无收藏位；产品保留为右上角绝对定位，不挤占 meta 行 */}
+      {readonly ? (
+        <div
+          className="absolute right-[32px] top-[48px] z-[1] flex h-6 w-6 items-center justify-center rounded-[10px]"
+          aria-hidden
+        >
+          <svg
+            className={`h-4 w-4 ${isBookmarked ? "text-[#d7a220]" : "text-[#99a1af]"}`}
+            fill={isBookmarked ? "currentColor" : "none"}
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+            />
+          </svg>
         </div>
-        {readonly ? (
-          // Server Component 环境：只展示收藏状态，不渲染 onClick
-          <div className="w-6 h-6 rounded-[10px] flex items-center justify-center flex-shrink-0">
+      ) : onBookmarkToggle ? (
+        <Tooltip content={isBookmarked ? "取消收藏" : "收藏这篇文章"}>
+          <button
+            type="button"
+            className="absolute right-[32px] top-[48px] z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04]"
+            aria-label={isBookmarked ? "取消收藏" : "收藏"}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onBookmarkToggle(post.id);
+            }}
+          >
             <svg
-              className={`w-4 h-4 ${isBookmarked ? 'text-[#d7a220]' : 'text-[#99a1af]'}`}
+              className={`h-4 w-4 transition-colors ${isBookmarked ? "text-[#d7a220]" : "text-[#99a1af]"}`}
               fill={isBookmarked ? "currentColor" : "none"}
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
                 d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
               />
             </svg>
+          </button>
+        </Tooltip>
+      ) : null}
+
+      {/* Linear 式：首行 avatar + meta 垂直居中；正文与 meta 文字左缘对齐（1.5rem 头像 + gap-3） */}
+      <div className="flex w-full min-w-0 flex-col gap-[32px]">
+        <div className="flex w-full min-w-0 items-start gap-3">
+          <div className="shrink-0">
+            <SourceAvatarImg
+              src={sourceAvatar}
+              alt={sourceName}
+              letter={avatarLetter}
+              imgClassName="h-6 w-6 rounded-[2px] border border-[#F0F0F2] object-cover shadow-xs"
+              placeholderClassName="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-[2px] border border-[#F0F0F2] bg-gray-200 text-[11px] font-semibold text-[#6a7282] shadow-xs"
+              priority={avatarPriority}
+            />
           </div>
-        ) : (
-          <Tooltip content={isBookmarked ? "取消收藏" : "收藏这篇文章"}>
-            <button
-              className="w-6 h-6 rounded-[10px] flex items-center justify-center hover:bg-gray-100 transition-colors flex-shrink-0"
-              aria-label={isBookmarked ? "取消收藏" : "收藏"}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onBookmarkToggle?.(post.id);
-              }}
+          <div
+            data-name="Container"
+            data-node-id="37:4742"
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-[4px]"
+          >
+            <span
+              className="flex h-[17px] items-center font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#05f]"
+              data-node-id="37:4744"
             >
-              <svg
-                className={`w-4 h-4 transition-colors ${isBookmarked ? 'text-[#d7a220]' : 'text-[#99a1af]'}`}
-                fill={isBookmarked ? "currentColor" : "none"}
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                />
-              </svg>
-            </button>
-          </Tooltip>
-        )}
-      </div>
+              # {getCategoryTag(post.category)}
+            </span>
+            <span
+              className="flex h-[17px] items-center font-mono text-[11px] font-normal uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]"
+              data-node-id="37:4746"
+            >
+              /
+            </span>
+            <span
+              className="flex min-h-[17px] min-w-0 items-center tabular-nums font-mono text-[11px] font-normal leading-[16.5px] tracking-[1.1px] text-[#8a8a93]"
+              data-node-id="37:4748"
+            >
+              {formatDateZH(post.publishedAt)}
+            </span>
+            <span
+              className="flex h-[17px] items-center font-mono text-[11px] font-normal uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]"
+              data-node-id="37:4750"
+            >
+              /
+            </span>
+            <span
+              className="flex h-[17px] items-center tabular-nums font-mono text-[11px] font-normal leading-[16.5px] tracking-[1.1px] text-[#8a8a93]"
+              data-node-id="37:4752"
+            >
+              {formatTimeLocalHM(post.publishedAt)}
+            </span>
+            {showNewBadge ? (
+              <>
+                <span className="flex h-[17px] items-center font-mono text-[11px] uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]">
+                  /
+                </span>
+                <span className="flex h-[17px] items-center font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#fb2c36]">
+                  NEW
+                </span>
+              </>
+            ) : null}
+          </div>
+        </div>
 
-      {/* 标题 */}
-      <h2 className="text-xl font-semibold text-[#101828] leading-snug" style={{ marginBottom: '12px' }}>
-        <a
-          href={sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-primary-600 transition-colors duration-200"
+        <div
+          data-name="Container"
+          data-node-id="37:4753"
+          className="flex min-w-0 w-full max-w-full flex-col gap-[16px] pl-9"
         >
-          {formatTypography(post.title)}
-        </a>
-      </h2>
-
-      {/* 摘要 */}
-      <p className="text-sm text-[#4a5568] leading-[1.625] line-clamp-2" style={{ marginBottom: '20px' }}>
-        {formatTypography(post.summary)}
-      </p>
-
-      {/* 底部元数据：头像 · 作者名 · 关注按钮 · 日期 · 阅读时间 */}
-      <div className="flex items-center gap-2 text-xs text-[#b5bcc4]" style={{ marginBottom: '12px' }}>
-        {avatar ? (
-          <Image
-            src={avatar}
-            alt={sourceName}
-            width={16}
-            height={16}
-            className="rounded-full flex-shrink-0 object-cover"
-          />
-        ) : (
-          <div className="w-4 h-4 rounded-full bg-gray-200 flex-shrink-0" />
-        )}
-        <span>{sourceName}</span>
-        {/* 关注/取消关注按钮（仅在非 readonly 模式且有订阅回调时显示） */}
-        {!readonly && onSubscriptionToggle && isSourceSubscribed !== undefined && (
-          <Tooltip content={isSourceSubscribed ? "取消关注" : "关注此信息源"}>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onSubscriptionToggle(sourceId ?? sourceHandle, sourceHandle);
-              }}
-              className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
-                isSourceSubscribed
-                  ? 'text-[#fb2c36] hover:text-[#99a1af]'
-                  : 'text-[#99a1af] hover:text-[#fb2c36]'
-              }`}
-              aria-label={isSourceSubscribed ? "取消关注" : "关注"}
+          <h2
+            data-name="Heading 1"
+            data-node-id="37:4754"
+            className="m-0 min-w-0 font-sans text-[20px] font-bold leading-[27.5px] tracking-[-0.5px] text-[#18181b]"
+          >
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="motion-layout-ease transition-colors hover:text-primary-600"
             >
-              {isSourceSubscribed ? (
-                <>
-                  <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  已关注
-                </>
-              ) : (
-                <>
-                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  关注
-                </>
-              )}
-            </button>
-          </Tooltip>
-        )}
-        <span className="text-[#d1d5dc]">·</span>
-        <span>{formatDateZH(post.publishedAt)}</span>
-        <span className="text-[#d1d5dc]">·</span>
-        <span>{readTime}分钟</span>
+              {formatTypography(post.title)}
+            </a>
+          </h2>
+          <p
+            data-name="Container"
+            data-node-id="37:4756"
+            className="m-0 line-clamp-2 font-sans text-[14px] font-normal leading-[22.4px] text-[#52525b]"
+          >
+            {formatTypography(post.summary)}
+          </p>
+        </div>
       </div>
-    </div>
+
+      {!readonly && onAnalysisToggle ? (
+        <div
+          className="absolute bottom-[24.5px] right-[32px] z-[1]"
+          data-name={analysisActive ? "Overlay+Border+Shadow" : "Background+Border"}
+          data-node-id={analysisActive ? "37:4759" : "37:4781"}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onAnalysisToggle(post.id);
+            }}
+            aria-pressed={analysisActive}
+            className={[
+              "motion-layout-ease flex items-center gap-[8px] rounded-[2px] px-[15px] py-[7px] font-sans text-[10px] font-bold uppercase leading-[10px] tracking-[0.8px] transition-opacity hover:opacity-90",
+              analysisActive
+                ? "border border-solid border-[#ffb224] bg-[rgba(255,178,36,0.1)] text-[#ffb224] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
+                : "border border-solid border-[#e5e7eb] bg-white text-[#8a8a93]",
+            ].join(" ")}
+          >
+            <span className="relative size-[14.667px] shrink-0" data-node-id="37:4760">
+              <img alt="" src={FIGMA_FEED.analysisSparkle} className="absolute block size-full max-w-none" />
+            </span>
+            INSIGHT
+          </button>
+        </div>
+      ) : null}
+    </article>
   );
 }

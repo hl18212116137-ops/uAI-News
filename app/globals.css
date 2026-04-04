@@ -2,13 +2,108 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Linear 风格布局动效：侧栏 / 顶栏 / Tab 指示 / Feed 金条等与 prefers-reduced-motion 共用节奏 */
+:root {
+  --layout-duration: 280ms;
+  --layout-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /** 弹窗略长于布局动效，大位移时更易感知 */
+  --modal-enter-duration: 380ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --layout-duration: 1ms;
+    --modal-enter-duration: 1ms;
+  }
+
+  :is(.modal-backdrop, .modal-panel-enter) {
+    animation-duration: 1ms !important;
+  }
+}
+
+/* 弹窗入场：不用 Tailwind @apply 挂 animation，避免部分构建下动效未打进 CSS */
+@keyframes appModalBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes appModalPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/** FETCH 进度条：自上方滑入 + 淡入，与 --layout-duration / --layout-ease 同节奏（TopBar / 侧栏一致） */
+@keyframes refreshProgressStripIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .layout-transition-surface {
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /** transform + opacity，侧栏面板专用，避免与 Tailwind transition 简写互相覆盖 */
+  .layout-sidebar-motion {
+    transition-property: transform, opacity;
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /** 布局级指标动画：金条 top/height、Tab 下划线 left/width 等与侧栏同节奏 */
+  .motion-layout-metrics {
+    transition-property: top, height, left, width, opacity;
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /** 与 layout 同节奏的时长/曲线，供组件只写 transition-property */
+  .motion-layout-ease {
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /**
+   * FETCH 进度模块入场（点击 Fetch 后首次出现）
+   * both：保留 from 帧，避免首帧闪烁；reduced-motion 见文件顶部 :root
+   */
+  .refresh-progress-strip-enter {
+    animation: refreshProgressStripIn var(--layout-duration) var(--layout-ease) both;
+  }
+
+  /** 预留滚动条槽，避免 overflow 出现时正文整体左移 */
+  .scrollbar-gutter-stable {
+    scrollbar-gutter: stable;
+  }
+}
+
 @layer base {
   html {
     scroll-behavior: auto;
+    /* 与 Main 1920 画板一致：窄视口可横向滚动到 ANALYSIS / 右侧 gutter，避免整列被视口“裁掉” */
+    overflow-x: auto;
   }
 
   body {
     @apply bg-[#f5f5f5] text-gray-900;
+    overflow-x: auto;
   }
 }
 
@@ -47,6 +142,27 @@
 
   .gradient-mask-l {
     mask-image: linear-gradient(to left, transparent, black 20px);
+  }
+
+  /** 约 40% 黑叠层；入场动画见 @keyframes appModalBackdropIn */
+  .modal-backdrop {
+    @apply bg-black/40;
+    animation: appModalBackdropIn var(--modal-enter-duration) var(--layout-ease) both;
+  }
+
+  /** 与 AppModalShell / AddSourceModal 面板配合使用 */
+  .modal-panel-enter {
+    animation: appModalPanelIn var(--modal-enter-duration) var(--layout-ease) both;
+  }
+
+  /** 默认面板外壳（小、中型弹窗） */
+  .modal-panel {
+    @apply rounded-lg border border-[#e5e7eb] bg-white shadow-sm;
+  }
+
+  /** 大型弹窗外壳（周报、分析等），阴影略强一档 */
+  .modal-panel-lg {
+    @apply rounded-lg border border-[#e5e7eb] bg-white shadow-md;
   }
 }
 
@@ -100,8 +216,9 @@
   transition: opacity 0.3s ease-out;
 }
 
-/* 侧边栏滚动条按需显示 */
+/* 侧边栏滚动条按需显示；gutter 稳定，避免内容增高出现滚动条时 + / 数字整体左移 */
 .sidebar-scroll {
+  scrollbar-gutter: stable;
   scrollbar-color: transparent transparent;
   scrollbar-width: thin;
 }
@@ -127,4 +244,37 @@
 .sidebar-scroll:not(:hover)::-webkit-scrollbar-thumb {
   background: transparent;
   transition: background 0.3s ease-out;
+}
+
+/* 主内容列：gutter 稳定 + 停滚后隐藏 thumb（.is-scrolling-thumb 由 MainContent onScroll 切换） */
+.main-content-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+
+.main-content-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.main-content-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.main-content-scroll::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 4px;
+  transition: background-color var(--layout-duration) var(--layout-ease);
+}
+
+.main-content-scroll.is-scrolling-thumb {
+  scrollbar-color: #d1d5db transparent;
+}
+
+.main-content-scroll.is-scrolling-thumb::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+}
+
+.main-content-scroll.is-scrolling-thumb::-webkit-scrollbar-thumb:hover {
+  background-color: #c4c4c4;
 }

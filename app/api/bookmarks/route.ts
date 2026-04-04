@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
-import { supabase } from '@/lib/supabase'
+import {
+  addBookmarkForUser,
+  getBookmarkedIdsForUser,
+  removeBookmarkForUser,
+} from '@/lib/services/bookmarks-service'
 
 /**
  * GET /api/bookmarks
@@ -11,17 +15,12 @@ export async function GET() {
   if (errorResponse) return errorResponse
 
   try {
-    const { data, error } = await supabase
-      .from('user_bookmarks')
-      .select('news_item_id')
-      .eq('user_id', user!.id)
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
-    return NextResponse.json({ success: true, bookmarkedIds: (data || []).map((r: any) => r.news_item_id) })
-  } catch (error: any) {
+    const bookmarkedIds = await getBookmarkedIdsForUser(user!.id)
+    return NextResponse.json({ success: true, bookmarkedIds })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '获取收藏失败'
     console.error('Failed to get bookmarks:', error)
-    return NextResponse.json({ success: false, error: error.message || '获取收藏失败' }, { status: 500 })
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
@@ -38,18 +37,18 @@ export async function POST(request: NextRequest) {
     const { news_item_id } = body
 
     if (!news_item_id || typeof news_item_id !== 'string') {
-      return NextResponse.json({ success: false, error: '请提供有效的 news_item_id' }, { status: 400 })
+      return NextResponse.json(
+        { success: false, error: '请提供有效的 news_item_id' },
+        { status: 400 }
+      )
     }
 
-    const { error } = await supabase
-      .from('user_bookmarks')
-      .insert({ user_id: user!.id, news_item_id })
-
-    if (error && error.code !== '23505') throw error
+    await addBookmarkForUser(user!.id, news_item_id)
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '收藏失败'
     console.error('Failed to add bookmark:', error)
-    return NextResponse.json({ success: false, error: error.message || '收藏失败' }, { status: 500 })
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
@@ -69,16 +68,11 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: '请提供 news_item_id' }, { status: 400 })
     }
 
-    const { error } = await supabase
-      .from('user_bookmarks')
-      .delete()
-      .eq('user_id', user!.id)
-      .eq('news_item_id', newsItemId)
-
-    if (error) throw error
+    await removeBookmarkForUser(user!.id, newsItemId)
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '取消收藏失败'
     console.error('Failed to remove bookmark:', error)
-    return NextResponse.json({ success: false, error: error.message || '取消收藏失败' }, { status: 500 })
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

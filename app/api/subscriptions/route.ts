@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
-import { supabase } from '@/lib/supabase'
+import {
+  getSubscribedSourceIdsForUser,
+  subscribeUserToSource,
+  unsubscribeUserFromSource,
+} from '@/lib/services/user-subscriptions-service'
 
 /**
  * GET /api/subscriptions
@@ -11,22 +15,15 @@ export async function GET() {
   if (errorResponse) return errorResponse
 
   try {
-    const { data, error } = await supabase
-      .from('user_source_subscriptions')
-      .select('source_id')
-      .eq('user_id', user!.id)
-
-    if (error) throw error
+    const subscribedSourceIds = await getSubscribedSourceIdsForUser(user!.id)
     return NextResponse.json({
       success: true,
-      subscribedSourceIds: (data || []).map((r: any) => r.source_id),
+      subscribedSourceIds,
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '获取订阅列表失败'
     console.error('Failed to get subscriptions:', error)
-    return NextResponse.json(
-      { success: false, error: error.message || '获取订阅列表失败' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
@@ -56,20 +53,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { error } = await supabase
-      .from('user_source_subscriptions')
-      .insert({ user_id: user!.id, source_id, source_handle })
-
-    // 忽略重复订阅（唯一约束冲突）
-    if (error && error.code !== '23505') throw error
-
+    await subscribeUserToSource(user!.id, source_id, source_handle)
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '订阅失败'
     console.error('Failed to subscribe source:', error)
-    return NextResponse.json(
-      { success: false, error: error.message || '订阅失败' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
@@ -86,25 +75,14 @@ export async function DELETE(request: NextRequest) {
     const sourceId = searchParams.get('id')
 
     if (!sourceId) {
-      return NextResponse.json(
-        { success: false, error: '请提供 source_id' },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: '请提供 source_id' }, { status: 400 })
     }
 
-    const { error } = await supabase
-      .from('user_source_subscriptions')
-      .delete()
-      .eq('user_id', user!.id)
-      .eq('source_id', sourceId)
-
-    if (error) throw error
+    await unsubscribeUserFromSource(user!.id, sourceId)
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '取消订阅失败'
     console.error('Failed to unsubscribe source:', error)
-    return NextResponse.json(
-      { success: false, error: error.message || '取消订阅失败' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

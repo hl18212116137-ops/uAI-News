@@ -1,14 +1,16 @@
-# AI News Aggregator
+# AI News Aggregator (ainews-v2)
 
-A minimal AI news aggregation website that monitors X (Twitter) accounts and summarizes posts using Claude.
+AI 资讯聚合：订阅信息源、中文摘要与 INSIGHT 解读。生产数据在 **Supabase (PostgreSQL)**，AI 主力为 **Minimax**，可降级 **Claude**。
+
+**架构与 API 索引：** 见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。组件与 Figma 规范见 [CLAUDE.md](CLAUDE.md)。
 
 ## Tech Stack
 
 - Next.js 14 (App Router)
-- TailwindCSS
-- SQLite (better-sqlite3)
-- node-cron
-- Anthropic Claude API
+- Tailwind CSS
+- Supabase (Auth + PostgreSQL)
+- Minimax / Anthropic Claude（可配置）
+- node-cron（脚本侧，可选）
 
 ## Setup
 

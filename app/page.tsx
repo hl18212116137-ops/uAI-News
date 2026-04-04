@@ -1,10 +1,13 @@
-export const dynamic = 'force-dynamic'
+/**
+ * 首页按登录态与订阅组合拉取不同 feed，需每次请求读 session + DB。
+ * 不宜整页 ISR；若要做性能优化，可拆「公共推荐壳」与「个性化片段」或加 CDN 边缘缓存策略。
+ */
+export const dynamic = "force-dynamic";
 
 import MainContent from "@/components/MainContent";
-import { getPostCountBySource, getLatestPostTimeBySource, getTopImportantNewsFromPosts } from "@/lib/news";
 import { getSources } from "@/lib/sources";
-import { getAllPosts } from "@/lib/db";
-import { getStatsFromData } from "@/lib/stats";
+import { getNewsItemsPostCountSummary } from "@/lib/db";
+import { getStatsFromSourceListAndPostCounts, getStatsFromSubscribedFeed } from "@/lib/stats";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getUserBookmarkIds } from "@/lib/bookmarks";
 import {
@@ -14,51 +17,54 @@ import {
   getSubscribedSourcesMeta,
   getRecommendedSources,
   getTopRecommendedPosts,
+  getDefaultSubscribedHandles,
+  getFeedByHandles,
+  getSubscribedSourcesMetaByHandles,
+  ensureDefaultSubscriptions,
 } from "@/lib/subscriptions";
 
-type PageProps = {
-  searchParams: { category?: string; query?: string; source?: string };
-};
-
-export default async function Home({ searchParams }: PageProps) {
+export default async function Home() {
   // 先获取用户 session
   const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // 访客模式：也给 3 个默认 handles，避免首页空数据
+  const guestHandles = user ? [] : await getDefaultSubscribedHandles(3);
+
   // 判断是否有订阅（决定 feed 模式）
-  const subscribedHandles = user ? await getUserSubscribedHandles(user.id) : [];
-  const isPersonalFeed = user !== null && subscribedHandles.length > 0;
+  let subscribedHandles = user ? await getUserSubscribedHandles(user.id) : guestHandles;
+
+  if (user && subscribedHandles.length === 0) {
+    await ensureDefaultSubscriptions(user.id, 3);
+    subscribedHandles = await getUserSubscribedHandles(user.id);
+  }
+
+  const isPersonalFeed = subscribedHandles.length > 0;
+  const isGuestPersonalFeed = !user && isPersonalFeed;
 
   if (isPersonalFeed) {
-    // 已登录且有订阅：并行获取个性化数据
-    const [
-      subFeed,
-      subSourcesMeta,
-      recommendedSrcs,
-      bookmarkedIds,
-      subscribedSourceIds,
-      allSources,
-      allPosts,
-    ] = await Promise.all([
-      getSubscribedFeed(user!.id),
-      getSubscribedSourcesMeta(user!.id),
-      getRecommendedSources(user!.id, 3),
-      getUserBookmarkIds(user!.id),
-      getUserSubscribedSourceIds(user!.id),
-      getSources(),
-      getAllPosts(),
-    ]);
+    // 个性化数据：统计与当前 Feed / SOURCES 对齐（不依赖全库聚合）
+    const [subFeed, subSourcesMeta, recommendedSrcs, bookmarkedIds, subscribedSourceIdsFromDb] =
+      await Promise.all([
+        user ? getSubscribedFeed(user.id) : getFeedByHandles(subscribedHandles),
+        user ? getSubscribedSourcesMeta(user.id) : getSubscribedSourcesMetaByHandles(subscribedHandles),
+        getRecommendedSources(user?.id ?? null, 2),
+        user ? getUserBookmarkIds(user.id) : Promise.resolve([]),
+        user ? getUserSubscribedSourceIds(user.id) : Promise.resolve([] as string[]),
+      ]);
 
-    const stats = getStatsFromData(allPosts, allSources);
+    const subscribedSourceIds = user
+      ? subscribedSourceIdsFromDb
+      : subSourcesMeta.map((s) => s.id);
 
-    const topImportantNews = (!searchParams.category && !searchParams.query)
-      ? getTopImportantNewsFromPosts(subFeed, 3, 10)
-      : [];
+    const stats = getStatsFromSubscribedFeed(subFeed, subSourcesMeta);
+
+    // 访客默认 feed：仅首屏展示 5 条，其余保留在 stats / 后续扩展中
+    const visiblePosts = isGuestPersonalFeed ? subFeed.slice(0, 5) : subFeed;
 
     return (
       <MainContent
-        initialPosts={subFeed}
-        topImportantNews={topImportantNews}
+        initialPosts={visiblePosts}
         sources={subSourcesMeta}
         recommendedSources={recommendedSrcs}
         totalCount={subFeed.length}
@@ -74,30 +80,29 @@ export default async function Home({ searchParams }: PageProps) {
     const [
       recommendedPosts,
       allSources,
-      allPosts,
+      postCounts,
       bookmarkedIds,
       subscribedSourceIds,
       recommendedSrcs,
     ] = await Promise.all([
       getTopRecommendedPosts(40),
       getSources(),
-      getAllPosts(),
+      getNewsItemsPostCountSummary(),
       user ? getUserBookmarkIds(user.id) : Promise.resolve([]),
       user ? getUserSubscribedSourceIds(user.id) : Promise.resolve([]),
-      getRecommendedSources(user?.id ?? null, 3),
+      getRecommendedSources(user?.id ?? null, 2),
     ]);
 
-    const stats = getStatsFromData(allPosts, allSources);
-
-    const topImportantNews = (!searchParams.category && !searchParams.query)
-      ? getTopImportantNewsFromPosts(recommendedPosts, 3, 10)
-      : [];
+    const stats = getStatsFromSourceListAndPostCounts(
+      allSources,
+      postCounts.totalPosts,
+      postCounts.todayPosts
+    );
 
     // 未登录 / 无订阅时，SourcesList 已订阅区为空，仅显示推荐区
     return (
       <MainContent
         initialPosts={recommendedPosts}
-        topImportantNews={topImportantNews}
         sources={[]}
         recommendedSources={recommendedSrcs}
         totalCount={recommendedPosts.length}

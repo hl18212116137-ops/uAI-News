@@ -1,16 +1,25 @@
 'use client'
 
-import { useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { User } from '@supabase/supabase-js'
+
+export type SubscriptionMutateSuccessPayload = {
+  action: 'subscribe' | 'unsubscribe'
+  sourceId: string
+  sourceHandle: string
+}
 
 export function useSubscription(
   initialIds: Set<string>,
   user: User | null,
-  onNeedAuth: () => void
+  onNeedAuth: () => void,
+  onMutateSuccess?: (payload: SubscriptionMutateSuccessPayload) => void | Promise<void>
 ) {
   const [subscribedIds, setSubscribedIds] = useState<Set<string>>(initialIds)
-  const router = useRouter()
+  const onSuccessRef = useRef(onMutateSuccess)
+  useEffect(() => {
+    onSuccessRef.current = onMutateSuccess
+  }, [onMutateSuccess])
 
   const toggleSubscription = useCallback(
     async (sourceId: string, sourceHandle: string) => {
@@ -21,14 +30,12 @@ export function useSubscription(
 
       const wasSubscribed = subscribedIds.has(sourceId)
 
-      // 1. 乐观更新（按钮状态立即响应）
-      setSubscribedIds(prev => {
+      setSubscribedIds((prev) => {
         const next = new Set(prev)
         wasSubscribed ? next.delete(sourceId) : next.add(sourceId)
         return next
       })
 
-      // 2. 异步同步到服务器
       try {
         if (wasSubscribed) {
           const res = await fetch(
@@ -45,19 +52,21 @@ export function useSubscription(
           if (!res.ok) throw new Error('订阅失败')
         }
 
-        // 3. 成功后刷新 Server Component 数据（feed 内容和 SourcesList 都会变化）
-        router.refresh()
+        await onSuccessRef.current?.({
+          action: wasSubscribed ? 'unsubscribe' : 'subscribe',
+          sourceId,
+          sourceHandle,
+        })
       } catch (error) {
         console.error('[useSubscription] 同步失败，回滚状态:', error)
-        // 4. 失败回滚
-        setSubscribedIds(prev => {
+        setSubscribedIds((prev) => {
           const next = new Set(prev)
           wasSubscribed ? next.add(sourceId) : next.delete(sourceId)
           return next
         })
       }
     },
-    [user, subscribedIds, onNeedAuth, router]
+    [user, subscribedIds, onNeedAuth]
   )
 
   return { subscribedIds, toggleSubscription }

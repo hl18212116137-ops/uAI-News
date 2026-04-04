@@ -24,8 +24,13 @@ export async function checkDuplication(
   externalId: string,
   platform: string
 ): Promise<DuplicationCheckResult> {
-  // 方法 1: 按 URL 去重
-  const existingByUrl = await getPostByUrl(url);
+  const compositeId = `${platform.toLowerCase()}-${externalId}`;
+
+  const [existingByUrl, existingById] = await Promise.all([
+    getPostByUrl(url),
+    getPostById(compositeId),
+  ]);
+
   if (existingByUrl) {
     return {
       isDuplicate: true,
@@ -34,10 +39,6 @@ export async function checkDuplication(
     };
   }
 
-  // 方法 2: 按平台 + 外部 ID 去重
-  // 构造一个基于平台和外部 ID 的唯一标识
-  const compositeId = `${platform.toLowerCase()}-${externalId}`;
-  const existingById = await getPostById(compositeId);
   if (existingById) {
     return {
       isDuplicate: true,
@@ -46,7 +47,6 @@ export async function checkDuplication(
     };
   }
 
-  // 未发现重复
   return {
     isDuplicate: false,
   };

@@ -1,5 +1,4 @@
-import StatsCards from './StatsCards';
-import StatusIndicator from './StatusIndicator';
+import StatsCards from "./StatsCards";
 
 type SiteHeaderProps = {
   stats: {
@@ -9,22 +8,50 @@ type SiteHeaderProps = {
     totalPosts: number;
     todayPosts: number;
   };
-  onRefresh: () => void;
-  isRunning: boolean;
-  onAddSource?: (type: 'blogger' | 'media' | 'academic') => void;
 };
 
-export default function SiteHeader({ stats, onRefresh, isRunning, onAddSource }: SiteHeaderProps) {
+/** Figma uAI News 37:4684–4689（Title）+ 37:4690 HorizontalBorder（Stats 由 StatsCards 承接） */
+export default function SiteHeader({ stats }: SiteHeaderProps) {
   return (
-    <div className="mt-[70px] pt-10 pb-8 text-center bg-white">
-      <h1 className="text-[72px] font-bold mb-5 text-[#101828] leading-none">
-        uAI 周报
-      </h1>
-      <p className="text-base text-[#6a7282] mb-20">
-        定制信源，实时抓取，生成独属于你的 AI 周报。
-      </p>
-      <StatsCards {...stats} onAddSource={onAddSource} />
-      <StatusIndicator onRefresh={onRefresh} isRunning={isRunning} />
-    </div>
+    <header data-name="Site header" className="w-full text-left">
+      <div
+        data-name="Title"
+        data-node-id="37:4684"
+        className="box-border flex h-[64px] max-h-[64px] min-h-[64px] w-full shrink-0 flex-col items-start overflow-hidden"
+      >
+        <div data-name="Heading 1" data-node-id="37:4685" className="flex w-full flex-col items-start">
+          <h1
+            className="m-0 w-full font-sans text-[32px] font-semibold leading-8 tracking-[-0.64px] text-[#111113]"
+            data-node-id="37:4686"
+          >
+            uAI News
+          </h1>
+        </div>
+        <div
+          data-name="Margin"
+          data-node-id="37:4687"
+          className="relative w-full max-w-[480px] shrink-0 pt-2"
+        >
+          <div data-name="Container" data-node-id="37:4688" className="flex w-full max-w-[480px] flex-col items-start">
+            <p
+              className="m-0 w-full font-sans text-[13px] font-normal leading-[20.8px] text-[#8a8a93]"
+              data-node-id="37:4689"
+            >
+              Global activity tracking and intelligence feed.
+            </p>
+          </div>
+        </div>
+      </div>
+      {/* 37:4690：总高 64px（含稿面 pt-24 顶距），与 Title 同高 */}
+      <div
+        data-name="HorizontalBorder"
+        data-node-id="37:4690"
+        className="box-border flex h-[64px] max-h-[64px] min-h-[64px] w-full shrink-0 flex-col overflow-hidden pt-[24px]"
+      >
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto">
+          <StatsCards {...stats} />
+        </div>
+      </div>
+    </header>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useRef } from "react";
 import Tooltip from "./Tooltip";
 
 type StatsCardsProps = {
@@ -9,88 +8,103 @@ type StatsCardsProps = {
   academicCount: number;
   totalPosts: number;
   todayPosts: number;
-  onAddSource?: (type: 'blogger' | 'media' | 'academic') => void;
 };
 
-export default function StatsCards({ bloggerCount, mediaCount, academicCount, totalPosts, todayPosts, onAddSource }: StatsCardsProps) {
-  const [hoveredStat, setHoveredStat] = useState<string | null>(null);
-  const hideTimerRef = useRef<NodeJS.Timeout>();
+/**
+ * Figma 37:4690–4717：标签在上、数值在下；竖线 #f1f1f1 h-24；TODAY 数值 #05f
+ */
+export default function StatsCards({
+  bloggerCount,
+  mediaCount,
+  academicCount,
+  totalPosts,
+  todayPosts,
+}: StatsCardsProps) {
+  const sourcesTotal = bloggerCount + academicCount;
+  const collectionsTotal = mediaCount;
+  const indexed = totalPosts.toLocaleString("en-US");
+  const todayStr = todayPosts > 0 ? `+${todayPosts}` : String(todayPosts);
+  const todayBlue = todayPosts > 0;
 
-  const handleMouseEnter = (type: string) => {
-    clearTimeout(hideTimerRef.current);
-    setHoveredStat(type);
-  };
-
-  const handleMouseLeave = () => {
-    hideTimerRef.current = setTimeout(() => setHoveredStat(null), 1000);
-  };
-
-  const stats = [
-    { label: '已关注博主', value: bloggerCount, type: 'blogger' },
-    { label: '已关注媒体', value: mediaCount, type: 'media' },
-    { label: '已关注学术', value: academicCount, type: 'academic' },
-    { label: '已收录推文', value: totalPosts },
-    { label: '今日新增', value: todayPosts },
+  const items = [
+    {
+      value: String(sourcesTotal),
+      label: "SOURCES",
+      blue: false,
+      pad: "" as const,
+      width: "w-[139.25px]",
+      nodeId: "37:4691",
+    },
+    {
+      value: String(collectionsTotal),
+      label: "COLLECTIONS",
+      blue: false,
+      pad: "px-8" as const,
+      width: "w-[203.25px]",
+      nodeId: "37:4698",
+    },
+    {
+      value: indexed,
+      label: "30D INDEXED",
+      blue: false,
+      pad: "px-8" as const,
+      width: "w-[203.25px]",
+      nodeId: "37:4705",
+    },
+    {
+      value: todayStr,
+      label: "TODAY",
+      blue: todayBlue,
+      pad: "pl-8" as const,
+      width: "w-[171.25px]",
+      nodeId: "37:4712",
+    },
   ];
 
-  const getButtonLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      'blogger': '+ 添加博主',
-      'media': '+ 添加媒体',
-      'academic': '+ 添加学术网站',
-    };
-    return labels[type] || '';
-  };
-
   return (
-    <div className="flex justify-center items-center mb-20">
-      {stats.map((stat, index) => {
-        const isInteractive = stat.type && ['blogger', 'media', 'academic'].includes(stat.type);
-        const isHovered = hoveredStat === stat.type;
-
-        return (
-          <div key={stat.label} className="flex items-center">
-            {(stat.label === '已收录推文' || stat.label === '今日新增') ? (
-              <Tooltip content="推文来自已关的信息源">
-                <div className="flex flex-col items-center" style={{ paddingLeft: '80px', paddingRight: '80px' }}>
-                  <div className="text-[36px] font-bold leading-[40px] text-[#101828] mb-1">
-                    {stat.value}
-                  </div>
-                  <div className="text-[12px] font-normal leading-[15px] text-[#6a7282] whitespace-nowrap">{stat.label}</div>
-                </div>
-              </Tooltip>
-            ) : (
+    <div
+      data-name="Stats container"
+      className="mb-0 flex h-full min-h-0 w-full min-w-0 flex-col overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:thin]"
+    >
+      <Tooltip content="Counts match your current subscriptions and the posts shown in this feed.">
+        <div
+          data-name="Stats row"
+          className="flex h-full min-h-0 w-full min-w-[460px] flex-nowrap items-center justify-start"
+        >
+          {items.map((item, i) => (
+            <div key={item.label} className="flex shrink-0 items-stretch">
               <div
-                className={`relative flex flex-col items-center ${isInteractive ? 'cursor-pointer' : ''}`}
-                style={{ paddingLeft: '80px', paddingRight: '80px', minHeight: isInteractive ? '80px' : 'auto' }}
-                onMouseEnter={() => isInteractive && handleMouseEnter(stat.type!)}
-                onMouseLeave={handleMouseLeave}
+                data-name="Container"
+                data-node-id={item.nodeId}
+                className={`flex min-w-0 flex-col items-start ${item.width} ${item.pad}`}
               >
-                <div className="text-[36px] font-bold leading-[40px] text-[#101828] mb-1">
-                  {stat.value}
+                <div className="w-full pb-2">
+                  <span className="block font-sans text-[10px] font-bold uppercase leading-[10px] tracking-[0.5px] text-[#8a8a93]">
+                    {item.label}
+                  </span>
                 </div>
-                <div className="text-[12px] font-normal leading-[15px] text-[#6a7282] whitespace-nowrap">{stat.label}</div>
-
-                {/* 悬停弹出按钮 - 始终渲染，通过 opacity 和 pointer-events 控制 */}
-                {isInteractive && (
-                  <button
-                    onClick={() => onAddSource?.(stat.type as 'blogger' | 'media' | 'academic')}
-                    className={`absolute top-full mt-2 px-4 h-7 bg-[#101828] text-white text-xs font-medium rounded-full whitespace-nowrap hover:bg-gray-800 transition-colors flex items-center gap-1.5 ${
-                      isHovered ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                    }`}
-                    style={{ boxShadow: '0px 1px 3px 0px rgba(0,0,0,0.1), 0px 1px 2px 0px rgba(0,0,0,0.1)' }}
+                <div className="w-full">
+                  <span
+                    className={[
+                      "block font-mono text-[15px] font-bold leading-[15px] tracking-[0.75px]",
+                      item.blue ? "text-[#05f]" : "text-[#111113]",
+                    ].join(" ")}
                   >
-                    {getButtonLabel(stat.type!)}
-                  </button>
-                )}
+                    {item.value}
+                  </span>
+                </div>
               </div>
-            )}
-            {index < stats.length - 1 && (
-              <div className="w-px h-6 bg-[#e5e7eb] flex-shrink-0" />
-            )}
-          </div>
-        );
-      })}
+              {i < items.length - 1 ? (
+                <div
+                  className="mx-0 h-6 w-px shrink-0 self-center bg-[#f1f1f1]"
+                  data-name="Vertical Divider"
+                  aria-hidden
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </Tooltip>
     </div>
   );
 }

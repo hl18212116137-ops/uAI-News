@@ -4,7 +4,7 @@
  */
 
 // 任务状态
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 // 任务信息
 export interface Task {
@@ -78,6 +78,23 @@ class TaskManager {
    */
   getTask(id: string): Task | null {
     return this.tasks.get(id) || null;
+  }
+
+  /**
+   * 用户暂停：抓取 / 处理循环内会检测并提前结束（内存态，多实例部署需另方案）
+   */
+  cancelTask(id: string): boolean {
+    const task = this.tasks.get(id);
+    if (!task) return false;
+    if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+      return false;
+    }
+    Object.assign(task, {
+      status: 'cancelled' as TaskStatus,
+      message: '已暂停',
+      updatedAt: Date.now(),
+    });
+    return true;
   }
 
   /**

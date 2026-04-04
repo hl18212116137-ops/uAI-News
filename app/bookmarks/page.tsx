@@ -4,8 +4,12 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { supabase } from '@/lib/supabase'
-import { getSources } from '@/lib/sources'
 import NewsCard from '@/components/NewsCard'
+import {
+  mediaUrlsFromDbJson,
+  referencedPostFromDbJson,
+  socialEngagementFromDbJson,
+} from '@/lib/db/news'
 import { NewsItem } from '@/lib/types'
 
 export default async function BookmarksPage() {
@@ -18,14 +22,11 @@ export default async function BookmarksPage() {
   }
 
   // 用 service_role key 查询（绕过 RLS，安全性由上面的 getUser 保证）
-  const [bookmarksResult, sources] = await Promise.all([
-    supabase
-      .from('user_bookmarks')
-      .select('news_item_id')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false }),
-    getSources(),
-  ])
+  const bookmarksResult = await supabase
+    .from('user_bookmarks')
+    .select('news_item_id')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
 
   const ids = (bookmarksResult.data || []).map((r: any) => r.news_item_id)
 
@@ -57,20 +58,16 @@ export default async function BookmarksPage() {
           originalText: item.original_text,
           createdAt: item.created_at,
           importanceScore: item.importance_score,
+          mediaUrls: mediaUrlsFromDbJson(item.media_urls),
+          socialEngagement: socialEngagementFromDbJson(item.social_engagement),
+          referencedPost: referencedPostFromDbJson(item.referenced_post),
         }))
     }
   }
 
-  const sourceMeta = sources.map(s => ({
-    id: s.id,
-    handle: s.handle,
-    name: s.name,
-    avatar: s.avatar,
-  }))
-
   return (
     <div className="min-h-screen bg-white">
-      <div className="mt-[70px] border-b border-[#e5e7eb]">
+      <div className="mt-[56px] border-b border-[#e5e7eb]">
         <div className="max-w-[900px] mx-auto px-6 py-6 flex items-center gap-3">
           <Link
             href="/"
@@ -111,7 +108,6 @@ export default async function BookmarksPage() {
               <NewsCard
                 key={post.id}
                 post={post}
-                sources={sourceMeta}
                 isBookmarked={true}
                 readonly={true}
               />

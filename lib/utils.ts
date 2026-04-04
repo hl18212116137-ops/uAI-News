@@ -56,3 +56,12 @@ export function formatTypography(text: string): string {
     .replace(/([\u4e00-\u9fff])([A-Za-z0-9])/g, '$1 $2')
     .replace(/([A-Za-z0-9])([\u4e00-\u9fff])/g, '$1 $2');
 }
+
+/** 互动数紧凑展示（侧栏等） */
+export function formatSocialCount(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(Math.round(n));
+}

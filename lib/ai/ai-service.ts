@@ -1,5 +1,12 @@
-import { NewsCategory, PostAnalysis } from '../types';
+import { NewsCategory, PostAnalysis, type XReferencedPost } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
+
+/** 单次 analyzePost 用的订阅与画像上下文（可选） */
+export type PostInsightContext = {
+  persona: string;
+  /** 已格式化的多行「名称 (@handle)」，空串表示无订阅 */
+  subscribedSourcesLines: string;
+};
 
 /**
  * AI 处理结果类型
@@ -104,11 +111,14 @@ export interface AIService {
    * @param text 推文文本
    * @param authorName 作者名称
    * @param authorHandle 作者 handle
+   * @param insightContext 可选：用户画像与订阅源列表，用于 highlights / relevance
    * @returns Promise<PostAnalysis> 分析结果
    */
   analyzePost(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    insightContext?: PostInsightContext,
+    referencedPost?: XReferencedPost | null
   ): Promise<PostAnalysis>;
 }

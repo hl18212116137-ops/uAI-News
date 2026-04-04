@@ -2,6 +2,8 @@
  * 导入模块的类型定义
  */
 
+import type { XReferencedPost } from '@/lib/types';
+
 /**
  * 支持的平台类型
  */
@@ -34,6 +36,8 @@ export interface ParsedContent {
   url: string;             // 内容的原始 URL
   platform: PlatformType;  // 平台类型
   rawData?: any;           // 原始数据（用于调试或未来扩展）
+  /** X 被转 / 被引内层（可选） */
+  referencedPost?: XReferencedPost;
 }
 
 /**
@@ -42,7 +46,10 @@ export interface ParsedContent {
 export interface ImportResult {
   success: boolean;
   message: string;
-  postId?: string;         // 成功时返回新闻 ID
+  postId?: string;         // 成功时返回新闻 ID（与 raw id 一致，入队时尚未写入 news_items）
   isDuplicate?: boolean;   // 是否为重复内容
   error?: string;          // 错误信息
+  /** PROCESSING_JOBS_ENABLED 时仅解析+入 raw/jobs，不再同步跑 AI */
+  queued?: boolean;
+  rawPostId?: string;
 }

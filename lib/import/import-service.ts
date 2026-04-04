@@ -3,9 +3,16 @@ import { detectPlatform } from './platform-detector';
 import { XParser } from './parsers/x-parser';
 import { checkDuplication } from './deduplication';
 import { addPost } from '../db';
+import {
+  enqueueFullPipelineJobsForRawIds,
+  hasPendingOrProcessingJobForRawPostId,
+} from '@/lib/db/processing-jobs';
+import { upsertRawPosts } from '@/lib/db/raw-posts';
+import { isProcessingJobsPipelineEnabled } from '@/lib/processing-jobs-pipeline';
 import { NewsItem, NewsCategory } from '../types';
 import { ImportResult, ParsedContent } from './types';
 import { getDefaultAIService } from '../ai/ai-factory';
+import { composeTextForAiProcessing } from '@/lib/x';
 
 /**
  * 统一导入服务
@@ -68,12 +75,59 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
       };
     }
 
+    if (isProcessingJobsPipelineEnabled()) {
+      const pipelineId = newsIdFromPlatformAndExternal(
+        platformInfo.platform,
+        platformInfo.externalId
+      );
+      if (await hasPendingOrProcessingJobForRawPostId(pipelineId)) {
+        return {
+          success: true,
+          message: '该内容正在处理队列中，请稍后刷新列表',
+          isDuplicate: true,
+          postId: pipelineId,
+          rawPostId: pipelineId,
+          queued: true,
+        };
+      }
+    }
+
     // 步骤 4: 调用平台解析器
     const parsedContent = await parseContent(
       platformInfo.platform,
       unifiedUrl,
       platformInfo.externalId
     );
+
+    if (isProcessingJobsPipelineEnabled()) {
+      const id = newsIdFromParsed(parsedContent);
+      const handle = parsedContent.author.handle || parsedContent.author.name || '';
+      await upsertRawPosts([
+        {
+          id,
+          platform: 'X',
+          handle,
+          author_name: parsedContent.author.name,
+          text: parsedContent.content,
+          url: parsedContent.url,
+          published_at: parsedContent.publishedAt,
+          fetched_at: new Date().toISOString(),
+          ...(parsedContent.referencedPost
+            ? { referenced_post: parsedContent.referencedPost }
+            : {}),
+        },
+      ]);
+      await enqueueFullPipelineJobsForRawIds([id]);
+      return {
+        success: true,
+        message:
+          '已加入处理队列，完成后将出现在列表中（可手动刷新或等待定时处理）',
+        queued: true,
+        rawPostId: id,
+        postId: id,
+        isDuplicate: false,
+      };
+    }
 
     // 步骤 5: 转换为统一数据结构（使用AI处理）
     const newsItem = await convertToNewsItem(parsedContent);
@@ -95,6 +149,16 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
       error: error.message || '未知错误',
     };
   }
+}
+
+/** 与 convertToNewsItem / process 流水线中的 news id 对齐 */
+function newsIdFromPlatformAndExternal(platform: string, externalId: string): string {
+  const base = `${platform.toLowerCase()}-${externalId}`;
+  return base.replace(/^x_/, 'x-');
+}
+
+function newsIdFromParsed(parsed: ParsedContent): string {
+  return newsIdFromPlatformAndExternal(parsed.platform, parsed.externalId);
 }
 
 /**
@@ -132,8 +196,7 @@ async function parseContent(
  * @returns NewsItem
  */
 async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
-  // 生成唯一 ID：平台-外部ID
-  const id = `${parsed.platform.toLowerCase()}-${parsed.externalId}`;
+  const id = newsIdFromParsed(parsed);
 
   // 当前时间
   const now = new Date().toISOString();
@@ -141,16 +204,17 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
   try {
     // 获取 AI 服务实例（带降级策略）
     const aiService = getDefaultAIService();
+    const textForAi = composeTextForAiProcessing(parsed.content, parsed.referencedPost);
 
     // 使用 AI 处理：生成中文标题、摘要、分类
     const aiResult = await aiService.processNews(
-      parsed.content,
+      textForAi,
       parsed.author.name,
       parsed.author.handle || parsed.author.name
     );
 
     // 翻译内容为中文
-    const translatedContent = await aiService.translateContent(parsed.content);
+    const translatedContent = await aiService.translateContent(textForAi);
 
     return {
       id,
@@ -165,8 +229,9 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       },
       category: aiResult.category,
       publishedAt: parsed.publishedAt,
-      originalText: parsed.content, // 保留英文原文
+      originalText: parsed.content, // 外层英文原文
       createdAt: now, // 导入时间
+      ...(parsed.referencedPost ? { referencedPost: parsed.referencedPost } : {}),
     };
   } catch (error) {
     console.error('AI processing failed, using fallback:', error);
@@ -191,6 +256,7 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       publishedAt: parsed.publishedAt,
       originalText: parsed.content,
       createdAt: now,
+      ...(parsed.referencedPost ? { referencedPost: parsed.referencedPost } : {}),
     };
   }
 }

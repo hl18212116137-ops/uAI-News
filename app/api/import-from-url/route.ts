@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { importFromUrl } from '@/lib/import/import-service';
+import { NextRequest, NextResponse } from 'next/server'
+import { importContentFromUrl } from '@/lib/services/import-url-service'
 
 /**
  * POST /api/import-from-url
@@ -7,11 +7,9 @@ import { importFromUrl } from '@/lib/import/import-service';
  */
 export async function POST(request: NextRequest) {
   try {
-    // 解析请求体
-    const body = await request.json();
-    const { url } = body;
+    const body = await request.json()
+    const { url } = body
 
-    // 验证参数
     if (!url || typeof url !== 'string') {
       return NextResponse.json(
         {
@@ -20,26 +18,23 @@ export async function POST(request: NextRequest) {
           error: '缺少 url 参数',
         },
         { status: 400 }
-      );
+      )
     }
 
-    // 调用导入服务
-    const result = await importFromUrl(url);
-
-    // 根据结果返回适当的状态码
-    const statusCode = result.success ? 200 : 400;
-
-    return NextResponse.json(result, { status: statusCode });
-  } catch (error: any) {
-    console.error('[API] 导入失败:', error);
+    const result = await importContentFromUrl(url)
+    const statusCode = result.success ? 200 : 400
+    return NextResponse.json(result, { status: statusCode })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '未知错误'
+    console.error('[API] 导入失败:', error)
 
     return NextResponse.json(
       {
         success: false,
         message: '服务器错误',
-        error: error.message || '未知错误',
+        error: message,
       },
       { status: 500 }
-    );
+    )
   }
 }

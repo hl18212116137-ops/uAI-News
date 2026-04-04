@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "clean:next": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true});\"",
+    "dev:clean": "npm run clean:next && next dev",
     "dev": "next dev",
     "build": "next build",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
     "start": "next start",
     "fetch": "tsx scripts/fetch-posts.ts",
     "process": "tsx scripts/process-posts.ts",

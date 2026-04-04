@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import TopBar from "@/components/TopBar";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -10,27 +8,75 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-jetbrains-mono",
+});
+
+function metadataBaseUrl(): URL {
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    try {
+      return new URL(process.env.NEXT_PUBLIC_SITE_URL);
+    } catch {
+      /* fall through */
+    }
+  }
+  if (process.env.VERCEL_URL) {
+    return new URL(`https://${process.env.VERCEL_URL}`);
+  }
+  return new URL("http://localhost:3000");
+}
+
+const siteTitle = "uAI News | AI 资讯聚合";
+const siteDescription =
+  "订阅 AI 领域信息源，中文摘要与 INSIGHT 解读，个性化信息流与书签。";
+
 export const metadata: Metadata = {
-  title: "AI News Aggregator",
-  description: "AI news from top sources",
+  metadataBase: metadataBaseUrl(),
+  title: {
+    default: siteTitle,
+    template: "%s | uAI News",
+  },
+  description: siteDescription,
+  keywords: [
+    "AI 资讯",
+    "人工智能",
+    "科技新闻",
+    "信息流",
+    "AI news",
+    "machine learning",
+  ],
+  openGraph: {
+    title: siteTitle,
+    description: siteDescription,
+    locale: "zh_CN",
+    type: "website",
+    siteName: "uAI News",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
+  modal,
 }: {
   children: React.ReactNode;
+  modal: React.ReactNode;
 }) {
-  // 读取当前用户 session（用于 TopBar 显示登录状态）
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   return (
-    <html lang="en">
-      <body className={inter.variable}>
-        <TopBar user={user} />
+    <html lang="zh-CN">
+      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         {children}
+        {modal}
       </body>
     </html>
   );

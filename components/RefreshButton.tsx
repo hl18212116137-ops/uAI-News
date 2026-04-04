@@ -1,9 +1,26 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Task } from "@/lib/task-manager";
+import { OPTIMISTIC_REFRESH_TASK_ID } from "@/lib/fetch-refresh-ui";
 import { formatTime } from "@/lib/utils";
+
+/** 预计剩余秒数：优先按开始时间推算（每秒递减），否则用服务端 remainingTime 或按进度比例估算 */
+function getEstimatedRemainingSeconds(task: Task): number | null {
+  const est = task.estimatedDuration ?? (task.remainingTime != null && task.remainingTime > 0 ? task.remainingTime : null);
+  if (task.startTime != null && typeof est === "number" && est > 0) {
+    const elapsedSec = (Date.now() - task.startTime) / 1000;
+    return Math.max(0, Math.floor(est - elapsedSec));
+  }
+  if (task.remainingTime != null && task.remainingTime > 0) {
+    return task.remainingTime;
+  }
+  if (typeof est === "number" && est > 0) {
+    return Math.max(0, Math.round(est * (1 - Math.min(100, Math.max(0, task.progress)) / 100)));
+  }
+  return null;
+}
 
 type RefreshProgressProps = {
   taskId: string | null;
@@ -14,21 +31,31 @@ type RefreshProgressProps = {
 
 export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComplete }: RefreshProgressProps) {
   const router = useRouter();
+  /** 驱动「预计剩余时间」每秒刷新（与 startTime 推算联动） */
+  const [timeTick, setTimeTick] = useState(0);
 
   useEffect(() => {
-    if (!taskId) return;
+    if (!taskId || taskId === OPTIMISTIC_REFRESH_TASK_ID) return;
 
-    const interval = setInterval(async () => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const poll = async () => {
       try {
-        const response = await fetch(`/api/task-status?taskId=${taskId}`);
+        const response = await fetch(`/api/task-status?taskId=${taskId}`, { cache: "no-store" });
         const data = await response.json();
+        const taskPayload = (data && typeof data === 'object' && 'task' in data ? (data as { task: Task | null }).task : data) as Task | null | undefined;
 
-        if (response.ok) {
-          onTaskUpdate(data);
+        if (response.ok && taskPayload) {
+          onTaskUpdate(taskPayload);
 
-          if (data.status === 'completed' || data.status === 'failed') {
-            clearInterval(interval);
-            if (data.status === 'completed') {
+          if (taskPayload.status === 'cancelled') {
+            if (intervalId) clearInterval(intervalId);
+            onTaskComplete();
+            return;
+          }
+          if (taskPayload.status === 'completed' || taskPayload.status === 'failed') {
+            if (intervalId) clearInterval(intervalId);
+            if (taskPayload.status === 'completed') {
               setTimeout(() => {
                 router.refresh();
                 onTaskComplete();
@@ -37,45 +64,94 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
           }
         }
       } catch (error) {
-        console.error('Failed to fetch task status:', error);
+        console.error("Failed to fetch task status:", error);
       }
-    }, 2500);
+    };
 
-    return () => clearInterval(interval);
+    void poll();
+    intervalId = setInterval(poll, 1000);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [taskId, router, onTaskUpdate, onTaskComplete]);
 
-  const isRunning = task && (task.status === 'pending' || task.status === 'running');
+  const isRunning = !!(task && (task.status === "pending" || task.status === "running"));
 
-  if (!task) return null;
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = window.setInterval(() => setTimeTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [isRunning, taskId]);
+
+  const remainingSec = useMemo(() => {
+    if (!task || !isRunning) return null;
+    void timeTick;
+    return getEstimatedRemainingSeconds(task);
+  }, [task, isRunning, timeTick]);
+
+  if (!task || !taskId) return null;
+
+  const stepText = task.message?.trim() || "准备中…";
 
   return (
-    <div className="mb-8">
+    <div
+      className="w-full min-w-0 shrink-0 overflow-hidden"
+      role="status"
+      aria-live="polite"
+      aria-busy={isRunning ? true : undefined}
+    >
+      <div className="refresh-progress-strip-enter">
       {isRunning && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-sm text-[#6a7282]">{task.message}</span>
-            <div className="flex items-center gap-3">
-              {task.remainingTime !== undefined && (
-                <span className="text-sm text-[#99a1af]">
-                  剩余 {formatTime(task.remainingTime)}
+        <div className="flex flex-col bg-[#f9f9fb] p-4">
+          {/* 同一行：左为处理提示，右为预计剩余（模块右侧） */}
+          <div className="flex min-h-8 items-start justify-between gap-3">
+            <p
+              className="m-0 min-h-8 min-w-0 flex-1 font-sans text-[11px] font-normal leading-4 tracking-[-0.06px] text-[#101828] line-clamp-2"
+              title={stepText}
+            >
+              {stepText}
+            </p>
+            <div className="shrink-0 pt-px text-right font-sans text-[10px] font-medium leading-4 tracking-[0.01em] text-[#99a1af]">
+              {remainingSec != null ? (
+                <span className="whitespace-nowrap">
+                  <span className="font-normal">预计剩余时间</span>
+                  <span className="mx-1 text-[#e5e7eb]" aria-hidden>
+                    ·
+                  </span>
+                  <span className="tabular-nums text-[#6a7282]">
+                    {formatTime(remainingSec)}
+                  </span>
+                </span>
+              ) : (
+                <span className="invisible select-none whitespace-nowrap" aria-hidden>
+                  预计剩余时间 · 0 秒
                 </span>
               )}
-              <span className="text-sm text-[#6a7282]">{task.progress}%</span>
             </div>
           </div>
-          <div className="w-full bg-[#f3f4f6] rounded-full h-1.5">
+          <div
+            className="relative mt-1 h-0.5 w-full overflow-hidden rounded-full bg-[#ebebef]"
+            aria-hidden
+          >
             <div
-              className="bg-[#101828] h-1.5 rounded-full transition-all duration-300"
-              style={{ width: `${task.progress}%` }}
+              className="motion-layout-ease absolute inset-y-0 left-0 rounded-full bg-[#05f] transition-[width] duration-300 ease-out"
+              style={{ width: `${Math.min(100, Math.max(0, task.progress))}%` }}
             />
           </div>
         </div>
       )}
-      {task.status === 'failed' && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
-          抓取失败：{task.error || '未知错误'}
+      {task.status === "failed" && (
+        <div className="bg-[#fffafa] p-4">
+          <p
+            className="m-0 truncate font-sans text-[10px] font-normal leading-snug text-[#b42318]"
+            title={task.error || "未知错误"}
+          >
+            {task.error || "未知错误"}
+          </p>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -1,67 +1,120 @@
 "use client";
 
-import { useRouter } from 'next/navigation'
+import { useRouter } from "next/navigation";
+import AppModalShell from "@/components/AppModalShell";
 
 type AuthPromptModalProps = {
-  isOpen: boolean
-  onClose: () => void
-  message?: string
-}
+  isOpen: boolean;
+  onClose: () => void;
+  message?: string;
+};
 
-/**
- * 未登录用户执行受保护操作时弹出的登录提示弹窗
- */
 export default function AuthPromptModal({
   isOpen,
   onClose,
-  message = '登录后即可使用此功能',
+  message = "Sign in to use this feature.",
 }: AuthPromptModalProps) {
-  const router = useRouter()
-
-  if (!isOpen) return null
+  const router = useRouter();
 
   const handleGoLogin = () => {
-    onClose()
-    router.push('/login')
-  }
+    onClose();
+    router.push("/login");
+  };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center"
-      onClick={onClose}
+    <AppModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      ariaLabelledBy="auth-prompt-title"
+      panelClassName={[
+        "max-w-[440px] overflow-hidden p-0",
+        "rounded-xl border border-[#e8eaef]",
+        "bg-white",
+        "shadow-[0_0_0_1px_rgba(16,24,40,0.04),0_8px_32px_rgba(16,24,40,0.08),0_24px_64px_-16px_rgba(16,24,40,0.14)]",
+      ].join(" ")}
     >
-      <div
-        className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full mx-4 animate-scale-in"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* 图标 */}
-        <div className="w-12 h-12 rounded-full bg-[#f9fafb] flex items-center justify-center mx-auto mb-4">
-          <svg className="w-6 h-6 text-[#6a7282]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      <div className="relative">
+        <div
+          className="h-0.5 w-full bg-[#0055FF]"
+          aria-hidden
+        />
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn-press absolute right-3 top-3 z-[1] flex h-8 w-8 items-center justify-center rounded-lg text-[#99a1af] transition-colors duration-150 hover:bg-[#f4f5f7] hover:text-[#101828]"
+          aria-label="Close"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
-        </div>
+        </button>
 
-        {/* 文案 */}
-        <h3 className="text-lg font-semibold text-[#101828] text-center mb-2">需要登录</h3>
-        <p className="text-sm text-[#6a7282] text-center mb-6">{message}</p>
+        <div className="px-6 pb-2 pt-7">
+          <div className="flex gap-5">
+            <div
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0055FF]/10 to-[#0055FF]/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] ring-1 ring-[#0055FF]/10"
+              aria-hidden
+            >
+              <svg
+                className="h-[22px] w-[22px] text-[#0055FF]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.35}
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                />
+              </svg>
+            </div>
 
-        {/* 按钮 */}
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2 rounded-full border border-[#e5e7eb] text-sm text-[#6a7282] hover:bg-[#f9fafb] transition-colors"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleGoLogin}
-            className="flex-1 py-2 rounded-full bg-[#101828] text-sm text-white font-medium hover:bg-[#1a1f2e] transition-colors"
-          >
-            去登录
-          </button>
+            <div className="min-w-0 flex-1 pt-0.5 pr-6">
+              <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#99a1af]">
+                Authentication
+              </p>
+              <h2
+                id="auth-prompt-title"
+                className="mt-2 text-[17px] font-semibold leading-[1.35] tracking-[-0.028em] text-[#101828]"
+              >
+                Sign in required
+              </h2>
+              <p className="mt-3 text-[14px] font-normal leading-[1.6] text-[#6a7282]">
+                {message}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  )
+
+      <footer className="flex items-center justify-end gap-2 border-t border-[#ececf0] bg-[#fafbfc] px-5 py-4">
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn-press inline-flex h-9 items-center justify-center rounded-lg border border-[#e2e4e9] bg-white px-4 text-[13px] font-medium text-[#101828] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] transition-[border-color,background-color,box-shadow] duration-150 ease-out hover:border-[#d4d7de] hover:bg-[#f9fafb]"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleGoLogin}
+          className="btn-press inline-flex h-9 min-w-[108px] items-center justify-center rounded-lg bg-[#0055FF] px-4 text-[13px] font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.14)_inset,0_1px_2px_rgba(0,85,255,0.25)] transition-[background-color,box-shadow,transform] duration-150 ease-out hover:bg-[#0046CC] hover:shadow-[0_1px_0_rgba(255,255,255,0.16)_inset,0_4px_14px_rgba(0,85,255,0.35)] active:bg-[#003db3]"
+        >
+          Sign in
+        </button>
+      </footer>
+    </AppModalShell>
+  );
 }

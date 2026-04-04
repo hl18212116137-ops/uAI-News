@@ -82,14 +82,16 @@ boxShadow: {
 
 ```ts
 animation: {
-  'fade-in':       'fadeIn 0.3s ease-out',
-  'slide-in':      'slideIn 0.3s ease-out',
-  'slide-in-right':'slideInRight 0.3s ease-out',
-  'scale-in':      'scaleIn 0.2s ease-out',
-  'bounce-subtle': 'bounceSubtle 0.5s ease-in-out',
-  'pulse-subtle':  'pulseSubtle 2s ease-in-out infinite',
+  'fade-in':            'fadeIn 0.3s ease-out',
+  'slide-in':           'slideIn 0.3s ease-out',
+  'slide-in-right':     'slideInRight 0.3s ease-out',
+  'scale-in':           'scaleIn 0.2s ease-out',
+  'bounce-subtle':      'bounceSubtle 0.5s ease-in-out',
+  'pulse-subtle':       'pulseSubtle 2s ease-in-out infinite',
 }
 ```
+
+弹窗遮罩 / 面板入场动效在 **`globals.css`**：`@keyframes appModalBackdropIn` / `appModalPanelIn`，类 **`.modal-backdrop`** 与 **`.modal-panel-enter`**（时长 **`--modal-enter-duration`**（默认 380ms）、曲线 `--layout-ease`），勿用 Tailwind `@apply animate-*` 以免构建遗漏。
 
 ---
 
@@ -122,6 +124,8 @@ All components are:
 | `EmptyState.tsx` | Empty/no-results state |
 | `TopImportantNews.tsx` | Featured news section |
 | `AddSourceModal.tsx` | Draggable modal to add new information sources |
+| `AppModalShell.tsx` | Shared centered modal backdrop + panel shell |
+| `LoginModalShell.tsx` | Login overlay (uses `AppModalShell` + `LoginPanel`) |
 | `RefreshButton.tsx` | Refresh with progress polling |
 | `Tooltip.tsx` | Custom tooltip — use instead of native `title=` attribute |
 | `ImportFromUrl.tsx` | Manual URL import UI |
@@ -313,13 +317,7 @@ Use Tailwind's default spacing scale (4px base unit). Custom values:
 
 ### Modal Pattern
 
-```tsx
-<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-  <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full mx-4 p-6 animate-scale-in">
-    {/* content */}
-  </div>
-</div>
-```
+全站统一遮罩与面板：`.modal-backdrop`（`bg-black/40` + 内联 `animation: appModalBackdropIn`）与 `.modal-panel` / `.modal-panel-lg`；面板加 **`.modal-panel-enter`**（`appModalPanelIn`）。居中弹窗用 **`AppModalShell`**（已带 `modal-panel-enter`）。`prefers-reduced-motion: reduce` 下 `.modal-backdrop` / `.modal-panel-enter` 动画时长 1ms。
 
 ---
 
