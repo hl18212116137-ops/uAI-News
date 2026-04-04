@@ -44,10 +44,17 @@ export class AIServiceFactory {
     const primary = primaryProvider || (process.env.AI_PROVIDER as AIProvider) || 'minimax';
     const fallback = fallbackProvider || (primary === 'minimax' ? 'claude' : 'minimax');
 
-    return new AIServiceWithFallback(
-      this.create(primary),
-      this.create(fallback)
-    );
+    const primaryService = this.create(primary);
+    try {
+      const fallbackService = this.create(fallback);
+      return new AIServiceWithFallback(primaryService, fallbackService);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[AIServiceFactory] Fallback "${fallback}" unavailable (${msg}). Using primary "${primary}" only.`
+      );
+      return primaryService;
+    }
   }
 }
 
