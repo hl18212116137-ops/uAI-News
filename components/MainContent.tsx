@@ -620,7 +620,7 @@ export default function MainContent({
         {!isSourcesListCollapsed ? (
           <button
             type="button"
-            className="fixed inset-x-0 bottom-0 top-14 z-[88] bg-black/35 lg:hidden"
+            className="fixed bottom-0 right-0 top-14 z-[88] max-lg:left-[256px] bg-black/35 lg:hidden"
             aria-label="关闭信息源列表"
             onClick={() => setIsSourcesListCollapsed(true)}
           />
