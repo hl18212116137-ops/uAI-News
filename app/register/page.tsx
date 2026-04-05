@@ -1,168 +1,205 @@
 "use client";
 
-import { useState, FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { createSupabaseBrowserClient } from '@/lib/supabase/client'
+import { useState, FormEvent } from "react";
+import Link from "next/link";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function RegisterPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    setError('')
+    e.preventDefault();
+    setError("");
 
     if (password !== confirmPassword) {
-      setError('两次输入的密码不一致')
-      return
+      setError("Passwords do not match.");
+      return;
     }
     if (password.length < 6) {
-      setError('密码至少需要 6 位字符')
-      return
+      setError("Password must be at least 6 characters.");
+      return;
     }
 
-    setIsLoading(true)
-    const supabase = createSupabaseBrowserClient()
+    setIsLoading(true);
+    const supabase = createSupabaseBrowserClient();
     const { error: authError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
-    })
+    });
 
     if (authError) {
-      setError(authError.message === 'User already registered'
-        ? '该邮箱已注册，请直接登录'
-        : authError.message
-      )
-      setIsLoading(false)
-      return
+      setError(
+        authError.message === "User already registered"
+          ? "This email is already registered. Sign in instead."
+          : authError.message
+      );
+      setIsLoading(false);
+      return;
     }
 
-    setSuccess(true)
-    setIsLoading(false)
-  }
+    setSuccess(true);
+    setIsLoading(false);
+  };
 
-  // 注册成功提示
+  const shell = "flex min-h-dvh items-center justify-center bg-[#f5f5f5] px-4 py-10";
+
   if (success) {
     return (
-      <div className="min-h-screen bg-[#f5f5f5] flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-[400px] text-center">
-          <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-7 h-7 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+      <div className={shell}>
+        <div
+          className="modal-panel modal-panel-enter w-full max-w-[400px] p-6 text-center"
+          role="region"
+          aria-labelledby="register-success-title"
+        >
+          <div
+            className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-md border border-[#e5e7eb] bg-[#fafafa]"
+            aria-hidden
+          >
+            <svg
+              className="h-5 w-5 text-[#101828]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
             </svg>
           </div>
-          <h2 className="text-xl font-semibold text-[#101828] mb-2">注册成功！</h2>
-          <p className="text-sm text-[#6a7282] mb-6">
-            请查收 <strong>{email}</strong> 的确认邮件，点击邮件中的链接激活账号。
+          <h1
+            id="register-success-title"
+            className="text-base font-semibold tracking-[-0.02em] text-[#101828]"
+          >
+            Check your email
+          </h1>
+          <p className="mt-2 text-sm font-normal leading-5 text-[#6a7282]">
+            We sent a confirmation link to{" "}
+            <span className="font-medium text-[#101828]">{email}</span>. Open it to activate your
+            account.
           </p>
           <Link
             href="/login"
-            className="inline-block btn-primary btn-press rounded-full px-6 py-2.5 text-sm font-medium"
+            className="btn-press mt-6 flex h-9 w-full items-center justify-center rounded-[4px] bg-[#0055FF] text-xs font-medium text-white transition-colors hover:bg-[#0046CC]"
           >
-            前往登录
+            Back to sign in
           </Link>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-[400px]">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-block text-2xl font-semibold text-[#101828]">
-            🤖 uAI 周报
+    <div className={shell}>
+      <div className="modal-panel modal-panel-enter w-full max-w-[400px] p-6">
+        <h1 id="register-dialog-title" className="sr-only">
+          Create account
+        </h1>
+        <div className="mb-6 text-center">
+          <Link
+            href="/"
+            className="inline-block text-lg font-semibold tracking-[-0.02em] text-[#101828]"
+          >
+            uAI News
           </Link>
-          <p className="text-sm text-[#6a7282] mt-2">创建账号，开始你的 AI 资讯之旅</p>
+          <p className="mt-1.5 text-sm font-normal leading-5 text-[#6a7282]">
+            Create an account to save bookmarks and sync subscriptions.
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {/* 邮箱 */}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-[#101828] mb-1">
-              邮箱
+            <label
+              htmlFor="register-email"
+              className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
+            >
+              Email
             </label>
             <input
-              id="email"
+              id="register-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
+              placeholder="you@company.com"
               required
               autoComplete="email"
-              className="input-field w-full text-sm"
+              className="input-field h-9 w-full rounded-[4px] text-sm font-normal"
             />
           </div>
 
-          {/* 密码 */}
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-[#101828] mb-1">
-              密码
+            <label
+              htmlFor="register-password"
+              className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
+            >
+              Password
             </label>
             <input
-              id="password"
+              id="register-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="至少 6 位字符"
+              placeholder="At least 6 characters"
               required
               autoComplete="new-password"
-              className="input-field w-full text-sm"
+              className="input-field h-9 w-full rounded-[4px] text-sm font-normal"
             />
           </div>
 
-          {/* 确认密码 */}
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#101828] mb-1">
-              确认密码
+            <label
+              htmlFor="register-confirm"
+              className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
+            >
+              Confirm password
             </label>
             <input
-              id="confirmPassword"
+              id="register-confirm"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="再次输入密码"
+              placeholder="••••••••"
               required
               autoComplete="new-password"
-              className="input-field w-full text-sm"
+              className="input-field h-9 w-full rounded-[4px] text-sm font-normal"
             />
           </div>
 
-          {/* 错误提示 */}
           {error && (
-            <p className="text-sm text-primary-500 bg-primary-50 rounded-lg px-3 py-2">
+            <p className="rounded-[4px] bg-primary-50 px-3 py-2 text-sm font-normal text-primary-500">
               {error}
             </p>
           )}
 
-          {/* 提交按钮 */}
           <button
             type="submit"
             disabled={isLoading}
-            className="btn-primary btn-press w-full py-2.5 rounded-full text-sm font-medium mt-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-press mt-1 flex h-9 w-full items-center justify-center rounded-[4px] bg-[#0055FF] text-xs font-medium text-white transition-colors hover:bg-[#0046CC] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isLoading ? '注册中...' : '创建账号'}
+            {isLoading ? "Creating account…" : "Create account"}
           </button>
         </form>
 
-        {/* 底部链接 */}
-        <p className="text-center text-sm text-[#99a1af] mt-6">
-          已有账号？{' '}
-          <Link href="/login" className="text-[#101828] font-medium hover:underline">
-            立即登录
+        <p className="mt-6 text-center text-sm font-normal text-[#99a1af]">
+          Already have an account?{" "}
+          <Link
+            href="/login"
+            className="font-medium text-[#101828] underline-offset-2 hover:underline"
+          >
+            Sign in
           </Link>
         </p>
       </div>
     </div>
-  )
+  );
 }
