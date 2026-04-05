@@ -101,6 +101,11 @@ export default function MainContent({
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [task, setTask] = useState<Task | null>(null);
+  /** 与 taskId 同步；用户点「暂停」时先手动置空，避免轮询 await 返回后把 task 写回 running */
+  const activeFetchTaskIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeFetchTaskIdRef.current = taskId;
+  }, [taskId]);
   const [activeCategory, setActiveCategory] = useState<string>("");
   const [activeSource, setActiveSource] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -241,6 +246,7 @@ export default function MainContent({
       return;
     }
     if (isFetchBusy) {
+      activeFetchTaskIdRef.current = null;
       if (taskId === OPTIMISTIC_REFRESH_TASK_ID) {
         refreshAbortRef.current?.abort();
         refreshAbortRef.current = null;
@@ -316,10 +322,14 @@ export default function MainContent({
   };
 
   const handleTaskUpdate = useCallback((updatedTask: Task | null) => {
+    if (updatedTask != null && updatedTask.id !== activeFetchTaskIdRef.current) {
+      return;
+    }
     setTask(updatedTask);
   }, []);
 
   const handleTaskComplete = useCallback(() => {
+    activeFetchTaskIdRef.current = null;
     setTaskId(null);
     setTask(null);
   }, []);

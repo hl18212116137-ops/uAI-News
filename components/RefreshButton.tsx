@@ -37,26 +37,40 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
   useEffect(() => {
     if (!taskId || taskId === OPTIMISTIC_REFRESH_TASK_ID) return;
 
+    let disposed = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
+    const stopInterval = () => {
+      if (intervalId != null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
     const poll = async () => {
+      if (disposed) return;
       try {
         const response = await fetch(`/api/task-status?taskId=${taskId}`, { cache: "no-store" });
+        if (disposed) return;
         const data = await response.json();
-        const taskPayload = (data && typeof data === 'object' && 'task' in data ? (data as { task: Task | null }).task : data) as Task | null | undefined;
+        if (disposed) return;
+        const taskPayload = (data && typeof data === "object" && "task" in data
+          ? (data as { task: Task | null }).task
+          : data) as Task | null | undefined;
 
         if (response.ok && taskPayload) {
           onTaskUpdate(taskPayload);
 
-          if (taskPayload.status === 'cancelled') {
-            if (intervalId) clearInterval(intervalId);
-            onTaskComplete();
+          if (taskPayload.status === "cancelled") {
+            stopInterval();
+            if (!disposed) onTaskComplete();
             return;
           }
-          if (taskPayload.status === 'completed' || taskPayload.status === 'failed') {
-            if (intervalId) clearInterval(intervalId);
-            if (taskPayload.status === 'completed') {
+          if (taskPayload.status === "completed" || taskPayload.status === "failed") {
+            stopInterval();
+            if (taskPayload.status === "completed") {
               setTimeout(() => {
+                if (disposed) return;
                 router.refresh();
                 onTaskComplete();
               }, 1000);
@@ -64,15 +78,16 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
           }
         }
       } catch (error) {
-        console.error("Failed to fetch task status:", error);
+        if (!disposed) console.error("Failed to fetch task status:", error);
       }
     };
 
     void poll();
-    intervalId = setInterval(poll, 1000);
+    intervalId = setInterval(() => void poll(), 1000);
 
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      disposed = true;
+      stopInterval();
     };
   }, [taskId, router, onTaskUpdate, onTaskComplete]);
 
