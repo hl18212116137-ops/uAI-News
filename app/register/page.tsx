@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useMemo } from "react";
 import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { COMMON_WEBMAIL_QUICK, webmailForEmail } from "@/lib/webmail-entry";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
@@ -51,6 +52,12 @@ export default function RegisterPage() {
 
   const shell = "flex min-h-dvh items-center justify-center bg-[#f5f5f5] px-4 py-10";
 
+  const matchedWebmail = useMemo(() => webmailForEmail(email), [email]);
+  const otherWebmailLinks = useMemo(() => {
+    if (!matchedWebmail) return COMMON_WEBMAIL_QUICK;
+    return COMMON_WEBMAIL_QUICK.filter((e) => e.url !== matchedWebmail.url);
+  }, [matchedWebmail]);
+
   if (success) {
     return (
       <div className={shell}>
@@ -73,7 +80,7 @@ export default function RegisterPage() {
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M5 13l4 4L19 7"
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
               />
             </svg>
           </div>
@@ -81,18 +88,53 @@ export default function RegisterPage() {
             id="register-success-title"
             className="text-base font-semibold tracking-[-0.02em] text-[#101828]"
           >
-            Check your email
+            查收验证邮件
           </h1>
           <p className="mt-2 text-sm font-normal leading-5 text-[#6a7282]">
-            We sent a confirmation link to{" "}
-            <span className="font-medium text-[#101828]">{email}</span>. Open it to activate your
-            account.
+            我们已向{" "}
+            <span className="font-medium text-[#101828]">{email}</span>{" "}
+            发送确认邮件，请打开邮箱并<strong className="font-medium text-[#101828]">
+              点击邮件中的验证链接
+            </strong>
+            完成注册。
           </p>
+          <p className="mt-2 text-xs font-normal leading-5 text-[#99a1af]">
+            若暂时未收到，请稍等几分钟，或查看垃圾箱、广告邮件夹。
+          </p>
+
+          {matchedWebmail ? (
+            <a
+              href={matchedWebmail.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-press mt-5 flex h-9 w-full items-center justify-center rounded-[4px] bg-[#0055FF] text-xs font-medium text-white transition-colors hover:bg-[#0046CC]"
+            >
+              打开 {matchedWebmail.label}
+            </a>
+          ) : null}
+
+          <p className="mb-2 mt-5 text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]">
+            {matchedWebmail ? "其它常用邮箱" : "打开网页邮箱"}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {otherWebmailLinks.map((entry) => (
+              <a
+                key={entry.url}
+                href={entry.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-press flex h-9 items-center justify-center rounded-[4px] border border-[#e5e7eb] bg-white text-xs font-medium text-[#101828] transition-colors hover:bg-[#f9fafb]"
+              >
+                {entry.label}
+              </a>
+            ))}
+          </div>
+
           <Link
             href="/login"
-            className="btn-press mt-6 flex h-9 w-full items-center justify-center rounded-[4px] bg-[#0055FF] text-xs font-medium text-white transition-colors hover:bg-[#0046CC]"
+            className="mt-6 inline-block text-sm font-medium text-[#6a7282] underline-offset-2 transition-colors hover:text-[#101828] hover:underline"
           >
-            Back to sign in
+            返回登录
           </Link>
         </div>
       </div>
