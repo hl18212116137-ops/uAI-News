@@ -67,7 +67,7 @@ export default async function BookmarksPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="mt-[56px] border-b border-[#e5e7eb]">
+      <div className="app-divider-border-b mt-[56px]">
         <div className="max-w-[900px] mx-auto px-6 py-6 flex items-center gap-3">
           <Link
             href="/"

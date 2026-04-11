@@ -100,7 +100,7 @@ export default function AuthPromptModal({
         </div>
       </div>
 
-      <footer className="flex items-center justify-end gap-2 border-t border-[#ececf0] bg-[#fafbfc] px-5 py-4">
+      <footer className="app-divider-border-t flex items-center justify-end gap-2 bg-[#fafbfc] px-5 py-4">
         <button
           type="button"
           onClick={onClose}

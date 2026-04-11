@@ -13,6 +13,7 @@ import { NewsItem, NewsCategory } from '../types';
 import { ImportResult, ParsedContent } from './types';
 import { getDefaultAIService } from '../ai/ai-factory';
 import { composeTextForAiProcessing } from '@/lib/x';
+import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese';
 
 /**
  * 统一导入服务
@@ -214,7 +215,14 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
     );
 
     // 翻译内容为中文
-    const translatedContent = await aiService.translateContent(textForAi);
+    const [translatedContent, zhOriginal] = await Promise.all([
+      aiService.translateContent(textForAi),
+      translateNewsOriginalToChinese(
+        (s) => aiService.translateContent(s),
+        parsed.content,
+        parsed.referencedPost,
+      ),
+    ])
 
     return {
       id,
@@ -229,9 +237,9 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       },
       category: aiResult.category,
       publishedAt: parsed.publishedAt,
-      originalText: parsed.content, // 外层英文原文
+      originalText: zhOriginal.originalText,
       createdAt: now, // 导入时间
-      ...(parsed.referencedPost ? { referencedPost: parsed.referencedPost } : {}),
+      ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
     };
   } catch (error) {
     console.error('AI processing failed, using fallback:', error);

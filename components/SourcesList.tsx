@@ -180,7 +180,7 @@ function SourcesListSourceCard({
                         />
                       </svg>
                     ) : (
-                      <SourcesActionPlusGlyph className="size-2 shrink-0 text-[#111113]" />
+                      <SourcesActionPlusGlyph className="size-2 shrink-0" />
                     )}
                   </button>
                 </Tooltip>
@@ -240,7 +240,7 @@ const RecommendPanel = memo(function RecommendPanel({
       <div
         data-name="Horizontal Divider"
         data-node-id="37:4644"
-        className="h-px w-full shrink-0 bg-[#ebebef]"
+        className="app-divider-h shrink-0"
         aria-hidden
       />
       <div
@@ -449,7 +449,7 @@ export default function SourcesList({
               aria-label="添加信息源"
             >
               <SourcesActionPlusGlyph
-                className="size-[9.604px] shrink-0 text-[#111113]"
+                className="size-[9.604px] shrink-0"
                 data-node-id="37:4558"
               />
             </button>

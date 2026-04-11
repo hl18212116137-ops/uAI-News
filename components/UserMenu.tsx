@@ -90,7 +90,7 @@ export default function UserMenu({
             <span
               data-name="Container"
               data-node-id={toolbarInnerNodeId}
-              className="relative flex size-[17.467px] shrink-0 items-center justify-center"
+              className="relative flex size-5 shrink-0 items-center justify-center"
             >
               {avatarUrl ? (
                 <img
@@ -117,7 +117,7 @@ export default function UserMenu({
 
       {isOpen && (
         <div className="animate-fade-in absolute right-0 top-full mt-2 w-48 rounded-xl border border-[#e5e7eb] bg-white py-1 shadow-md">
-          <div className="border-b border-[#f3f4f6] px-4 py-2">
+          <div className="app-divider-border-b px-4 py-2">
             <div className="truncate text-sm font-medium text-[#101828]">{displayName}</div>
             <div className="truncate text-xs text-[#99a1af]">{user.email}</div>
           </div>

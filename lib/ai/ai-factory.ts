@@ -267,7 +267,7 @@ class AIServiceWithFallback implements AIService {
         console.error('Both AI services failed:', { primaryError, fallbackError });
         // 降级方案：返回基本信息
         return {
-          canonicalSummary: text.substring(0, 50),
+          canonicalSummary: '',
           entities: [],
           eventType: 'other',
           sourceType: 'user',

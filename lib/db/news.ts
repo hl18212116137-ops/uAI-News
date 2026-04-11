@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { supabase } from '@/lib/supabase'
+import { sanitizeInsightPayloadForPost } from '@/lib/insight-echo-guard'
 import type { InsightAnalysisPayload, NewsItem, SocialEngagement, XReferencedPost } from '@/lib/types'
 
 /** news_items / raw_posts 的 jsonb media_urls → NewsItem.mediaUrls */
@@ -285,6 +286,49 @@ export async function addPost(post: NewsItem, options?: AddPostOptions): Promise
   }
 }
 
+export type NewsItemTextPatch = Partial<{
+  title: string
+  summary: string
+  content: string
+  originalText: string
+  referencedPost: XReferencedPost | null
+}>
+
+/** 批量回填脚本等：按 id 更新正文相关列 */
+export async function updateNewsItemTextFields(
+  id: string,
+  patch: NewsItemTextPatch
+): Promise<{ ok: boolean; error?: string }> {
+  if (
+    patch.title === undefined &&
+    patch.summary === undefined &&
+    patch.content === undefined &&
+    patch.originalText === undefined &&
+    patch.referencedPost === undefined
+  ) {
+    return { ok: true }
+  }
+
+  const normalizedId = normalizeNewsItemId(id)
+  const row: Record<string, unknown> = {}
+  if (patch.title !== undefined) row.title = patch.title
+  if (patch.summary !== undefined) row.summary = patch.summary
+  if (patch.content !== undefined) row.content = patch.content
+  if (patch.originalText !== undefined) row.original_text = patch.originalText
+  if (patch.referencedPost !== undefined) {
+    row.referenced_post = patch.referencedPost
+  }
+
+  try {
+    const { error } = await supabase.from('news_items').update(row).eq('id', normalizedId)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: message }
+  }
+}
+
 /**
  * 删除指定来源的所有新闻项
  */
@@ -340,7 +384,7 @@ export async function deletePostsByHandle(handle: string): Promise<number> {
   }
 }
 
-type InsightJsonDoc = {
+export type InsightJsonDoc = {
   v: 1 | 2
   global?: InsightAnalysisPayload | null
   bySourcesSig: Record<string, InsightAnalysisPayload>
@@ -430,7 +474,11 @@ export async function getPersistedInsightForRead(postId: string): Promise<Insigh
       return null
     }
 
-    return insightPayloadFromDoc(parseInsightJsonDoc(data?.insight_json))
+    const payload = insightPayloadFromDoc(parseInsightJsonDoc(data?.insight_json))
+    if (!payload) return null
+    const post = await getPostById(normalizeNewsItemId(postId))
+    if (!post) return payload
+    return sanitizeInsightPayloadForPost(post, payload)
   } catch {
     return null
   }
@@ -465,7 +513,7 @@ export async function getPersistedInsightsForReadBatch(
       const chunk = unique.slice(i, i + INSIGHT_PREFETCH_IN_CHUNK)
       const { data, error } = await supabase
         .from('news_items')
-        .select('id, insight_json')
+        .select('id, insight_json, original_text, referenced_post')
         .in('id', chunk)
 
       if (error) {
@@ -477,7 +525,12 @@ export async function getPersistedInsightsForReadBatch(
         const id = typeof row.id === 'string' ? row.id : null
         if (!id) continue
         const payload = insightPayloadFromDoc(parseInsightJsonDoc(row.insight_json))
-        if (payload) out[id] = payload
+        if (!payload) continue
+        const slice = {
+          originalText: typeof row.original_text === 'string' ? row.original_text : '',
+          referencedPost: referencedPostFromDbJson(row.referenced_post),
+        }
+        out[id] = sanitizeInsightPayloadForPost(slice, payload)
       }
     }
     return out
@@ -542,6 +595,43 @@ export async function mergeInsightPayloadForSourcesSig(
 /**
  * 写入全站共用的 INSIGHT（译文 + KEY POINTS 等），与订阅无关
  */
+/** 供回填脚本读取 / 写回完整 insight_json 文档 */
+export async function readInsightJsonDocForPost(postId: string): Promise<InsightJsonDoc | null> {
+  try {
+    const { data, error } = await supabase
+      .from('news_items')
+      .select('insight_json')
+      .eq('id', normalizeNewsItemId(postId))
+      .maybeSingle()
+
+    if (error) {
+      console.error('readInsightJsonDocForPost:', error)
+      return null
+    }
+    return parseInsightJsonDoc(data?.insight_json)
+  } catch {
+    return null
+  }
+}
+
+export async function writeInsightJsonDocForPost(
+  postId: string,
+  doc: InsightJsonDoc,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('news_items')
+      .update({ insight_json: doc })
+      .eq('id', normalizeNewsItemId(postId))
+
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: message }
+  }
+}
+
 export async function mergeInsightGlobalPayload(
   postId: string,
   payload: InsightAnalysisPayload

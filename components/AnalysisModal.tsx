@@ -46,12 +46,12 @@ export default function AnalysisModal({ isOpen, post, analysis, isLoading = fals
       backdropAriaLabel="关闭解读"
       panelClassName="max-w-[920px] max-h-[86vh] overflow-hidden flex flex-col p-0"
     >
-        <div className="sticky top-0 bg-white border-b border-[#e5e7eb] px-6 py-4 flex items-center justify-between">
+        <div className="app-divider-border-b sticky top-0 flex items-center justify-between bg-white px-6 py-4">
           <div className="flex items-center gap-3 min-w-0">
             <span className="text-xs font-semibold uppercase tracking-wide text-[#101828]">
               Insight
             </span>
-            <span className="w-px h-4 bg-[#e5e7eb] flex-shrink-0" />
+            <span className="app-divider-v h-4 flex-shrink-0" />
             <span className="truncate text-sm font-normal text-[#6a7282]">
               {post.title}
             </span>

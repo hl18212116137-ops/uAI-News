@@ -27,6 +27,7 @@ import { isProcessingJobsPipelineEnabled } from '@/lib/processing-jobs-pipeline'
 import { computeInsightAnalysis } from '@/lib/post-insight-compute'
 import { shouldSkipLowSignalRawPost } from '@/lib/raw-post-quality'
 import { NewsItem, NewsCategory } from '@/lib/types'
+import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese'
 import { composeTextForAiProcessing } from '@/lib/x'
 
 export type RefreshProcessResult = {
@@ -96,7 +97,10 @@ async function processOneRawPost(
       return
     }
 
-    const translatedContent = await aiService.translateContent(text)
+    const [translatedContent, zhOriginal] = await Promise.all([
+      aiService.translateContent(text),
+      translateNewsOriginalToChinese((s) => aiService.translateContent(s), outerText, referencedPost),
+    ])
 
     const mediaUrls = mediaUrlsFromDbJson(rawPost.media_urls)
     const socialEngagement = socialEngagementFromDbJson(rawPost.social_engagement)
@@ -114,11 +118,11 @@ async function processOneRawPost(
       },
       category: aiResult.category as NewsCategory,
       publishedAt,
-      originalText: outerText,
+      originalText: zhOriginal.originalText,
       createdAt: new Date().toISOString(),
       ...(mediaUrls ? { mediaUrls } : {}),
       ...(socialEngagement ? { socialEngagement } : {}),
-      ...(referencedPost ? { referencedPost } : {}),
+      ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
     }
 
     try {

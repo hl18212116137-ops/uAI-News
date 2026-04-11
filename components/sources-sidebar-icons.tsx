@@ -75,11 +75,11 @@ export function SourcesChevronRightGlyph(props: { className?: string }) {
   );
 }
 
-/** 标题栏「添加信息源」、推荐卡片「关注」— Figma MCP 位图 URL 在浏览器不可用 */
+/** 标题栏「添加信息源」、推荐卡片「关注」— 默认主题蓝 #0055FF（与 Fetch / 链接一致） */
 export function SourcesActionPlusGlyph({ className, ...rest }: SVGProps<SVGSVGElement>) {
   return (
     <svg
-      className={className}
+      className={["text-[#0055FF]", className].filter(Boolean).join(" ")}
       viewBox="0 0 12 12"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -95,7 +95,7 @@ export function SourcesActionRefreshGlyph({ className, ...rest }: SVGProps<SVGSV
   return (
     <svg
       className={className}
-      viewBox="0 0 12 12"
+      viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       {...rest}
@@ -103,12 +103,11 @@ export function SourcesActionRefreshGlyph({ className, ...rest }: SVGProps<SVGSV
     >
       <path
         stroke="currentColor"
+        strokeWidth={1.75}
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth="1.2"
-        d="M9.35 3.65A4.25 4.25 0 0 0 3.1 3.5l-.65-.55M2.65 8.35A4.25 4.25 0 0 0 8.9 8.5l.65.55"
+        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
       />
-      <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" d="M2.25 2.9V5.5h2.6M9.75 9.1V6.5H7.15" />
     </svg>
   );
 }

@@ -32,7 +32,7 @@ function HomePageShellInner({
         <div
           data-name="Horizontal Divider"
           data-node-id="3:2694"
-          className="h-px w-full bg-[#ebebef]"
+          className="app-divider-h"
           aria-hidden
         />
       </div>

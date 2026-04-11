@@ -8,9 +8,13 @@ import UserMenu from "@/components/UserMenu";
 import {
   TopBarBookmarkGlyph,
   TopBarInsightSparkleGlyph,
+  TopBarPanelLeftGlyph,
   TopBarProfileGlyph,
   TopBarSettingsGlyph,
 } from "@/components/top-bar-icons";
+
+/** 顶栏操作图标统一占位（20×20），与线框图标 24 视口配套 */
+const topBarIconSlot = "relative size-5 shrink-0";
 
 type TopBarProps = {
   user: User | null;
@@ -99,25 +103,20 @@ export default function TopBar({
           data-node-id={dualCollapsed ? "43:5029" : "3:2671"}
           className={[
             "topbar-m-left motion-layout-ease absolute z-20 flex h-[53px] w-9 shrink-0 items-center justify-center transition-colors hover:bg-[#f5f5f5]",
-            isSourcesListCollapsed ? "text-[#6a7282]" : "text-[#0055FF]",
+            isSourcesListCollapsed ? "text-[#111113]" : "text-[#0055FF]",
           ].join(" ")}
           style={leftToggleStyle}
           aria-label={isSourcesListCollapsed ? "展开信息源列表" : "折叠信息源列表"}
           aria-expanded={!isSourcesListCollapsed}
           onClick={onToggleSourcesListCollapsed}
         >
-          <svg
-            className="size-[15.801px] shrink-0"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden
+          <div
             data-name="Container"
             data-node-id={dualCollapsed ? "43:5030" : "3:2672"}
+            className={topBarIconSlot}
           >
-            <rect x="2" y="2.5" width="4.5" height="11" rx="0.5" stroke="currentColor" strokeWidth="1.25" />
-            <rect x="9.5" y="2.5" width="4.5" height="11" rx="0.5" stroke="currentColor" strokeWidth="1.25" />
-          </svg>
+            <TopBarPanelLeftGlyph className="absolute inset-0 block size-full max-w-none" />
+          </div>
         </button>
 
         {/* 右侧工具条：Figma 3:2668 — ANALYSIS 开时为 336 宽条内 justify-end + gap-8 + px-8；收起时靠中栏右内沿 */}
@@ -135,7 +134,7 @@ export default function TopBar({
             <div
               data-name="Container"
               data-node-id={dualCollapsed ? "43:5034" : "3:2681"}
-              className="relative h-[16.001px] w-[12.467px] shrink-0 text-[#111113]"
+              className={`${topBarIconSlot} text-[#111113]`}
             >
               <TopBarBookmarkGlyph className="absolute inset-0 block size-full max-w-none" />
             </div>
@@ -151,7 +150,7 @@ export default function TopBar({
             <div
               data-name="Container"
               data-node-id={dualCollapsed ? "43:5037" : "3:2684"}
-              className="relative h-[17.467px] w-[17.786px] shrink-0 text-[#111113]"
+              className={`${topBarIconSlot} text-[#111113]`}
             >
               <TopBarSettingsGlyph className="absolute inset-0 block size-full max-w-none" />
             </div>
@@ -178,7 +177,7 @@ export default function TopBar({
                 <div
                   data-name="Container"
                   data-node-id={dualCollapsed ? "43:5040" : "3:2687"}
-                  className="relative size-[17.467px] shrink-0 text-[#111113]"
+                  className={`${topBarIconSlot} text-[#111113]`}
                 >
                   <TopBarProfileGlyph className="absolute inset-0 block size-full max-w-none" />
                 </div>
@@ -200,7 +199,7 @@ export default function TopBar({
             <div
               data-name="Vertical Divider"
               data-node-id="3:2690"
-              className="h-6 w-px shrink-0 bg-[#e5e7eb] opacity-70"
+              className="app-divider-v h-6 shrink-0"
               aria-hidden
             />
           </div>
@@ -219,7 +218,7 @@ export default function TopBar({
             tabIndex={analysisPanelOpen ? 0 : -1}
             onClick={() => analysisPanelOpen && onCollapseAnalysisSidebar?.()}
           >
-            <div data-name="Container" data-node-id="3:2692" className="relative h-[19.016px] w-[19.063px] shrink-0">
+            <div data-name="Container" data-node-id="3:2692" className={topBarIconSlot}>
               <TopBarInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" />
             </div>
           </button>

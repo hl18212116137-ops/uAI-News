@@ -139,7 +139,7 @@ export default function AddSourceModal({
         aria-modal="true"
         aria-labelledby="add-source-title"
       >
-        <header className="flex items-start justify-between border-b border-[#ebebef] px-5 pb-4 pt-5">
+        <header className="app-divider-border-b flex items-start justify-between px-5 pb-4 pt-5">
           <div
             className="min-w-0 flex-1 cursor-grab select-none active:cursor-grabbing"
             onMouseDown={handleMouseDown}
@@ -221,7 +221,7 @@ export default function AddSourceModal({
           )}
         </div>
 
-        <footer className="flex items-center justify-end gap-1 border-t border-[#ebebef] px-4 py-3">
+        <footer className="app-divider-border-t flex items-center justify-end gap-1 px-4 py-3">
           <button
             type="button"
             onClick={onClose}

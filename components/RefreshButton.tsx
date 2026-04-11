@@ -146,7 +146,7 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
             </div>
           </div>
           <div
-            className="relative mt-1 h-0.5 w-full overflow-hidden rounded-full bg-[#ebebef]"
+            className="relative mt-1 h-px w-full overflow-hidden rounded-full bg-[color:var(--app-divider)]"
             aria-hidden
           >
             <div

@@ -13,7 +13,8 @@
     "process": "tsx scripts/process-posts.ts",
     "init-db": "tsx scripts/init-db.ts",
     "mock-data": "tsx scripts/create-mock-data.ts",
-    "update-avatars": "tsx scripts/update-source-avatars.ts"
+    "update-avatars": "tsx scripts/update-source-avatars.ts",
+    "backfill:news-zh": "tsx scripts/backfill-news-chinese.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

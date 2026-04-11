@@ -1,25 +1,33 @@
 /**
- * 顶栏 Figma 图标内联 SVG，避免首屏对 /icons/*.svg 的串行请求，图标与 HTML 同步到达。
- * 颜色随父级 `text-*` / `currentColor`（仙女棒保持品牌金色）。
+ * 顶栏内联 SVG：统一 24×24、stroke 1.5、圆角端点，风格与线宽一致；仙女棒保留品牌金色填充。
  */
+
+const stroke = {
+  stroke: "currentColor" as const,
+  strokeWidth: 1.5,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  fill: "none" as const,
+};
 
 export function TopBarBookmarkGlyph(props: { className?: string }) {
   return (
     <svg
       className={props.className}
-      viewBox="0 0 13 16"
+      viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
       <path
-        fill="currentColor"
-        d="M0 1.67C0 1.21.16.82.49.49.82.16 1.21 0 1.67 0h9.33c.46 0 .85.16 1.18.49.33.33.49.72.49 1.18V16l-5.83-2.5L0 16V1.67Z"
+        d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z"
+        {...stroke}
       />
     </svg>
   );
 }
 
+/** 线框齿轮（与收藏/侧栏/人像同为描边体系） */
 export function TopBarSettingsGlyph(props: { className?: string }) {
   return (
     <svg
@@ -30,9 +38,10 @@ export function TopBarSettingsGlyph(props: { className?: string }) {
       aria-hidden
     >
       <path
-        fill="currentColor"
-        d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.47.35l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.455.455 0 0 0-.59.22L2.74 8.87c-.12.22-.08.5.12.61l2.03 1.58c-.04.31-.07.63-.07.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.27.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.5-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
+        d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.632 6.632 0 010 .255c-.007.378.138.75.43.99l1.005.828a1.125 1.125 0 01-.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.37.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.593c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
+        {...stroke}
       />
+      <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" {...stroke} />
     </svg>
   );
 }
@@ -41,18 +50,29 @@ export function TopBarProfileGlyph(props: { className?: string }) {
   return (
     <svg
       className={props.className}
-      viewBox="0 0 18 18"
+      viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <circle cx="9" cy="6" r="3.25" stroke="currentColor" strokeWidth="1.35" />
-      <path
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.35"
-        d="M3.25 15.2c.9-2.35 3.05-3.95 5.75-3.95s4.85 1.6 5.75 3.95"
-      />
+      <circle cx="12" cy="9" r="3.5" {...stroke} />
+      <path d="M5.5 19.25c.9-2.35 3.2-4.25 6.5-4.25s5.6 1.9 6.5 4.25" {...stroke} />
+    </svg>
+  );
+}
+
+/** 侧栏布局：圆角框 + 左竖线 */
+export function TopBarPanelLeftGlyph(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <rect x="4" y="5" width="16" height="14" rx="2" {...stroke} />
+      <path d="M9.5 7.25V16.75" {...stroke} />
     </svg>
   );
 }

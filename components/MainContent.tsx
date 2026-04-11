@@ -29,6 +29,7 @@ import {
 } from "@/lib/main-layout-classes";
 import { OPTIMISTIC_REFRESH_TASK_ID } from "@/lib/fetch-refresh-ui";
 import { useOptionalHomeLayout } from "@/components/HomeLayoutContext";
+import { hasRawInsightPayload } from "@/lib/insight-echo-guard";
 
 /** 与 app/globals.css --layout-duration 一致 */
 const ANALYSIS_PANEL_CLOSE_MS = 280;
@@ -505,7 +506,12 @@ export default function MainContent({
 
   useEffect(() => {
     if (!analysisOpen || !analysisPostId) return;
-    if (analysisCache[analysisPostId]) return;
+    const cached = analysisCache[analysisPostId];
+    if (cached && hasRawInsightPayload(cached)) {
+      /** 避免：请求中途 insight 被预取/写入缓存 → effect 重跑 cancel 了 fetch，但 finally 未清 loading → 永久「生成中」 */
+      setAnalysisLoadingPostId((cur) => (cur === analysisPostId ? null : cur));
+      return;
+    }
 
     let cancelled = false;
     setAnalysisLoadingPostId(analysisPostId);
@@ -669,7 +675,7 @@ export default function MainContent({
               <div
                 data-name="Horizontal Divider"
                 data-node-id="3:2694"
-                className="h-px w-full bg-[#ebebef]"
+                className="app-divider-h"
                 aria-hidden
               />
             </div>
@@ -759,7 +765,7 @@ export default function MainContent({
                 <div
                   data-name="HorizontalBorder"
                   data-node-id="37:4719"
-                  className="flex h-[46px] min-h-[46px] w-full shrink-0 flex-col items-stretch border-b border-[#ebebef] pb-px"
+                  className="app-divider-border-b flex h-[46px] min-h-[46px] w-full shrink-0 flex-col items-stretch"
                 >
                   <CategoryFilter
                     activeCategory={activeCategory}
@@ -805,11 +811,11 @@ export default function MainContent({
                           className="flex items-center justify-center gap-3"
                           role="presentation"
                         >
-                          <span className="h-px w-10 shrink-0 bg-[#ebebef] sm:w-12" aria-hidden />
+                          <span className="app-divider-h-segment w-10 sm:w-12" aria-hidden />
                           <span className="shrink-0 font-mono text-[10px] font-medium uppercase leading-4 tracking-[0.12em] text-[#99a1af]">
                             部分内容需登录
                           </span>
-                          <span className="h-px w-10 shrink-0 bg-[#ebebef] sm:w-12" aria-hidden />
+                          <span className="app-divider-h-segment w-10 sm:w-12" aria-hidden />
                         </div>
                         <div className="flex flex-col gap-2">
                           <p className="m-0 text-[16px] font-semibold leading-6 tracking-[-0.35px] text-[#101828] sm:text-[17px] sm:leading-7">

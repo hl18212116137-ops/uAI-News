@@ -1,8 +1,10 @@
 import "server-only";
 
 const WINDOW_MS = 60_000;
-/** 每 IP（或未知客户端）每窗口内允许的分析请求次数 */
-const MAX_REQUESTS_PER_WINDOW = 24;
+/** 每 IP 每窗口内允许的「现算 INSIGHT」次数（仅 insight_json 未命中时计数） */
+const MAX_REQUESTS_PER_WINDOW = 72;
+/** 代理未传 IP 时全体共用一个 key；阈值过低会导致本地/部分部署「总是 429」 */
+const MAX_REQUESTS_UNKNOWN_IP_PER_WINDOW = 400;
 const BUCKET_MAX = 5000;
 
 type Bucket = { count: number; windowStart: number };
@@ -35,7 +37,10 @@ export function consumeAnalysisRateLimit(key: string): { ok: true } | { ok: fals
     buckets.set(key, { count: 1, windowStart: now });
     return { ok: true };
   }
-  if (b.count < MAX_REQUESTS_PER_WINDOW) {
+  const cap = key.endsWith(":unknown")
+    ? MAX_REQUESTS_UNKNOWN_IP_PER_WINDOW
+    : MAX_REQUESTS_PER_WINDOW;
+  if (b.count < cap) {
     b.count += 1;
     return { ok: true };
   }

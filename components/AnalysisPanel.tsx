@@ -7,10 +7,15 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import type { NewsItem } from "@/lib/types";
+import {
+  filterInsightReviewEcho,
+  sanitizeInsightContextEcho,
+} from "@/lib/insight-echo-guard";
 import { isMostlyChinese } from "@/lib/text-locale";
 import {
   emphasizeOriginalInsightKeyPhrases,
@@ -71,29 +76,41 @@ function scoreMetaLabel(pct: number | null): string {
   return "一般关注";
 }
 
-/** INSIGHT ORIGINAL：仅展示中文（优先 AI 译文，否则已为中文的原文）。 */
-function resolveChineseOriginalText(originalTranslation: string, originalBody: string): string | null {
-  if (originalTranslation) return originalTranslation;
-  if (originalBody && isMostlyChinese(originalBody)) return originalBody;
-  return null;
-}
-
 type PrimaryOriginalState =
   | { kind: "text"; text: string }
   | { kind: "loading" }
   | { kind: "empty" };
 
-/** 优先展示抓取入库的原文；无正文时再回落到 API 译文或加载态 */
+/**
+ * 原文区以中文为主：优先 INSIGHT 的 originalTranslation（多为中文），再认库内已是中文的 originalText；
+ * 库内仍为英文时，在分析加载中显示「生成中文…」而非先晒英文；仅无译文且非加载时才回落英文。
+ */
 function resolvePrimaryOriginalDisplay(
   rawBody: string,
   translation: string,
   isLoading: boolean,
 ): PrimaryOriginalState {
-  const body = rawBody.trim();
-  if (body.length > 0) return { kind: "text", text: rawBody };
-  const fallbackZh = resolveChineseOriginalText(translation, "");
-  if (fallbackZh) return { kind: "text", text: fallbackZh };
-  if (isLoading) return { kind: "loading" };
+  const raw = rawBody.trim();
+  const tr = translation.trim();
+
+  if (tr.length > 0 && isMostlyChinese(tr)) {
+    return { kind: "text", text: tr };
+  }
+  if (raw.length > 0 && isMostlyChinese(rawBody)) {
+    return { kind: "text", text: rawBody };
+  }
+  if (tr.length > 0) {
+    return { kind: "text", text: tr };
+  }
+  if (isLoading && raw.length > 0 && !isMostlyChinese(rawBody)) {
+    return { kind: "loading" };
+  }
+  if (raw.length > 0) {
+    return { kind: "text", text: rawBody };
+  }
+  if (isLoading) {
+    return { kind: "loading" };
+  }
   return { kind: "empty" };
 }
 
@@ -101,14 +118,30 @@ function normalizeInsightWhitespace(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 
-/** 已展示原文时，是否在下方追加「中文译文」（不与正文重复） */
-function shouldShowChineseTranslationBelow(rawShown: string, translation: string): boolean {
+/**
+ * 主段落已是 INSIGHT 译文或与译文一致时不再叠「中文译文」；
+ * 主段落为中文库文且另有不同译文时可追加（少见）。
+ */
+function shouldShowChineseTranslationBelow(
+  primaryShown: string,
+  translation: string,
+  rawBody: string,
+): boolean {
   const t = translation.trim();
   if (!t) return false;
-  const raw = rawShown.trim();
-  if (!raw) return false;
-  if (normalizeInsightWhitespace(t) === normalizeInsightWhitespace(raw)) return false;
-  return true;
+  if (normalizeInsightWhitespace(t) === normalizeInsightWhitespace(primaryShown.trim())) {
+    return false;
+  }
+  const raw = rawBody.trim();
+  if (
+    raw.length > 0 &&
+    isMostlyChinese(rawBody) &&
+    isMostlyChinese(t) &&
+    normalizeInsightWhitespace(t) !== normalizeInsightWhitespace(raw)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** ORIGINAL 主段落：入库原文立即可见；AI 返回中文译文时可追加一块（KEY POINTS / RELEVANCE 仍依赖 analysis） */
@@ -139,8 +172,8 @@ function OriginalPrimaryAndTranslation({
             paragraphClassName={paragraphClassName}
             linkClassName={linkClassName}
           />
-          {shouldShowChineseTranslationBelow(primary.text, translation) ? (
-            <div className="mt-3 border-t border-[#ececee] pt-3">
+          {shouldShowChineseTranslationBelow(primary.text, translation, rawBody) ? (
+            <div className="app-divider-border-t mt-3 pt-3">
               <p className="m-0 mb-2 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.12em] text-[#99a1af]">
                 中文译文
               </p>
@@ -305,14 +338,14 @@ function PostMetaRow({
       : `重要度 ${scoreDisplay} 分，满分 100`;
 
   return (
-    <div className="flex min-w-0 items-center justify-between gap-4 border-b border-[#f0f0f2] pb-3" aria-live="polite">
+    <div className="app-divider-border-b flex min-w-0 items-center justify-between gap-4 pb-3" aria-live="polite">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <SourceAvatarImg
           src={post.source.avatar}
           alt={name}
           letter={post.source.name || post.source.handle || "?"}
-          imgClassName="h-6 w-6 shrink-0 rounded-[3px] object-cover ring-1 ring-[#f0f0f2]"
-          placeholderClassName="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] bg-[#fafafa] text-[8px] font-semibold text-[#99a1af] ring-1 ring-[#f0f0f2]"
+          imgClassName="h-6 w-6 shrink-0 rounded-[3px] object-cover ring-1 ring-[color:var(--app-divider)]"
+          placeholderClassName="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] bg-[#fafafa] text-[8px] font-semibold text-[#99a1af] ring-1 ring-[color:var(--app-divider)]"
         />
         <a
           href={titleHref}
@@ -500,15 +533,42 @@ function stripOuterMatchingQuotes(s: string): string {
   return t;
 }
 
+/** 要点/启发生成中：旋转刷新图标 + 文案 */
+function InsightGeneratingRow({ label, mutedClass }: { label: string; mutedClass: string }) {
+  return (
+    <span
+      className={`inline-flex w-full min-w-0 items-center gap-2 ${mutedClass}`}
+      role="status"
+      aria-live="polite"
+    >
+      <svg
+        className="size-3.5 shrink-0 animate-spin text-[#99a1af]"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+        />
+      </svg>
+      <span>{label}</span>
+    </span>
+  );
+}
+
 /** RELEVANCE：单句启发，无编号 */
 function InsightRelevanceSingle({
   text,
-  isLoading,
+  isPending,
   loadingLabel,
   emptyLabel,
 }: {
   text: string;
-  isLoading: boolean;
+  isPending: boolean;
   loadingLabel: string;
   emptyLabel: string;
 }) {
@@ -517,7 +577,7 @@ function InsightRelevanceSingle({
   if (!t) {
     return (
       <p className={`m-0 box-border block w-full min-w-0 max-w-full self-stretch ${mutedClass}`}>
-        {isLoading ? loadingLabel : emptyLabel}
+        {isPending ? <InsightGeneratingRow label={loadingLabel} mutedClass={mutedClass} /> : emptyLabel}
       </p>
     );
   }
@@ -556,12 +616,12 @@ function InsightRelevanceSingle({
 
 function InsightNumberedBody({
   items,
-  isLoading,
+  isPending,
   loadingLabel,
   emptyLabel,
 }: {
   items: string[];
-  isLoading: boolean;
+  isPending: boolean;
   loadingLabel: string;
   emptyLabel: string;
 }) {
@@ -569,7 +629,11 @@ function InsightNumberedBody({
   const mutedClass = `m-0 ${INSIGHT_BODY_MUTED}`;
 
   if (items.length === 0) {
-    return <p className={`m-0 w-full min-w-0 ${mutedClass}`}>{isLoading ? loadingLabel : emptyLabel}</p>;
+    return (
+      <p className={`m-0 w-full min-w-0 ${mutedClass}`}>
+        {isPending ? <InsightGeneratingRow label={loadingLabel} mutedClass={mutedClass} /> : emptyLabel}
+      </p>
+    );
   }
 
   return (
@@ -609,8 +673,23 @@ export default function AnalysisPanel({
   const scoreDisplay = scorePct != null ? String(scorePct) : isLoading ? "…" : "—";
   const scoreLabel = scoreMetaLabel(scorePct);
 
-  const contextText = analysis?.contextMatch?.trim() ?? "";
-  const highlightLines = normalizeHighlightLines(analysis?.review ?? null).slice(0, 3);
+  const highlightLines = useMemo(() => {
+    const raw = normalizeHighlightLines(analysis?.review ?? null).slice(0, 3);
+    if (!post) return raw;
+    const filtered = filterInsightReviewEcho(post, raw.length > 0 ? raw : null);
+    return filtered ?? [];
+  }, [post, analysis?.review]);
+
+  const contextText = useMemo(() => {
+    const raw = analysis?.contextMatch?.trim() ?? "";
+    if (!post) return raw;
+    return sanitizeInsightContextEcho(post, raw || null)?.trim() ?? "";
+  }, [post, analysis?.contextMatch]);
+
+  /** 要点/启发仅在接口进行中显示「生成中」；echo 过滤后为空时显示「暂无」，由用户点重试（自动清空缓存曾导致反复请求与界面抖动） */
+  const keyPointsPending = isLoading;
+  const relevancePending = isLoading;
+
   const originalTranslation = analysis?.originalTranslation?.trim() ?? "";
   const refTranslation = analysis?.originalTranslationReferenced?.trim() ?? "";
   const originalBody = post?.originalText?.trim() ?? "";
@@ -837,7 +916,7 @@ export default function AnalysisPanel({
                   tweetHref={sourceUrl}
                   videoLinkClassName={linkifiedOriginalClass}
                 />
-                <div className="mt-4 border-l-2 border-[#ececee] bg-[#fafafa]/80 py-3 pl-3 pr-2">
+                <div className="app-divider-border-l mt-4 bg-[#fafafa]/80 py-3 pl-3 pr-2">
                   <p className="m-0 mb-2 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.12em] text-[#99a1af]">
                     引用原文
                   </p>
@@ -989,59 +1068,57 @@ export default function AnalysisPanel({
         </div>
       ) : null}
 
-      {/* 中区：ORIGINAL 占满剩余高度内滚；KEY POINTS 编号 + RELEVANCE 单句 */}
+      {/* 中区：单栏纵向滚动；原文高度随内容，要点/启发紧跟其下（不再被 flex-1 撑满顶到底） */}
       <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col self-stretch overflow-hidden pr-4">
-        <section
-          className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col items-stretch gap-4 pt-4 pb-3"
-          aria-labelledby="analysis-original-heading"
-        >
-          <SectionHeading
-            id="analysis-original-heading"
-            icon={<InsightSectionTitleIcon section="original" />}
-            label="原文"
-            onHeadingClick={
-              originalOverflows
-                ? () => setOriginalExpanded((v) => !v)
-                : undefined
-            }
-            headingClickLabel={
-              originalOverflows
-                ? originalExpanded
-                  ? "收起正文"
-                  : "展开正文"
-                : undefined
-            }
-            toggleAriaExpanded={originalOverflows ? originalExpanded : undefined}
-            toggleAriaControls={originalOverflows ? "insight-original-body" : undefined}
-            endSlot={
-              originalOverflows ? (
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#8A8A93]" aria-hidden>
-                  <span
-                    className={[
-                      "motion-layout-ease relative h-[7.223px] w-[4.54px] text-[#8A8A93] transition-transform",
-                      originalExpanded ? "rotate-90" : "rotate-0",
-                    ].join(" ")}
-                  >
-                    <SourcesChevronRightGlyph className="absolute inset-0 block size-full max-w-none" />
-                  </span>
-                </span>
-              ) : null
-            }
-          />
-          <div
-            id="insight-original-body"
-            className="min-h-0 min-w-0 w-full max-w-full flex-1 self-stretch overflow-y-auto overscroll-contain pr-1"
+        <div className="sidebar-scroll flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-contain">
+          <section
+            className="flex w-full max-w-full shrink-0 flex-col items-stretch gap-4 pt-4 pb-3"
+            aria-labelledby="analysis-original-heading"
           >
-            <div className="min-h-0 min-w-0 w-full max-w-full">{originalBlock}</div>
-          </div>
-        </section>
+            <SectionHeading
+              id="analysis-original-heading"
+              icon={<InsightSectionTitleIcon section="original" />}
+              label="原文"
+              onHeadingClick={
+                originalOverflows
+                  ? () => setOriginalExpanded((v) => !v)
+                  : undefined
+              }
+              headingClickLabel={
+                originalOverflows
+                  ? originalExpanded
+                    ? "收起正文"
+                    : "展开正文"
+                  : undefined
+              }
+              toggleAriaExpanded={originalOverflows ? originalExpanded : undefined}
+              toggleAriaControls={originalOverflows ? "insight-original-body" : undefined}
+              endSlot={
+                originalOverflows ? (
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#8A8A93]" aria-hidden>
+                    <span
+                      className={[
+                        "motion-layout-ease relative h-[7.223px] w-[4.54px] text-[#8A8A93] transition-transform",
+                        originalExpanded ? "rotate-90" : "rotate-0",
+                      ].join(" ")}
+                    >
+                      <SourcesChevronRightGlyph className="absolute inset-0 block size-full max-w-none" />
+                    </span>
+                  </span>
+                ) : null
+              }
+            />
+            <div id="insight-original-body" className="min-w-0 w-full max-w-full shrink-0 pr-1">
+              <div className="min-w-0 w-full max-w-full">{originalBlock}</div>
+            </div>
+          </section>
 
-        <div
-          className={[
-            "flex min-h-0 shrink-0 flex-col pb-8",
-            insightBottomBothCollapsed ? "gap-2 pt-2" : "gap-4 pt-4",
-          ].join(" ")}
-        >
+          <div
+            className={[
+              "flex shrink-0 flex-col pb-8",
+              insightBottomBothCollapsed ? "gap-2 pt-2" : "gap-4 pt-4",
+            ].join(" ")}
+          >
           <section
             className={[
               "flex w-full max-w-full min-h-0 min-w-0 flex-col items-stretch overflow-hidden",
@@ -1066,7 +1143,7 @@ export default function AnalysisPanel({
               <div className="min-h-0 overflow-hidden">
                 <div
                   id="insight-key-points-body"
-                  className="sidebar-scroll max-h-[28vh] min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-contain"
+                  className="min-h-0 w-full min-w-0 max-w-full overflow-visible"
                 >
                   <div
                     onClick={handleKeyPointsBodyClick}
@@ -1074,7 +1151,7 @@ export default function AnalysisPanel({
                   >
                     <InsightNumberedBody
                       items={highlightLines}
-                      isLoading={isLoading}
+                      isPending={keyPointsPending}
                       loadingLabel="正在生成要点…"
                       emptyLabel="暂无要点"
                     />
@@ -1108,7 +1185,7 @@ export default function AnalysisPanel({
               <div className="min-h-0 overflow-hidden">
                 <div
                   id="insight-relevance-body"
-                  className="insight-relevance-scroll box-border max-h-[28vh] min-h-0 w-full min-w-0 max-w-full overflow-y-auto overflow-x-hidden overscroll-contain"
+                  className="box-border min-h-0 w-full min-w-0 max-w-full overflow-visible"
                 >
                   <div
                     onClick={handleRelevanceBodyClick}
@@ -1116,8 +1193,8 @@ export default function AnalysisPanel({
                   >
                     <InsightRelevanceSingle
                       text={contextText}
-                      isLoading={isLoading}
-                      loadingLabel="正在生成一句启发…"
+                      isPending={relevancePending}
+                      loadingLabel="正在生成启发…"
                       emptyLabel="暂无启发"
                     />
                   </div>
@@ -1126,11 +1203,12 @@ export default function AnalysisPanel({
             </div>
           </section>
         </div>
+        </div>
       </div>
 
       {/* 底栏：8px 网格 — 32px 点击域、紧凑纵向边距、与内容区留白由上方 pb-8 承担 */}
       <div
-        className="box-border flex w-full max-w-full shrink-0 items-center gap-4 border-t border-[#f3f4f6] bg-white py-2 pr-4"
+        className="app-divider-border-t box-border flex w-full max-w-full shrink-0 items-center gap-4 bg-white py-2 pr-4"
         data-name="BOTTOM"
       >
         <button

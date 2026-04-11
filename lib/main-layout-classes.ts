@@ -34,8 +34,8 @@ export const MAIN_SIDE_FRAME_CLASS =
 
 /** 37:4808 — 与侧栏折叠同步 opacity；窄屏无栅格竖线 */
 export const VERTICAL_DIVIDER_AFTER_SOURCES_CLASS =
-  "hidden h-full w-px bg-[#eaecef] transition-opacity layout-transition-surface lg:block";
+  "app-divider-v hidden h-full transition-opacity layout-transition-surface lg:block";
 
 /** 37:4682 */
 export const VERTICAL_DIVIDER_BEFORE_ANALYSIS_CLASS =
-  "hidden h-full w-px bg-[#f0f0f2] transition-opacity layout-transition-surface lg:block";
+  "app-divider-v hidden h-full transition-opacity layout-transition-surface lg:block";

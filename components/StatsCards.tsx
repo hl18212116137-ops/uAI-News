@@ -96,7 +96,7 @@ export default function StatsCards({
               </div>
               {i < items.length - 1 ? (
                 <div
-                  className="mx-0 h-6 w-px shrink-0 self-center bg-[#f1f1f1]"
+                  className="app-divider-v mx-0 h-6 self-center"
                   data-name="Vertical Divider"
                   aria-hidden
                 />

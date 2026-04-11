@@ -3,6 +3,7 @@ import 'server-only'
 import type { Source } from '@/lib/sources'
 import { composeTextForAiProcessing, fetchPostsFromX } from '@/lib/x'
 import { addPost } from '@/lib/db'
+import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese'
 import { getDefaultAIService } from '@/lib/ai/ai-factory'
 import { taskManager } from '@/lib/task-manager'
 
@@ -49,7 +50,14 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
             const textForAi = composeTextForAiProcessing(post.post_text, post.referencedPost)
             const aiResult = await aiService.processNews(textForAi, source.name, source.handle)
 
-            const translatedContent = await aiService.translateContent(textForAi)
+            const [translatedContent, zhOriginal] = await Promise.all([
+              aiService.translateContent(textForAi),
+              translateNewsOriginalToChinese(
+                (s) => aiService.translateContent(s),
+                post.post_text,
+                post.referencedPost,
+              ),
+            ])
 
             let importanceScore = 50
             try {
@@ -79,7 +87,7 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
               },
               category: aiResult.category,
               publishedAt: post.posted_at,
-              originalText: post.post_text,
+              originalText: zhOriginal.originalText,
               createdAt: new Date().toISOString(),
               importanceScore,
               ...(post.media_urls && post.media_urls.length > 0
@@ -88,7 +96,7 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
               ...(post.social_engagement && Object.keys(post.social_engagement).length > 0
                 ? { socialEngagement: post.social_engagement }
                 : {}),
-              ...(post.referencedPost ? { referencedPost: post.referencedPost } : {}),
+              ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
             })
 
             return { success: true, postId: post.post_id }
