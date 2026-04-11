@@ -8,13 +8,14 @@ import Tooltip from "./Tooltip";
 import { sourceBioTagsLine } from "@/lib/source-bio-fallback";
 import {
   SourcesAcademiaGlyph,
+  SourcesActionPlusGlyph,
+  SourcesActionRefreshGlyph,
   SourcesBloggersGlyph,
   SourcesChevronRightGlyph,
   SourcesMediaGlyph,
   SourcesRecommendGlyph,
   SourcesSearchGlyph,
 } from "@/components/sources-sidebar-icons";
-import { FIGMA_SOURCES_ACTION_ICONS } from "@/lib/figma-sources-action-icons";
 
 type Source = {
   handle: string;
@@ -179,16 +180,7 @@ function SourcesListSourceCard({
                         />
                       </svg>
                     ) : (
-                      <span className="relative size-2 shrink-0" data-node-id="37:4662">
-                        <img
-                          alt=""
-                          src={FIGMA_SOURCES_ACTION_ICONS.cardSubscribe}
-                          loading="eager"
-                          decoding="async"
-                          className="absolute block size-full max-w-none object-contain"
-                          aria-hidden
-                        />
-                      </span>
+                      <SourcesActionPlusGlyph className="size-2 shrink-0 text-[#111113]" />
                     )}
                   </button>
                 </Tooltip>
@@ -277,7 +269,7 @@ const RecommendPanel = memo(function RecommendPanel({
               data-node-id="37:4650"
               className="relative flex h-[17px] w-[69.31px] shrink-0 flex-col justify-center font-mono text-[11px] font-semibold uppercase leading-[16.5px] tracking-[1.1px] text-[#0055FF]"
             >
-              <p className="m-0">RECOMMEND</p>
+              <p className="m-0">推荐</p>
             </div>
           </div>
           <Tooltip content="换一批推荐">
@@ -290,16 +282,11 @@ const RecommendPanel = memo(function RecommendPanel({
               className="relative flex size-4 shrink-0 items-center justify-center opacity-80 transition-opacity hover:opacity-100 disabled:opacity-50"
               aria-label="刷新推荐"
             >
-              <span className="relative h-[10.94px] w-[10.97px] shrink-0" data-name="Container" data-node-id="37:4652">
-                <img
-                  alt=""
-                  src={FIGMA_SOURCES_ACTION_ICONS.refresh}
-                  loading="eager"
-                  decoding="async"
-                  className="absolute block size-full max-w-none"
-                  aria-hidden
-                />
-              </span>
+              <SourcesActionRefreshGlyph
+                className="h-[10.94px] w-[10.97px] shrink-0 text-[#111113]"
+                data-name="Container"
+                data-node-id="37:4652"
+              />
             </button>
           </Tooltip>
         </div>
@@ -449,28 +436,22 @@ export default function SourcesList({
         >
           <div data-name="Heading 2" data-node-id="37:4555" className="relative flex shrink-0 flex-col items-start">
             <h2 className="m-0 flex h-[18px] min-w-0 flex-col justify-center p-0 font-sans text-[12px] font-bold uppercase leading-[18px] tracking-[1.2px] text-[#111113]">
-              SOURCES
+              信息源
             </h2>
           </div>
-          <Tooltip content="Add source">
+          <Tooltip content="添加信息源">
             <button
               type="button"
               data-name="Button"
               data-node-id="37:4557"
               onClick={() => (onAddSource ? onAddSource() : setShowAddModal(true))}
               className="flex size-4 shrink-0 items-center justify-center transition-opacity hover:opacity-70"
-              aria-label="Add source"
+              aria-label="添加信息源"
             >
-              <span className="relative size-[9.604px] shrink-0" data-node-id="37:4558">
-                <img
-                  alt=""
-                  src={FIGMA_SOURCES_ACTION_ICONS.addSource}
-                  loading="eager"
-                  decoding="async"
-                  className="absolute block size-full max-w-none"
-                  aria-hidden
-                />
-              </span>
+              <SourcesActionPlusGlyph
+                className="size-[9.604px] shrink-0 text-[#111113]"
+                data-node-id="37:4558"
+              />
             </button>
           </Tooltip>
         </div>
@@ -488,7 +469,7 @@ export default function SourcesList({
               </span>
               <input
                 type="text"
-                placeholder="Search sources..."
+                placeholder="搜索信息源…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 data-node-id="37:4567"
@@ -509,7 +490,7 @@ export default function SourcesList({
             [
               {
                 id: "blogger" as const,
-                label: "BLOGGERS",
+                label: "博主",
                 sectionNode: "37:4570" as const,
                 titleNode: "37:4571" as const,
                 countNode: "37:4578" as const,
@@ -517,7 +498,7 @@ export default function SourcesList({
               },
               {
                 id: "media" as const,
-                label: "MEDIA",
+                label: "媒体",
                 sectionNode: "37:4621" as const,
                 titleNode: "37:4622" as const,
                 countNode: "37:4629" as const,
@@ -525,7 +506,7 @@ export default function SourcesList({
               },
               {
                 id: "academic" as const,
-                label: "ACADEMIA",
+                label: "学术",
                 sectionNode: "37:4632" as const,
                 titleNode: "37:4633" as const,
                 countNode: "37:4640" as const,
@@ -628,7 +609,7 @@ export default function SourcesList({
                       </div>
                     ) : open && !searchQuery ? (
                       <div className="py-1 text-[12px] font-normal text-[#8A8A93]">
-                        No {section.label.toLowerCase()} yet.
+                        暂无{section.label}类订阅。
                       </div>
                     ) : null}
                   </div>

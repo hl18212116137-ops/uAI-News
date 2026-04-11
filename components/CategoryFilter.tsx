@@ -5,12 +5,12 @@ import Tooltip from "./Tooltip";
 import { FeedFetchGlyph } from "@/components/feed-inline-icons";
 
 const categories = [
-  { value: "all", label: "All", tooltip: "Show all categories" },
-  { value: "Company News", label: "Industry", tooltip: "Industry news" },
-  { value: "Funding", label: "Funding", tooltip: "Funding updates" },
-  { value: "Policy", label: "Policy", tooltip: "Policy & regulation updates" },
-  { value: "Research", label: "Research", tooltip: "Research breakthroughs" },
-  { value: "Model Update", label: "Models", tooltip: "Model updates & releases" },
+  { value: "all", label: "全部", tooltip: "显示全部分类" },
+  { value: "Company News", label: "行业", tooltip: "行业与公司动态" },
+  { value: "Funding", label: "融资", tooltip: "融资与交易" },
+  { value: "Policy", label: "政策", tooltip: "政策与监管" },
+  { value: "Research", label: "研究", tooltip: "研究与论文突破" },
+  { value: "Model Update", label: "模型", tooltip: "模型更新与发布" },
 ];
 
 type CategoryFilterProps = {
@@ -91,7 +91,7 @@ export default function CategoryFilter({
         data-name="Nav"
         data-node-id="37:4721"
         className="absolute left-0 top-[8px] z-0 max-w-[calc(100%-6.5rem)] min-w-0 overflow-x-auto pb-px [-ms-overflow-style:none] [scrollbar-width:thin]"
-        aria-label="Category filters"
+        aria-label="分类筛选"
       >
         <div
           ref={trackRef}
@@ -159,7 +159,7 @@ export default function CategoryFilter({
               className="font-sans text-[11px] font-semibold uppercase leading-[11px] tracking-[1.1px] text-[#05f]"
               data-node-id="37:4739"
             >
-              {isFetchRunning ? "FETCHING" : "Fetch"}
+              {isFetchRunning ? "抓取中" : "抓取"}
             </span>
           </button>
         </div>

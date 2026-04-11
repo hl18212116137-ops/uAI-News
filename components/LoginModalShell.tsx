@@ -28,11 +28,11 @@ export default function LoginModalShell() {
     <AppModalShell
       isOpen
       onClose={handleClose}
-      backdropAriaLabel="Close sign in"
+      backdropAriaLabel="关闭登录"
       panelClassName="max-w-[400px] p-6"
     >
       <h1 id="login-dialog-title" className="sr-only">
-        Sign in
+        登录
       </h1>
       <LoginPanel />
     </AppModalShell>

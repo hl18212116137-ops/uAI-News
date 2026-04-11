@@ -29,7 +29,7 @@ export default function AppModalShell({
   backdropClassName = "",
   contentInsetLeft = 0,
   disableBackdropClick = false,
-  backdropAriaLabel = "Close dialog",
+  backdropAriaLabel = "关闭对话框",
   panelVariant = "default",
   ariaLabelledBy,
 }: AppModalShellProps) {

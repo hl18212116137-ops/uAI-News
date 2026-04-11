@@ -37,7 +37,7 @@ export default function SiteHeader({ stats }: SiteHeaderProps) {
               className="m-0 w-full font-sans text-[13px] font-normal leading-[20.8px] text-[#8a8a93]"
               data-node-id="37:4689"
             >
-              Global activity tracking and intelligence feed.
+              全球动态追踪与智能情报流。
             </p>
           </div>
         </div>

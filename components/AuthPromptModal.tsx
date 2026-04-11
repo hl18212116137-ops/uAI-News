@@ -12,7 +12,7 @@ type AuthPromptModalProps = {
 export default function AuthPromptModal({
   isOpen,
   onClose,
-  message = "Sign in to use this feature.",
+  message = "使用此功能需要先登录。",
 }: AuthPromptModalProps) {
   const router = useRouter();
 
@@ -25,6 +25,7 @@ export default function AuthPromptModal({
     <AppModalShell
       isOpen={isOpen}
       onClose={onClose}
+      backdropAriaLabel="关闭对话框"
       ariaLabelledBy="auth-prompt-title"
       panelClassName={[
         "max-w-[440px] overflow-hidden p-0",
@@ -43,7 +44,7 @@ export default function AuthPromptModal({
           type="button"
           onClick={onClose}
           className="btn-press absolute right-3 top-3 z-[1] flex h-8 w-8 items-center justify-center rounded-lg text-[#99a1af] transition-colors duration-150 hover:bg-[#f4f5f7] hover:text-[#101828]"
-          aria-label="Close"
+          aria-label="关闭"
         >
           <svg
             className="h-4 w-4"
@@ -105,14 +106,14 @@ export default function AuthPromptModal({
           onClick={onClose}
           className="btn-press inline-flex h-9 items-center justify-center rounded-lg border border-[#e2e4e9] bg-white px-4 text-[13px] font-medium text-[#101828] shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] transition-[border-color,background-color,box-shadow] duration-150 ease-out hover:border-[#d4d7de] hover:bg-[#f9fafb]"
         >
-          Cancel
+          取消
         </button>
         <button
           type="button"
           onClick={handleGoLogin}
           className="btn-press inline-flex h-9 min-w-[108px] items-center justify-center rounded-lg bg-[#0055FF] px-4 text-[13px] font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.14)_inset,0_1px_2px_rgba(0,85,255,0.25)] transition-[background-color,box-shadow,transform] duration-150 ease-out hover:bg-[#0046CC] hover:shadow-[0_1px_0_rgba(255,255,255,0.16)_inset,0_4px_14px_rgba(0,85,255,0.35)] active:bg-[#003db3]"
         >
-          Sign in
+          登录
         </button>
       </footer>
     </AppModalShell>

@@ -1,5 +1,5 @@
 import { getPostById } from '@/lib/db';
-import { NewsItem } from '@/lib/types';
+import { CATEGORY_ZH_MAP, type NewsCategory } from '@/lib/types';
 
 export const revalidate = 3600;
 
@@ -20,13 +20,15 @@ export default async function NewsDetailPage({
 
   const sourceName = post.source.name;
   const sourceUrl = post.source.url;
+  const categoryZh =
+    CATEGORY_ZH_MAP[post.category as NewsCategory] ?? post.category;
 
   return (
     <main style={{ maxWidth: "800px", margin: "40px auto", padding: "0 20px" }}>
       <h1 style={{ fontSize: "32px", marginBottom: "20px" }}>{post.title}</h1>
 
       <div style={{ fontSize: "14px", color: "#666", marginBottom: "20px" }}>
-        来源：{sourceName} ｜ 分类：{post.category} ｜ 时间：
+        来源：{sourceName} ｜ 分类：{categoryZh} ｜ 时间：
         {new Date(post.publishedAt).toLocaleString("zh-CN")}
       </div>
 

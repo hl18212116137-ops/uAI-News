@@ -66,9 +66,9 @@ function normalizeScorePercent(n: number | null | undefined): number | null {
 
 function scoreMetaLabel(pct: number | null): string {
   if (pct == null) return "";
-  if (pct >= 80) return "High priority";
-  if (pct >= 50) return "Notable";
-  return "Lower priority";
+  if (pct >= 80) return "高优先级";
+  if (pct >= 50) return "值得关注";
+  return "一般关注";
 }
 
 /** INSIGHT ORIGINAL：仅展示中文（优先 AI 译文，否则已为中文的原文）。 */
@@ -76,6 +76,89 @@ function resolveChineseOriginalText(originalTranslation: string, originalBody: s
   if (originalTranslation) return originalTranslation;
   if (originalBody && isMostlyChinese(originalBody)) return originalBody;
   return null;
+}
+
+type PrimaryOriginalState =
+  | { kind: "text"; text: string }
+  | { kind: "loading" }
+  | { kind: "empty" };
+
+/** 优先展示抓取入库的原文；无正文时再回落到 API 译文或加载态 */
+function resolvePrimaryOriginalDisplay(
+  rawBody: string,
+  translation: string,
+  isLoading: boolean,
+): PrimaryOriginalState {
+  const body = rawBody.trim();
+  if (body.length > 0) return { kind: "text", text: rawBody };
+  const fallbackZh = resolveChineseOriginalText(translation, "");
+  if (fallbackZh) return { kind: "text", text: fallbackZh };
+  if (isLoading) return { kind: "loading" };
+  return { kind: "empty" };
+}
+
+function normalizeInsightWhitespace(s: string): string {
+  return s.trim().replace(/\s+/g, " ");
+}
+
+/** 已展示原文时，是否在下方追加「中文译文」（不与正文重复） */
+function shouldShowChineseTranslationBelow(rawShown: string, translation: string): boolean {
+  const t = translation.trim();
+  if (!t) return false;
+  const raw = rawShown.trim();
+  if (!raw) return false;
+  if (normalizeInsightWhitespace(t) === normalizeInsightWhitespace(raw)) return false;
+  return true;
+}
+
+/** ORIGINAL 主段落：入库原文立即可见；AI 返回中文译文时可追加一块（KEY POINTS / RELEVANCE 仍依赖 analysis） */
+function OriginalPrimaryAndTranslation({
+  rawBody,
+  translation,
+  isLoading,
+  paragraphClassName,
+  mutedClassName,
+  linkClassName,
+  emptyLabel,
+}: {
+  rawBody: string;
+  translation: string;
+  isLoading: boolean;
+  paragraphClassName: string;
+  mutedClassName: string;
+  linkClassName: string;
+  emptyLabel: string;
+}) {
+  const primary = resolvePrimaryOriginalDisplay(rawBody, translation, isLoading);
+  return (
+    <>
+      {primary.kind === "text" ? (
+        <>
+          <OriginalInsightBodyParagraph
+            rawText={primary.text}
+            paragraphClassName={paragraphClassName}
+            linkClassName={linkClassName}
+          />
+          {shouldShowChineseTranslationBelow(primary.text, translation) ? (
+            <div className="mt-3 border-t border-[#ececee] pt-3">
+              <p className="m-0 mb-2 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.12em] text-[#99a1af]">
+                中文译文
+              </p>
+              <OriginalInsightBodyParagraph
+                rawText={translation.trim()}
+                paragraphClassName={paragraphClassName}
+                linkClassName={linkClassName}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : primary.kind === "loading" ? (
+        <p className={mutedClassName}>生成中文内容中…</p>
+      ) : (
+        <p className={mutedClassName}>{emptyLabel}</p>
+      )}
+    </>
+  );
 }
 
 /** ORIGINAL：可点链接 + 书名《》、短引「」、编辑注【】等少量加粗（全文合计有上限，见 `emphasizeOriginalInsightKeyPhrases`） */
@@ -541,9 +624,6 @@ export default function AnalysisPanel({
   const titleHref = sourceUrl || "#";
   const mediaUrls = post?.mediaUrls?.filter((u) => typeof u === "string" && /^https:\/\//i.test(u)) ?? [];
 
-  const chineseOuter = resolveChineseOriginalText(originalTranslation, originalBody);
-  const chineseRef = resolveChineseOriginalText(refTranslation, refBody);
-
   const originalContentRef = useRef<HTMLDivElement>(null);
   const [originalExpanded, setOriginalExpanded] = useState(false);
   const [originalOverflows, setOriginalOverflows] = useState(false);
@@ -638,8 +718,10 @@ export default function AnalysisPanel({
     };
   }, [
     post?.id,
-    chineseOuter,
-    chineseRef,
+    originalBody,
+    refBody,
+    originalTranslation,
+    refTranslation,
     isLoading,
     mediaUrls.length,
     refPost?.kind,
@@ -689,17 +771,15 @@ export default function AnalysisPanel({
             {!refPost ? (
               <>
                 <div>
-                  {chineseOuter ? (
-                    <OriginalInsightBodyParagraph
-                      rawText={chineseOuter}
-                      paragraphClassName={originalBodyPrimaryClass}
-                      linkClassName={linkifiedOriginalClass}
-                    />
-                  ) : isLoading ? (
-                    <p className={originalBodyMutedClass}>生成中文内容中…</p>
-                  ) : (
-                    <p className={originalBodyMutedClass}>暂无中文正文</p>
-                  )}
+                  <OriginalPrimaryAndTranslation
+                    rawBody={originalBody}
+                    translation={originalTranslation}
+                    isLoading={isLoading}
+                    paragraphClassName={originalBodyPrimaryClass}
+                    mutedClassName={originalBodyMutedClass}
+                    linkClassName={linkifiedOriginalClass}
+                    emptyLabel="暂无正文"
+                  />
                 </div>
                 <OriginalMediaGallery
                   urls={mediaUrls}
@@ -716,17 +796,15 @@ export default function AnalysisPanel({
                   </p>
                 ) : null}
                 <div>
-                  {chineseRef ?? chineseOuter ? (
-                    <OriginalInsightBodyParagraph
-                      rawText={(chineseRef ?? chineseOuter)!}
-                      paragraphClassName={originalBodyPrimaryClass}
-                      linkClassName={linkifiedOriginalClass}
-                    />
-                  ) : isLoading ? (
-                    <p className={originalBodyMutedClass}>生成中文内容中…</p>
-                  ) : (
-                    <p className={originalBodyMutedClass}>暂无中文正文</p>
-                  )}
+                  <OriginalPrimaryAndTranslation
+                    rawBody={refBody.trim() ? refBody : originalBody}
+                    translation={refBody.trim() ? refTranslation : originalTranslation}
+                    isLoading={isLoading}
+                    paragraphClassName={originalBodyPrimaryClass}
+                    mutedClassName={originalBodyMutedClass}
+                    linkClassName={linkifiedOriginalClass}
+                    emptyLabel="暂无正文"
+                  />
                 </div>
                 <OriginalMediaGallery
                   urls={refPost.mediaUrls ?? []}
@@ -744,17 +822,15 @@ export default function AnalysisPanel({
             ) : (
               <>
                 <div>
-                  {chineseOuter ? (
-                    <OriginalInsightBodyParagraph
-                      rawText={chineseOuter}
-                      paragraphClassName={originalBodyPrimaryClass}
-                      linkClassName={linkifiedOriginalClass}
-                    />
-                  ) : isLoading ? (
-                    <p className={originalBodyMutedClass}>生成中文内容中…</p>
-                  ) : (
-                    <p className={originalBodyMutedClass}>（无引用评论）</p>
-                  )}
+                  <OriginalPrimaryAndTranslation
+                    rawBody={originalBody}
+                    translation={originalTranslation}
+                    isLoading={isLoading}
+                    paragraphClassName={originalBodyPrimaryClass}
+                    mutedClassName={originalBodyMutedClass}
+                    linkClassName={linkifiedOriginalClass}
+                    emptyLabel="（无引用评论）"
+                  />
                 </div>
                 <OriginalMediaGallery
                   urls={mediaUrls}
@@ -772,17 +848,15 @@ export default function AnalysisPanel({
                     </p>
                   ) : null}
                   <div>
-                    {chineseRef ? (
-                      <OriginalInsightBodyParagraph
-                        rawText={chineseRef}
-                        paragraphClassName={originalBodyPrimaryClass}
-                        linkClassName={linkifiedOriginalClass}
-                      />
-                    ) : isLoading ? (
-                      <p className={originalBodyMutedClass}>生成中文内容中…</p>
-                    ) : (
-                      <p className={originalBodyMutedClass}>暂无引用正文译文</p>
-                    )}
+                    <OriginalPrimaryAndTranslation
+                      rawBody={refBody}
+                      translation={refTranslation}
+                      isLoading={isLoading}
+                      paragraphClassName={originalBodyPrimaryClass}
+                      mutedClassName={originalBodyMutedClass}
+                      linkClassName={linkifiedOriginalClass}
+                      emptyLabel="暂无引用正文"
+                    />
                   </div>
                   <OriginalMediaGallery
                     urls={refPost.mediaUrls ?? []}
@@ -847,7 +921,7 @@ export default function AnalysisPanel({
     <aside
       data-name="INSIGHT (336*1024)"
       className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-white pb-[max(1rem,env(safe-area-inset-bottom,0px))] pl-4 pr-0 pt-5 sm:pl-5 sm:pt-6 lg:pl-6"
-      aria-label="Insight"
+      aria-label="解读侧栏"
     >
       <div
         className="pointer-events-none absolute right-0 top-0 z-10 h-[2px] w-6 bg-[#FFB224]"
@@ -859,7 +933,7 @@ export default function AnalysisPanel({
           type="button"
           onClick={onClose}
           className="absolute right-2 top-[24px] z-20 flex size-7 items-center justify-center rounded transition-colors hover:bg-gray-50"
-          aria-label="Close analysis"
+          aria-label="关闭解读"
         >
           <svg className="size-4 text-[#6a7282]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -872,12 +946,12 @@ export default function AnalysisPanel({
         <div className="relative flex h-[24px] w-full shrink-0 items-center gap-2">
           <div className="flex flex-col items-start justify-center">
             <span className="block h-[18px] font-sans text-[12px] font-bold uppercase leading-[18px] tracking-[1.2px] text-[#111113]">
-              INSIGHT
+              解读
             </span>
           </div>
           <div className="flex shrink-0 items-center justify-center rounded-[2px] bg-[#1A1C1E] px-[6px] py-[2px]">
             <span className="block h-[7px] font-sans text-[7px] font-bold uppercase leading-[7px] tracking-[0.7px] text-[#FFB224]">
-              PRO
+              专业版
             </span>
           </div>
         </div>
@@ -885,7 +959,7 @@ export default function AnalysisPanel({
         <div className="relative flex h-[24px] w-full shrink-0 items-center justify-between">
           <div className="flex h-full min-h-0 min-w-0 flex-[1_0_0] flex-col justify-center">
             <p className="m-0 w-full font-sans text-[10px] font-medium leading-[15px] text-[#FFB224]">
-              Real-time AI telemetry &amp; deep decoding.
+              实时 AI 解析与深度摘要。
             </p>
           </div>
         </div>
@@ -924,7 +998,7 @@ export default function AnalysisPanel({
           <SectionHeading
             id="analysis-original-heading"
             icon={<InsightSectionTitleIcon section="original" />}
-            label="ORIGINAL"
+            label="原文"
             onHeadingClick={
               originalOverflows
                 ? () => setOriginalExpanded((v) => !v)
@@ -977,7 +1051,7 @@ export default function AnalysisPanel({
           >
             <InsightCollapsibleSectionHeading
               section="keyPoints"
-              label="KEY POINTS"
+              label="要点"
               headingId="analysis-highlights-heading"
               controlsId="insight-key-points-body"
               expanded={keyPointsExpanded}
@@ -1019,7 +1093,7 @@ export default function AnalysisPanel({
           >
             <InsightCollapsibleSectionHeading
               section="relevance"
-              label="RELEVANCE"
+              label="启发"
               headingId="analysis-relevance-heading"
               controlsId="insight-relevance-body"
               expanded={relevanceExpanded}
@@ -1062,7 +1136,7 @@ export default function AnalysisPanel({
         <button
           type="button"
           className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
-          aria-label="Bookmark"
+          aria-label="收藏"
         >
           <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
             <img
@@ -1080,7 +1154,7 @@ export default function AnalysisPanel({
             target="_blank"
             rel="noopener noreferrer"
             className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
-            aria-label="Open original link"
+            aria-label="打开原文链接"
           >
             <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
               <img
@@ -1097,7 +1171,7 @@ export default function AnalysisPanel({
             type="button"
             disabled
             className="flex h-8 w-8 shrink-0 cursor-not-allowed items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#99a1af] opacity-50 outline-none"
-            aria-label="Open"
+            aria-label="打开"
           >
             <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
               <img
@@ -1113,7 +1187,7 @@ export default function AnalysisPanel({
         <button
           type="button"
           className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
-          aria-label="Share"
+          aria-label="分享"
         >
           <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
             <img

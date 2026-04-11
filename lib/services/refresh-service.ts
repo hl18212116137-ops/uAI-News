@@ -45,17 +45,16 @@ export function startBackgroundFullRefresh(_request: Request, userId: string): S
     ;(async () => {
       try {
         // 直接调服务层，避免对本机 origin 发 HTTP（易触发 ECONNRESET / 自连接问题）
-        const fetchData = await runRefreshFetchFromEnabledSources({ taskId, userId })
+        const fetchData = await runRefreshFetchFromEnabledSources({
+          taskId,
+          userId,
+          completeTaskAfterFetch: false,
+        })
         devLog(`[Refresh API] 抓取完成：${fetchData.count} 条新推文`)
 
         if (taskManager.getTask(taskId)?.status === 'cancelled') {
           return
         }
-
-        taskManager.updateTask(taskId, {
-          progress: 40,
-          message: '正在 AI 处理推文...',
-        })
 
         const processData = await runRefreshProcessRawQueue({ taskId })
         devLog(`[Refresh API] 处理完成：${processData.count} 条`)

@@ -190,6 +190,20 @@ export default function MainContent({
     []
   );
 
+  /** FETCH 完成后 router.refresh() 会更新 RSC props；useState 初值不会跟 props 变，需同步 */
+  useEffect(() => {
+    setPosts(initialPosts);
+  }, [initialPosts]);
+
+  useEffect(() => {
+    setSourcesState(sources);
+  }, [sources]);
+
+  useEffect(() => {
+    if (deferRecommendedSources) return;
+    setRecommendedState(recommendedSources);
+  }, [recommendedSources, deferRecommendedSources]);
+
   const { refreshSubscribedClientState, startSourceFetchPolling, handleSubscriptionSynced } =
     useSubscribedFeedSync(user, setSourcesState, setRecommendedState, setPosts, setFetchingSourceIds);
 
@@ -784,7 +798,7 @@ export default function MainContent({
                   {isGuestDefaultFeed && (
                     <section
                       className="mt-8 w-full min-w-0 pt-8"
-                      aria-label="Sign in to unlock more content"
+                      aria-label="登录以解锁更多内容"
                     >
                       <div className="mx-auto flex w-full max-w-md min-w-0 flex-col items-center gap-6 px-4 pb-24 text-center sm:max-w-lg sm:px-0 sm:pb-32">
                         <div
@@ -793,23 +807,23 @@ export default function MainContent({
                         >
                           <span className="h-px w-10 shrink-0 bg-[#ebebef] sm:w-12" aria-hidden />
                           <span className="shrink-0 font-mono text-[10px] font-medium uppercase leading-4 tracking-[0.12em] text-[#99a1af]">
-                            Locked content
+                            部分内容需登录
                           </span>
                           <span className="h-px w-10 shrink-0 bg-[#ebebef] sm:w-12" aria-hidden />
                         </div>
                         <div className="flex flex-col gap-2">
                           <p className="m-0 text-[16px] font-semibold leading-6 tracking-[-0.35px] text-[#101828] sm:text-[17px] sm:leading-7">
-                            Unlock the full feed
+                            登录查看完整信息流
                           </p>
                           <p className="m-0 text-[13px] font-normal leading-5 text-[#6a7282]">
-                            Join uAI News for decoding and tailored insights.
+                            登录 uAI News，获取解码与个性化洞察。
                           </p>
                         </div>
                         <Link
                           href="/login"
                           className="btn-press inline-flex h-8 items-center justify-center rounded-[4px] bg-[#0055FF] px-4 text-xs font-medium text-white transition-colors hover:bg-[#0046CC]"
                         >
-                          Sign in
+                          登录
                         </Link>
                       </div>
                     </section>

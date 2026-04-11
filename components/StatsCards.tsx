@@ -22,14 +22,14 @@ export default function StatsCards({
 }: StatsCardsProps) {
   const sourcesTotal = bloggerCount + academicCount;
   const collectionsTotal = mediaCount;
-  const indexed = totalPosts.toLocaleString("en-US");
+  const indexed = totalPosts.toLocaleString("zh-CN");
   const todayStr = todayPosts > 0 ? `+${todayPosts}` : String(todayPosts);
   const todayBlue = todayPosts > 0;
 
   const items = [
     {
       value: String(sourcesTotal),
-      label: "SOURCES",
+      label: "信息源",
       blue: false,
       pad: "" as const,
       width: "w-[139.25px]",
@@ -37,7 +37,7 @@ export default function StatsCards({
     },
     {
       value: String(collectionsTotal),
-      label: "COLLECTIONS",
+      label: "专题",
       blue: false,
       pad: "px-8" as const,
       width: "w-[203.25px]",
@@ -45,7 +45,7 @@ export default function StatsCards({
     },
     {
       value: indexed,
-      label: "30D INDEXED",
+      label: "近30天收录",
       blue: false,
       pad: "px-8" as const,
       width: "w-[203.25px]",
@@ -53,7 +53,7 @@ export default function StatsCards({
     },
     {
       value: todayStr,
-      label: "TODAY",
+      label: "今日",
       blue: todayBlue,
       pad: "pl-8" as const,
       width: "w-[171.25px]",
@@ -66,7 +66,7 @@ export default function StatsCards({
       data-name="Stats container"
       className="mb-0 flex h-full min-h-0 w-full min-w-0 flex-col overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:thin]"
     >
-      <Tooltip content="Counts match your current subscriptions and the posts shown in this feed.">
+      <Tooltip content="数值与当前订阅及本页展示的动态一致。">
         <div
           data-name="Stats row"
           className="flex h-full min-h-0 w-full min-w-[460px] flex-nowrap items-center justify-start"

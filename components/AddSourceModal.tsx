@@ -80,7 +80,7 @@ export default function AddSourceModal({
 
   const handleAddSource = async () => {
     if (!url.trim()) {
-      setError("Enter a URL");
+      setError("请输入链接地址");
       return;
     }
 
@@ -106,11 +106,11 @@ export default function AddSourceModal({
           router.refresh();
         }
       } else {
-        setError(result.error || "Could not add source. Try again.");
+        setError(result.error || "添加失败，请重试。");
       }
     } catch (err) {
       console.error("Add source failed:", err);
-      setError("Something went wrong. Try again later.");
+      setError("出错了，请稍后再试。");
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +122,7 @@ export default function AddSourceModal({
     <>
       <button
         type="button"
-        aria-label="Close dialog"
+        aria-label="关闭对话框"
         className="modal-backdrop fixed inset-0 z-[100]"
         onClick={onClose}
       />
@@ -148,7 +148,7 @@ export default function AddSourceModal({
               id="add-source-title"
               className="m-0 text-[15px] font-semibold leading-5 tracking-[-0.02em] text-[#101828]"
             >
-              Add New Source
+              添加信息源
             </h2>
           </div>
           <button
@@ -156,7 +156,7 @@ export default function AddSourceModal({
             onClick={onClose}
             onMouseDown={(e) => e.stopPropagation()}
             className="btn-press -mr-1 -mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#6a7282] transition-colors hover:bg-[#f3f4f6] hover:text-[#101828]"
-            aria-label="Close"
+            aria-label="关闭"
           >
             <svg
               className="h-4 w-4"
@@ -180,7 +180,7 @@ export default function AddSourceModal({
               htmlFor="add-source-url"
               className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#6a7282]"
             >
-              Source URL
+              信息源链接
             </label>
             <input
               id="add-source-url"
@@ -207,10 +207,9 @@ export default function AddSourceModal({
               i
             </div>
             <div className="min-w-0 font-mono text-[11px] leading-[1.55] text-[#4a5565]">
-              <span className="font-semibold text-[#0055FF]">SYSTEM_NOTE:</span>{" "}
+              <span className="font-semibold text-[#0055FF]">提示：</span>{" "}
               <span className="font-normal">
-                New sources are crawled immediately after you add them to verify
-                RSS/API compatibility. Typical latency: ~200ms.
+                添加后会立即抓取以校验 RSS/API 兼容性，通常很快完成。
               </span>
             </div>
           </div>
@@ -229,7 +228,7 @@ export default function AddSourceModal({
             disabled={isLoading}
             className="btn-press rounded-md px-3 py-2 text-[13px] font-medium text-[#6a7282] transition-colors duration-150 ease-out hover:bg-[#f5f5f5] hover:text-[#101828] disabled:pointer-events-none disabled:opacity-50"
           >
-            Cancel
+            取消
           </button>
           <button
             type="button"
@@ -237,7 +236,7 @@ export default function AddSourceModal({
             disabled={isLoading}
             className="btn-press ml-1 inline-flex h-8 min-w-[96px] items-center justify-center rounded-md bg-[#0055FF] px-3.5 text-[13px] font-semibold text-white shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.08)] transition-[background-color,box-shadow,opacity] duration-150 ease-out hover:bg-[#0046CC] hover:shadow-[0_1px_0_rgba(255,255,255,0.14)_inset,0_2px_4px_rgba(0,85,255,0.25)] active:bg-[#003db3] disabled:pointer-events-none disabled:opacity-50"
           >
-            {isLoading ? "Adding…" : "Add Source"}
+            {isLoading ? "添加中…" : "添加"}
           </button>
         </footer>
       </div>

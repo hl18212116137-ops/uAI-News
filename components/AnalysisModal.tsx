@@ -43,7 +43,7 @@ export default function AnalysisModal({ isOpen, post, analysis, isLoading = fals
       isOpen
       onClose={onClose}
       panelVariant="large"
-      backdropAriaLabel="Close insight"
+      backdropAriaLabel="关闭解读"
       panelClassName="max-w-[920px] max-h-[86vh] overflow-hidden flex flex-col p-0"
     >
         <div className="sticky top-0 bg-white border-b border-[#e5e7eb] px-6 py-4 flex items-center justify-between">
@@ -59,7 +59,7 @@ export default function AnalysisModal({ isOpen, post, analysis, isLoading = fals
           <button
             onClick={onClose}
             className="w-7 h-7 rounded flex items-center justify-center hover:bg-gray-100 transition-colors"
-            aria-label="Close"
+            aria-label="关闭"
           >
             <svg className="w-4 h-4 text-[#6a7282]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -71,16 +71,16 @@ export default function AnalysisModal({ isOpen, post, analysis, isLoading = fals
           <div className="space-y-4">
             {/* PRO (fixed, non-AI) */}
             <section className="border border-[#f3f4f6] rounded-[14px] p-4">
-              <div className="text-xs font-semibold tracking-wide text-[#FFB224] mb-2">PRO</div>
+              <div className="text-xs font-semibold tracking-wide text-[#FFB224] mb-2">专业版</div>
               <div className="text-sm font-normal text-[#101828]">
-                Real-time AI telemetry &amp; deep decoding.
+                实时 AI 解析与深度摘要。
               </div>
             </section>
 
             {/* SIGNIFICANCE SCORE (AI-derived; modal 较宽可用全称) */}
             <section className="border border-[#f3f4f6] rounded-[14px] p-4">
               <div className="flex items-baseline gap-2">
-                <div className="text-xs font-semibold tracking-wide text-[#6a7282]">SIGNIFICANCE SCORE</div>
+                <div className="text-xs font-semibold tracking-wide text-[#6a7282]">重要度</div>
                 <div className="text-2xl font-bold text-[#FFB224]">
                   {isLoading ? "..." : (scores ?? "-")}
                 </div>
@@ -88,16 +88,18 @@ export default function AnalysisModal({ isOpen, post, analysis, isLoading = fals
               </div>
               <div className="mt-2 text-sm font-normal text-[#6a7282]">
                 {typeof scores === "number"
-                  ? scores >= 70
-                    ? "High priority"
-                    : "Notable"
+                  ? scores >= 80
+                    ? "高优先级"
+                    : scores >= 50
+                      ? "值得关注"
+                      : "一般关注"
                   : ""}
               </div>
             </section>
 
             {/* RELIABILITY */}
             <section className="border border-[#f3f4f6] rounded-[14px] p-4">
-              <div className="text-xs font-semibold tracking-wide text-[#6a7282] mb-2">RELIABILITY</div>
+              <div className="text-xs font-semibold tracking-wide text-[#6a7282] mb-2">可信度</div>
               <div className="text-lg font-semibold text-[#6a7282]">
                 {isLoading ? "..." : (typeof reliability === "number" ? `${reliability}%` : "-")}
               </div>
@@ -105,7 +107,7 @@ export default function AnalysisModal({ isOpen, post, analysis, isLoading = fals
 
             {/* RELEVANCE（与侧栏一致，支持 **加粗**） */}
             <section className="border border-[#f3f4f6] rounded-[14px] p-4">
-              <div className="text-xs font-semibold tracking-wide text-[#6a7282] mb-2">RELEVANCE</div>
+              <div className="text-xs font-semibold tracking-wide text-[#6a7282] mb-2">启发</div>
               <div className="text-sm text-[#6a7282] whitespace-pre-wrap">
                 {isLoading ? (
                   "..."

@@ -18,11 +18,11 @@ export default function RegisterPage() {
     setError("");
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError("两次输入的密码不一致。");
       return;
     }
     if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+      setError("密码至少 6 位。");
       return;
     }
 
@@ -39,7 +39,7 @@ export default function RegisterPage() {
     if (authError) {
       setError(
         authError.message === "User already registered"
-          ? "This email is already registered. Sign in instead."
+          ? "该邮箱已注册，请直接登录。"
           : authError.message
       );
       setIsLoading(false);
@@ -145,7 +145,7 @@ export default function RegisterPage() {
     <div className={shell}>
       <div className="modal-panel modal-panel-enter w-full max-w-[400px] p-6">
         <h1 id="register-dialog-title" className="sr-only">
-          Create account
+          创建账号
         </h1>
         <div className="mb-6 text-center">
           <Link
@@ -155,7 +155,7 @@ export default function RegisterPage() {
             uAI News
           </Link>
           <p className="mt-1.5 text-sm font-normal leading-5 text-[#6a7282]">
-            Create an account to save bookmarks and sync subscriptions.
+            创建账号以保存收藏并同步订阅。
           </p>
         </div>
 
@@ -165,7 +165,7 @@ export default function RegisterPage() {
               htmlFor="register-email"
               className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
             >
-              Email
+              邮箱
             </label>
             <input
               id="register-email"
@@ -184,14 +184,14 @@ export default function RegisterPage() {
               htmlFor="register-password"
               className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
             >
-              Password
+              密码
             </label>
             <input
               id="register-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 6 characters"
+              placeholder="至少 6 位"
               required
               autoComplete="new-password"
               className="input-field h-9 w-full rounded-[4px] text-sm font-normal"
@@ -203,7 +203,7 @@ export default function RegisterPage() {
               htmlFor="register-confirm"
               className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
             >
-              Confirm password
+              确认密码
             </label>
             <input
               id="register-confirm"
@@ -228,17 +228,17 @@ export default function RegisterPage() {
             disabled={isLoading}
             className="btn-press mt-1 flex h-9 w-full items-center justify-center rounded-[4px] bg-[#0055FF] text-xs font-medium text-white transition-colors hover:bg-[#0046CC] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isLoading ? "Creating account…" : "Create account"}
+            {isLoading ? "创建中…" : "创建账号"}
           </button>
         </form>
 
         <p className="mt-6 text-center text-sm font-normal text-[#99a1af]">
-          Already have an account?{" "}
+          已有账号？{" "}
           <Link
             href="/login"
             className="font-medium text-[#101828] underline-offset-2 hover:underline"
           >
-            Sign in
+            登录
           </Link>
         </p>
       </div>

@@ -44,7 +44,7 @@ function LoginPanelInner() {
           looksNetwork
             ? networkErrorHint
             : authError.message === "Invalid login credentials"
-              ? "Invalid email or password. Try again."
+              ? "邮箱或密码错误，请重试。"
               : authError.message
         );
         return;
@@ -73,7 +73,7 @@ function LoginPanelInner() {
           uAI News
         </Link>
         <p className="mt-1.5 text-sm font-normal leading-5 text-[#6a7282]">
-          Sign in to use the full product.
+          登录以使用完整功能。
         </p>
       </div>
 
@@ -83,7 +83,7 @@ function LoginPanelInner() {
             htmlFor="login-email"
             className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
           >
-            Email
+            邮箱
           </label>
           <input
             id="login-email"
@@ -127,17 +127,17 @@ function LoginPanelInner() {
           disabled={isLoading}
           className="btn-press mt-1 flex h-9 w-full items-center justify-center rounded-[4px] bg-[#0055FF] text-xs font-medium text-white transition-colors hover:bg-[#0046CC] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isLoading ? "Signing in…" : "Sign in"}
+          {isLoading ? "登录中…" : "登录"}
         </button>
       </form>
 
       <p className="mt-6 text-center text-sm font-normal text-[#99a1af]">
-        No account?{" "}
+        还没有账号？{" "}
         <Link
           href="/register"
           className="font-medium text-[#101828] underline-offset-2 hover:underline"
         >
-          Create one
+          立即注册
         </Link>
       </p>
     </>
@@ -147,7 +147,7 @@ function LoginPanelInner() {
 function LoginPanelFallback() {
   return (
     <div className="flex min-h-[280px] items-center justify-center text-sm font-normal text-[#99a1af]">
-      Loading…
+      加载中…
     </div>
   );
 }

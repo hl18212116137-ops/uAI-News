@@ -27,8 +27,14 @@ export type RefreshFetchResult = {
 export async function runRefreshFetchFromEnabledSources(body: {
   taskId?: string
   userId?: string
+  /**
+   * false：仅抓取阶段（由 refresh-service 接着跑 process）——结束时保持 running，避免前端把任务当成已全部完成而停止轮询。
+   * true（默认）：独立 POST /api/refresh/fetch 等行为，抓取结束即 completed。
+   */
+  completeTaskAfterFetch?: boolean
 }): Promise<RefreshFetchResult> {
   const taskId = body.taskId || taskManager.createTask()
+  const completeTaskAfterFetch = body.completeTaskAfterFetch !== false
 
   taskManager.updateTask(taskId, {
     status: 'running',
@@ -167,11 +173,19 @@ export async function runRefreshFetchFromEnabledSources(body: {
     await enqueueFullPipelineJobsForRawIds(ids)
   }
 
-  taskManager.updateTask(taskId, {
-    status: 'completed',
-    progress: 100,
-    message: `抓取完成：${newRawPosts.length} 条新内容`,
-  })
+  if (completeTaskAfterFetch) {
+    taskManager.updateTask(taskId, {
+      status: 'completed',
+      progress: 100,
+      message: `抓取完成：${newRawPosts.length} 条新内容`,
+    })
+  } else {
+    taskManager.updateTask(taskId, {
+      status: 'running',
+      progress: 38,
+      message: `抓取完成：${newRawPosts.length} 条新内容，正在 AI 处理…`,
+    })
+  }
 
   return {
     success: true,

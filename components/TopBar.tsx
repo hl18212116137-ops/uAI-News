@@ -130,7 +130,7 @@ export default function TopBar({
             data-name="Container"
             data-node-id={dualCollapsed ? "43:5033" : "3:2680"}
             className={`motion-layout-ease relative flex shrink-0 items-center justify-center text-[#111113] transition-colors hover:bg-[#f5f5f5] ${analysisPanelOpen ? "h-full min-h-[54px] w-9" : "h-[54px] w-9"}`}
-            aria-label="Bookmarks"
+            aria-label="收藏"
           >
             <div
               data-name="Container"
@@ -145,7 +145,7 @@ export default function TopBar({
             type="button"
             data-name="Container"
             data-node-id={dualCollapsed ? "43:5036" : "3:2683"}
-            aria-label="Settings"
+            aria-label="设置"
             className="motion-layout-ease relative flex size-9 shrink-0 items-center justify-center rounded-md text-[#111113] transition-colors hover:bg-[#f5f5f5]"
           >
             <div
@@ -173,7 +173,7 @@ export default function TopBar({
               <Link
                 href="/login"
                 className="motion-layout-ease flex size-9 items-center justify-center rounded-md transition-colors hover:bg-[#f5f5f5]"
-                aria-label="Login"
+                aria-label="登录"
               >
                 <div
                   data-name="Container"

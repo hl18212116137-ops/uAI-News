@@ -25,22 +25,22 @@ function formatTimeLocalHM(dateString: string): string {
 function getCategoryTag(category: NewsItem["category"]) {
   switch (category) {
     case "Model Update":
-      return "MODELS";
+      return "模型";
     case "Company News":
-      return "INDUSTRY";
+      return "行业";
     case "Funding":
-      return "FUNDING";
+      return "融资";
     case "Policy":
-      return "POLICY";
+      return "政策";
     case "Research":
-      return "RESEARCH";
+      return "研究";
     case "Product Update":
-      return "PRODUCTS";
+      return "产品";
     case "Open Source":
-      return "OPEN SOURCE";
+      return "开源";
     case "Other":
     default:
-      return "OTHER";
+      return "其他";
   }
 }
 
@@ -193,7 +193,7 @@ function NewsCard({
                   /
                 </span>
                 <span className="flex h-[17px] items-center font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#fb2c36]">
-                  NEW
+                  新
                 </span>
               </>
             ) : null}
@@ -252,7 +252,7 @@ function NewsCard({
             <span className="relative size-[14.667px] shrink-0" data-node-id="37:4760">
               <FeedInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
             </span>
-            INSIGHT
+            解读
           </button>
         </div>
       ) : null}
