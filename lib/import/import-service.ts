@@ -114,6 +114,9 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
           url: parsedContent.url,
           published_at: parsedContent.publishedAt,
           fetched_at: new Date().toISOString(),
+          ...(parsedContent.mediaUrls && parsedContent.mediaUrls.length > 0
+            ? { media_urls: parsedContent.mediaUrls }
+            : {}),
           ...(parsedContent.referencedPost
             ? { referenced_post: parsedContent.referencedPost }
             : {}),
@@ -231,6 +234,8 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
         sourceUrl: parsed.url,
         authorName: parsed.author.name,
         authorHandle: parsed.author.handle || parsed.author.name,
+        mediaUrls: parsed.mediaUrls,
+        referencedPost: parsed.referencedPost,
       },
       (s) => aiService.translateContent(s),
     ).catch((err) => {
@@ -253,6 +258,7 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       publishedAt: parsed.publishedAt,
       originalText: zhOriginal.originalText,
       createdAt: now, // 导入时间
+      ...(parsed.mediaUrls && parsed.mediaUrls.length > 0 ? { mediaUrls: parsed.mediaUrls } : {}),
       ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
       ...(longform ? { longform } : {}),
     };
@@ -279,6 +285,7 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       publishedAt: parsed.publishedAt,
       originalText: parsed.content,
       createdAt: now,
+      ...(parsed.mediaUrls && parsed.mediaUrls.length > 0 ? { mediaUrls: parsed.mediaUrls } : {}),
       ...(parsed.referencedPost ? { referencedPost: parsed.referencedPost } : {}),
     };
   }

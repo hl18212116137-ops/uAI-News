@@ -227,6 +227,15 @@ export function longformArticleFromDbJson(value: unknown): LongformArticle | und
   if (typeof o.translatedTitle === 'string' && o.translatedTitle.trim()) {
     article.translatedTitle = o.translatedTitle
   }
+  if (o.discoveryMethod === 'url' || o.discoveryMethod === 'image-search') {
+    article.discoveryMethod = o.discoveryMethod
+  }
+  if (typeof o.confidence === 'number' && Number.isFinite(o.confidence)) {
+    article.confidence = Math.max(0, Math.min(1, o.confidence))
+  }
+  if (typeof o.discoverySourceImageUrl === 'string' && o.discoverySourceImageUrl.startsWith('https://')) {
+    article.discoverySourceImageUrl = o.discoverySourceImageUrl
+  }
   return article
 }
 

@@ -49,6 +49,9 @@ export type LongformArticle = {
   translatedContent: string;
   originalWordCount: number;
   fetchedAt: string;
+  discoveryMethod?: 'url' | 'image-search';
+  confidence?: number;
+  discoverySourceImageUrl?: string;
 };
 
 export type NewsItem = {

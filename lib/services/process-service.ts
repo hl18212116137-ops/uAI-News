@@ -209,6 +209,8 @@ async function processOneRawPost(
         sourceUrl: url,
         authorName,
         authorHandle: handle,
+        mediaUrls,
+        referencedPost,
       },
       (s) => aiService.translateContent(s),
     ).catch((err) => {

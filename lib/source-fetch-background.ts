@@ -89,6 +89,8 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
                 sourceUrl: post.post_url,
                 authorName: source.name,
                 authorHandle: source.handle,
+                mediaUrls: post.media_urls,
+                referencedPost: post.referencedPost,
               },
               (s) => aiService.translateContent(s),
             ).catch((err) => {

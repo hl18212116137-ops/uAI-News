@@ -1,6 +1,6 @@
 import { BaseParser } from './base-parser';
 import { ParsedContent } from '../types';
-import { extractReferencedPostFromTweet } from '@/lib/x';
+import { extractReferencedPostFromTweet, extractTweetMediaUrls } from '@/lib/x';
 
 /**
  * X / Twitter 解析器
@@ -44,6 +44,7 @@ export class XParser implements BaseParser {
       url,
       platform: 'X',
       rawData: tweetData,
+      ...(tweetData.mediaUrls && tweetData.mediaUrls.length > 0 ? { mediaUrls: tweetData.mediaUrls } : {}),
       ...(tweetData.referencedPost ? { referencedPost: tweetData.referencedPost } : {}),
     };
   }
@@ -58,6 +59,7 @@ export class XParser implements BaseParser {
     text: string;
     authorName: string;
     createdAt: string;
+    mediaUrls?: string[];
     referencedPost?: import('@/lib/types').XReferencedPost;
   }> {
     const apiKey = process.env.TWITTERAPI_IO_KEY;
@@ -92,11 +94,13 @@ export class XParser implements BaseParser {
 
       const t = tweet as Record<string, unknown>;
       const referencedPost = extractReferencedPostFromTweet(t);
+      const mediaUrls = extractTweetMediaUrls(t);
 
       return {
         text: tweet.text || '',
         authorName: tweet.user?.name || username,
         createdAt: tweet.createdAt || tweet.created_at || new Date().toISOString(),
+        ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
         ...(referencedPost ? { referencedPost } : {}),
       };
     } catch (error) {
