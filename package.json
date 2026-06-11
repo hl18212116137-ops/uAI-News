@@ -1,0 +1,53 @@
+{
+  "name": "ai-news-site",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "clean:next": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true});\"",
+    "dev:clean": "npm run clean:next && next dev",
+    "dev": "next dev",
+    "build": "next build",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "start": "next start",
+    "fetch": "tsx scripts/fetch-posts.ts",
+    "process": "tsx scripts/process-posts.ts",
+    "init-db": "tsx scripts/init-db.ts",
+    "mock-data": "tsx scripts/create-mock-data.ts",
+    "seed:recommendation-pool": "tsx scripts/seed-recommendation-pool.ts",
+    "backfill:source-profiles": "tsx scripts/backfill-source-profiles.ts",
+    "update-avatars": "tsx scripts/update-source-avatars.ts",
+    "backfill:news-zh": "tsx scripts/backfill-news-chinese.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "bcryptjs": "^3.0.3",
+    "drizzle-orm": "^0.45.2",
+    "next": "^14.2.0",
+    "next-auth": "^4.24.14",
+    "node-cron": "^3.0.3",
+    "pg": "^8.21.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "20.19.37",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.20.0",
+    "@types/react": "18.3.28",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "dotenv": "^17.3.1",
+    "drizzle-kit": "^0.31.10",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0"
+  },
+  "resolutions": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  }
+}

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <!-- Was: Figma MCP asset f46636fb-3216-476c-b0cf-914e77011a34 — 标准双弧刷新，#0055FF 与 Fetch 文案一致 -->
+  <path
+    stroke="#0055FF"
+    stroke-width="1.65"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    d="M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15"
+  />
+</svg>

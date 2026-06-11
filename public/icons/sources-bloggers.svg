@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+  <!-- Was: Figma MCP asset c082b1c7-1808-434e-a035-8aace784b261 — 与侧栏小标题字色 #0055FF 一致 -->
+  <circle cx="7" cy="4.25" r="2.1" stroke="#0055FF" stroke-width="1.2" />
+  <path
+    stroke="#0055FF"
+    stroke-linecap="round"
+    stroke-width="1.2"
+    d="M2.6 12.1c.65-1.85 2.35-3.1 4.4-3.1s3.75 1.25 4.4 3.1"
+  />
+</svg>

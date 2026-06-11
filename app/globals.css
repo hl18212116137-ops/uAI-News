@@ -1,0 +1,477 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Linear 风格布局动效：侧栏 / 顶栏 / Tab 指示 / Feed 金条等与 prefers-reduced-motion 共用节奏 */
+:root {
+  --layout-duration: 220ms;
+  --layout-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  /** 弹窗入场与布局动效同节奏 */
+  --modal-enter-duration: 240ms;
+  /** 全站分隔线：统一 1px、略浅于 gray-200，整体比 #e5e7eb 弱半档 */
+  --app-divider: #ebebef;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --layout-duration: 1ms;
+    --modal-enter-duration: 1ms;
+  }
+
+  :is(
+      .modal-backdrop,
+      .modal-panel-enter,
+      .refresh-progress-strip-enter,
+      .source-activity-notice-enter,
+      .source-activity-notice-exit,
+      .source-drawer-backdrop-enter,
+      .animate-spin,
+      .skeleton
+    ) {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  :is(.btn-primary, .card-hover, .card-hover-lift, .btn-press, .input-field) {
+    transition-duration: 1ms !important;
+  }
+}
+
+/* 弹窗入场：不用 Tailwind @apply 挂 animation，避免部分构建下动效未打进 CSS */
+@keyframes appModalBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes appModalPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sourceActivityNoticeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sourceActivityNoticeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+}
+
+@keyframes sourceDrawerBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/** FETCH 进度条：自上方滑入 + 淡入，与 --layout-duration / --layout-ease 同节奏（TopBar / 侧栏一致） */
+@keyframes refreshProgressStripIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .layout-transition-surface {
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /** transform + opacity，侧栏面板专用，避免与 Tailwind transition 简写互相覆盖 */
+  .layout-sidebar-motion {
+    transition-property: transform, opacity;
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+    backface-visibility: hidden;
+  }
+
+  /**
+   * grid 折叠（0fr ↔ 1fr）：allow-discrete 让浏览器按显示器刷新率插值；
+   * contain 缩小布局重算范围，减轻折叠时的掉帧感。
+   */
+  .motion-collapse-grid {
+    display: grid;
+    contain: layout style;
+    transition-property: grid-template-rows;
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+    transition-behavior: allow-discrete;
+  }
+
+  /** 布局级指标动画：Tab 下划线等；金条滚动定位见 .feed-analysis-rail（无过渡） */
+  .motion-layout-metrics {
+    transition-property: transform, opacity;
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /** Tab 下划线：仅 transform，避免 left/width 触发布局重算 */
+  .motion-layout-tab-underline {
+    transition-property: transform, width;
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /** 与 layout 同节奏的时长/曲线，供组件只写 transition-property */
+  .motion-layout-ease {
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /**
+   * FETCH 进度模块入场（点击 Fetch 后首次出现）
+   * both：保留 from 帧，避免首帧闪烁；reduced-motion 见文件顶部 :root
+   */
+  .refresh-progress-strip-enter {
+    animation: refreshProgressStripIn var(--layout-duration) var(--layout-ease) both;
+  }
+
+  .source-activity-notice-enter {
+    animation: sourceActivityNoticeIn var(--layout-duration) var(--layout-ease) both;
+  }
+
+  .source-activity-notice-exit {
+    animation: sourceActivityNoticeOut 180ms ease-in both;
+  }
+
+  .source-drawer-backdrop-enter {
+    animation: sourceDrawerBackdropIn var(--layout-duration) var(--layout-ease) both;
+  }
+
+  /** 预留滚动条槽，避免 overflow 出现时正文整体左移 */
+  .scrollbar-gutter-stable {
+    scrollbar-gutter: stable;
+  }
+
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer base {
+  html {
+    scroll-behavior: auto;
+    /* 与 Main 1920 画板一致：窄视口可横向滚动到 ANALYSIS / 右侧 gutter，避免整列被视口“裁掉” */
+    overflow-x: auto;
+  }
+
+  body {
+    @apply bg-[#f5f5f5] text-gray-900;
+    overflow-x: auto;
+  }
+
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply rounded-md bg-white px-4 py-2 text-gray-900 hover:bg-gray-200 duration-200;
+    transition-property: background-color, color, box-shadow;
+  }
+
+  .card {
+    @apply bg-white rounded-md shadow-sm border border-[#f3f4f6];
+  }
+
+  .card-hover {
+    @apply duration-200 hover:shadow-md;
+    transition-property: box-shadow;
+  }
+
+  .card-hover-lift {
+    @apply duration-200 ease-out;
+    transition-property: transform, box-shadow;
+  }
+
+  .card-hover-lift:hover {
+    @apply -translate-y-1 shadow-lg;
+  }
+
+  .btn-press {
+    @apply transition-transform duration-100 active:scale-[0.98];
+  }
+
+  .input-field {
+    @apply rounded-md border border-[#f3f4f6] bg-white px-3 py-2 text-[#101828] outline-none placeholder-[#99a1af] duration-200 focus:bg-white focus:shadow-sm focus:ring-2 focus:ring-primary-500;
+    transition-property: background-color, border-color, box-shadow, color;
+  }
+
+  .gradient-mask-r {
+    mask-image: linear-gradient(to right, transparent, black 20px);
+  }
+
+  .gradient-mask-l {
+    mask-image: linear-gradient(to left, transparent, black 20px);
+  }
+
+  /** 约 40% 黑叠层；入场动画见 @keyframes appModalBackdropIn */
+  .modal-backdrop {
+    @apply bg-black/40;
+    animation: appModalBackdropIn var(--modal-enter-duration) var(--layout-ease) both;
+  }
+
+  /** 与 AppModalShell / AddSourceModal 面板配合使用 */
+  .modal-panel-enter {
+    animation: appModalPanelIn var(--modal-enter-duration) var(--layout-ease) both;
+  }
+
+  /** 默认面板外壳（小、中型弹窗） */
+  .modal-panel {
+    @apply rounded-lg border border-[#e5e7eb] bg-white shadow-sm;
+  }
+
+  /** 大型弹窗外壳（周报、分析等），阴影略强一档 */
+  .modal-panel-lg {
+    @apply rounded-lg border border-[#e5e7eb] bg-white shadow-md;
+  }
+
+  /**
+   * 分隔线：全站同一套「1px solid var(--app-divider)」。
+   * 横线：h-px + border-top（与 Tab / 解读 的 border-t、b 同一套描边）。
+   * 竖线：width:0 + border-left（与横线同色同粗，避免 fill 与 border 混用发灰不一致）。
+   */
+  .app-divider-h {
+    @apply box-border h-px w-full shrink-0 border-0;
+    border-top: 1px solid var(--app-divider);
+  }
+
+  /** 横向发线但不占满宽（与 w-* 等联用） */
+  .app-divider-h-segment {
+    @apply box-border block h-px shrink-0 border-0;
+    border-top: 1px solid var(--app-divider);
+  }
+
+  .app-divider-v {
+    @apply box-border shrink-0 border-0;
+    width: 0;
+    border-left: 1px solid var(--app-divider);
+  }
+
+  .app-divider-border-t {
+    border-top: 1px solid var(--app-divider);
+  }
+
+  .app-divider-border-b {
+    border-bottom: 1px solid var(--app-divider);
+  }
+
+  .app-divider-border-r {
+    border-right: 1px solid var(--app-divider);
+  }
+
+  .app-divider-border-l {
+    border-left: 1px solid var(--app-divider);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(
+    to right,
+    #f0f0f0 0%,
+    #e0e0e0 20%,
+    #f0f0f0 40%,
+    #f0f0f0 100%
+  );
+  background-size: 1000px 100%;
+}
+
+/* 自定义滚动条样式 */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #f0f0f0;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #e5e7eb;
+}
+
+/* 滚动时显示滚动条 */
+.scrollbar-hidden::-webkit-scrollbar-thumb {
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+.scrollbar-visible::-webkit-scrollbar-thumb {
+  opacity: 1;
+  transition: opacity 0.3s ease-out;
+}
+
+/* 侧边栏滚动条按需显示；gutter 稳定，避免内容增高出现滚动条时 + / 数字整体左移 */
+.sidebar-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.3s ease-out;
+}
+
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+}
+
+.sidebar-scroll:not(:hover)::-webkit-scrollbar-thumb {
+  background: transparent;
+  transition: background 0.3s ease-out;
+}
+
+/**
+ * INSIGHT RELEVANCE：与 .sidebar-scroll 同款细条，但 `scrollbar-gutter: auto`。
+ * 避免 `stable` 永久占右侧槽导致正文比 SectionHeading 窄、绝对定位的右引号与标题右缘不齐。
+ */
+.insight-relevance-scroll {
+  scrollbar-gutter: auto;
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+
+.insight-relevance-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.insight-relevance-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.insight-relevance-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.3s ease-out;
+}
+
+.insight-relevance-scroll:hover::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+}
+
+.insight-relevance-scroll:not(:hover)::-webkit-scrollbar-thumb {
+  background: transparent;
+  transition: background 0.3s ease-out;
+}
+
+/* 主内容列（Chrome）：仅用 ::-webkit-scrollbar；勿用 scrollbar-width/color，否则会走系统粗条 */
+.main-content-scroll {
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.main-content-scroll::-webkit-scrollbar {
+  width: 1px;
+  height: 1px;
+}
+
+.main-content-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.main-content-scroll::-webkit-scrollbar-thumb {
+  background-color: rgb(209 213 219 / 0);
+  border-radius: 0;
+  transition: background-color 300ms var(--layout-ease);
+}
+
+/* 滚动中立刻显色（0ms），避免与 300ms 淡出混在同一过渡里 */
+.main-content-scroll.is-scrolling-thumb::-webkit-scrollbar-thumb {
+  background-color: rgb(209 213 219 / 1);
+  transition: background-color 0ms;
+}
+
+.main-content-scroll.is-scrolling-thumb::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(196 196 196 / 1);
+}
+
+/**
+ * Linear 对齐字号（产品 UI）
+ * - Label 12px：按钮、侧栏名、元数据
+ * - Caption 13px：模块标题、次要说明
+ * - Micro 11px：徽章、极小标注（勿低于 11px）
+ */
+.feed-analysis-rail {
+  transform: translate3d(0, 0, 0);
+  contain: layout style;
+}
+
+/* 顶栏：桌面仍用内联 left/right（对齐 800px 中栏）；窄屏覆盖为常规左右贴边 */
+@media (max-width: 1023px) {
+  .topbar-m-left {
+    left: 12px !important;
+    right: auto !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .topbar-m-right {
+    left: auto !important;
+    right: 8px !important;
+    width: auto !important;
+    max-width: min(68vw, 280px);
+    transform: translateY(-50%) !important;
+    justify-content: flex-end !important;
+  }
+}

@@ -1,0 +1,243 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
+import type { AuthUser } from "@/lib/auth";
+import { useOpenLogin } from "@/hooks/useOpenLogin";
+type User = AuthUser;
+import UserMenu from "@/components/UserMenu";
+import {
+  TopBarBookmarkGlyph,
+  TopBarInsightSparkleGlyph,
+  TopBarPanelLeftGlyph,
+  TopBarProfileGlyph,
+  TopBarSettingsGlyph,
+} from "@/components/top-bar-icons";
+
+/** 顶栏操作图标统一占位（20×20），与线框图标 24 视口配套 */
+const topBarIconSlot = "relative size-5 shrink-0";
+
+type TopBarProps = {
+  user: User | null;
+  isSourcesListCollapsed: boolean;
+  onToggleSourcesListCollapsed: () => void;
+  /** 右栏 ANALYSIS 实际可见（非仅选中） */
+  analysisPanelOpen?: boolean;
+  /** 点击仙女棒：折叠右侧 ANALYSIS（保留列表选中态） */
+  onCollapseAnalysisSidebar?: () => void;
+  /** 齿轮：打开抓取流水线与规则说明 */
+  onOpenFetchPipelineSettings?: () => void;
+};
+
+const layoutTf = "var(--layout-duration) var(--layout-ease)";
+
+/**
+ * 单一 DOM：图标不随布局切换卸载；用 left/right + transition 对齐 grid（1fr|1|800|1|1fr）几何。
+ * 侧栏折叠时左右控件收拢到中栏 800px 内外沿（与主内容 px-8 对齐的 8px inset）。
+ * ANALYSIS 展开时右簇从中栏右锚点（translate -100%）滑向 336px 条（left + transform 过渡）。
+ * 动效与 globals.css --layout-duration / --layout-ease 一致（Linear 风格 + reduced-motion 降级）。
+ */
+export default function TopBar({
+  user,
+  isSourcesListCollapsed,
+  onToggleSourcesListCollapsed,
+  analysisPanelOpen = false,
+  onCollapseAnalysisSidebar,
+  onOpenFetchPipelineSettings,
+}: TopBarProps) {
+  const router = useRouter();
+  const openLogin = useOpenLogin();
+
+  useEffect(() => {
+    if (!user) {
+      router.prefetch("/login");
+      router.prefetch("/register");
+    }
+  }, [user, router]);
+
+  const handleOpenFetchPipelineSettings = () => {
+    onOpenFetchPipelineSettings?.();
+    window.dispatchEvent(new Event("uai:open-fetch-pipeline-panel"));
+  };
+
+  const dualCollapsed = isSourcesListCollapsed && !analysisPanelOpen;
+
+  const col1W = "calc((100% - 802px) / 2)";
+  const analysisStripLeft = `calc(${col1W} + 802px)`;
+  /** 中栏 800px 内沿 + 8px，与 MainContent 主列 padding 对齐 */
+  const centerBarEdgeInset = `calc(${col1W} + 1px + 8px)`;
+  /** 中栏右内沿（8px），右簇收起态锚点：translate(-100%,-50%) 使图标贴齐该边 */
+  const centerBarRightAnchor = `calc(${col1W} + 1px + 800px - 8px)`;
+
+  /** SOURCES 折叠：收拢到中栏左内沿；展开：贴左栏。dualCollapsed 仅用于 Figma node-id。 */
+  const layoutTransition = `left ${layoutTf}, right ${layoutTf}, width ${layoutTf}, opacity ${layoutTf}`;
+  const rightToolbarTransition = `left ${layoutTf}, width ${layoutTf}, transform ${layoutTf}, opacity ${layoutTf}`;
+  const leftToggleStyle: CSSProperties = {
+    top: "50%",
+    transform: "translateY(-50%)",
+    transition: layoutTransition,
+    ...(isSourcesListCollapsed
+      ? { left: centerBarEdgeInset, right: "auto" }
+      : { left: `calc(${col1W} - 256px + 8px)`, right: "auto" }),
+  };
+
+  const rightClusterStyle: CSSProperties = {
+    top: "50%",
+    transition: rightToolbarTransition,
+    opacity: analysisPanelOpen ? 1 : 0.98,
+    right: "auto",
+    ...(analysisPanelOpen
+      ? {
+          left: analysisStripLeft,
+          width: "336px",
+          transform: "translate(0, -50%)",
+        }
+      : {
+          left: centerBarRightAnchor,
+          width: "max-content",
+          transform: "translate(-100%, -50%)",
+        }),
+  };
+
+  return (
+    <header
+      data-name="Header"
+      data-node-id="3:2668"
+      className="fixed left-0 right-0 top-0 z-50 h-[56px] w-full min-w-0 shrink-0 bg-white"
+    >
+      <div className="relative h-full w-full min-w-0">
+        {/* 左侧折叠按钮：单实例，随状态平移 */}
+        <button
+          type="button"
+          data-name="Container"
+          data-node-id={dualCollapsed ? "43:5029" : "3:2671"}
+          className={[
+            "topbar-m-left motion-layout-ease absolute z-20 flex h-[53px] w-9 shrink-0 items-center justify-center transition-colors hover:bg-[#f5f5f5]",
+            isSourcesListCollapsed ? "text-[#111113]" : "text-[#0055FF]",
+          ].join(" ")}
+          style={leftToggleStyle}
+          aria-label={isSourcesListCollapsed ? "展开信息源列表" : "折叠信息源列表"}
+          aria-expanded={!isSourcesListCollapsed}
+          onClick={onToggleSourcesListCollapsed}
+        >
+          <div
+            data-name="Container"
+            data-node-id={dualCollapsed ? "43:5030" : "3:2672"}
+            className={topBarIconSlot}
+          >
+            <TopBarPanelLeftGlyph className="absolute inset-0 block size-full max-w-none" />
+          </div>
+        </button>
+
+        {/* 右侧工具条：Figma 3:2668 — ANALYSIS 开时为 336 宽条内 justify-end + gap-8 + px-8；收起时靠中栏右内沿 */}
+        <div
+          className={`topbar-m-right absolute z-20 flex h-[53px] min-w-0 items-center overflow-visible ${analysisPanelOpen ? "justify-end gap-2 px-2" : "justify-end gap-2 px-2"}`}
+          style={rightClusterStyle}
+        >
+          <Link
+            href="/bookmarks"
+            data-name="Container"
+            data-node-id={dualCollapsed ? "43:5033" : "3:2680"}
+            className={`motion-layout-ease relative flex shrink-0 items-center justify-center text-[#111113] transition-colors hover:bg-[#f5f5f5] ${analysisPanelOpen ? "h-full min-h-[54px] w-9" : "h-[54px] w-9"}`}
+            aria-label="收藏"
+          >
+            <div
+              data-name="Container"
+              data-node-id={dualCollapsed ? "43:5034" : "3:2681"}
+              className={`${topBarIconSlot} text-[#111113]`}
+            >
+              <TopBarBookmarkGlyph className="absolute inset-0 block size-full max-w-none" />
+            </div>
+          </Link>
+
+          <button
+            type="button"
+            data-name="Container"
+            data-node-id={dualCollapsed ? "43:5036" : "3:2683"}
+            aria-label="抓取流水线与规则"
+            aria-haspopup="dialog"
+            className="motion-layout-ease relative flex size-9 shrink-0 items-center justify-center rounded-md text-[#111113] transition-colors hover:bg-[#f5f5f5]"
+            onClick={handleOpenFetchPipelineSettings}
+          >
+            <div
+              data-name="Container"
+              data-node-id={dualCollapsed ? "43:5037" : "3:2684"}
+              className={`${topBarIconSlot} text-[#111113]`}
+            >
+              <TopBarSettingsGlyph className="absolute inset-0 block size-full max-w-none" />
+            </div>
+          </button>
+
+          {user ? (
+            <UserMenu
+              user={user}
+              variant="toolbar"
+              toolbarOuterNodeId={dualCollapsed ? "43:5039" : "3:2686"}
+              toolbarInnerNodeId={dualCollapsed ? "43:5040" : "3:2687"}
+            />
+          ) : (
+            <div
+              data-name="Container"
+              data-node-id={dualCollapsed ? "43:5039" : "3:2686"}
+              className="relative flex size-9 shrink-0 items-center justify-center rounded-md text-[#111113]"
+            >
+              <button
+                type="button"
+                onClick={openLogin}
+                className="motion-layout-ease flex size-9 items-center justify-center rounded-md transition-colors hover:bg-[#f5f5f5]"
+                aria-label="登录"
+              >
+                <div
+                  data-name="Container"
+                  data-node-id={dualCollapsed ? "43:5040" : "3:2687"}
+                  className={`${topBarIconSlot} text-[#111113]`}
+                >
+                  <TopBarProfileGlyph className="absolute inset-0 block size-full max-w-none" />
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* 折叠侧栏时移出 flex 流，避免 justify-end 顺序错乱；展开时参与 justify-between（5 子项） */}
+          <div
+            data-name="Margin"
+            data-node-id="3:2689"
+            className={
+              analysisPanelOpen
+                ? "relative flex h-6 w-[33px] shrink-0 flex-col items-center justify-center px-4"
+                : "pointer-events-none absolute left-0 top-0 h-0 w-0 overflow-hidden opacity-0"
+            }
+            aria-hidden={!analysisPanelOpen}
+          >
+            <div
+              data-name="Vertical Divider"
+              data-node-id="3:2690"
+              className="app-divider-v h-6 shrink-0"
+              aria-hidden
+            />
+          </div>
+
+          <button
+            type="button"
+            data-name="Container"
+            data-node-id="3:2691"
+            className={
+              analysisPanelOpen
+                ? "motion-layout-ease relative flex h-[54px] w-9 shrink-0 items-center justify-center transition-colors hover:bg-[rgba(255,178,36,0.08)]"
+                : "pointer-events-none absolute left-0 top-0 h-0 w-0 overflow-hidden opacity-0"
+            }
+            aria-label="折叠分析侧栏"
+            aria-hidden={!analysisPanelOpen}
+            tabIndex={analysisPanelOpen ? 0 : -1}
+            onClick={() => analysisPanelOpen && onCollapseAnalysisSidebar?.()}
+          >
+            <div data-name="Container" data-node-id="3:2692" className={topBarIconSlot}>
+              <TopBarInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" />
+            </div>
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}

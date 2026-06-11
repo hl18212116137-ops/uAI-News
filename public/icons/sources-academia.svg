@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 14" fill="none" aria-hidden="true">
+  <!-- Was: Figma MCP asset 830239bc-751a-4602-abdc-2920f0039066 -->
+  <path fill="#0055FF" d="M8 .75 15.25 4.25 8 7.75.75 4.25 8 .75Z" />
+  <path
+    stroke="#0055FF"
+    stroke-linejoin="round"
+    stroke-width="1.15"
+    d="M1.25 5.5V11c0 .55.45 1 1 1h11.5c.55 0 1-.45 1-1V5.5"
+  />
+</svg>

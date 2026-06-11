@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+  <!-- Was: Figma MCP asset 50e91025-34ed-4ed0-a5a3-4340603c08e6 (Header profile placeholder) -->
+  <circle cx="9" cy="6" r="3.25" stroke="#111113" stroke-width="1.35" />
+  <path
+    stroke="#111113"
+    stroke-linecap="round"
+    stroke-width="1.35"
+    d="M3.25 15.2c.9-2.35 3.05-3.95 5.75-3.95s4.85 1.6 5.75 3.95"
+  />
+</svg>
