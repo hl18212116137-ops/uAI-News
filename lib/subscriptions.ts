@@ -13,6 +13,7 @@ import { mergeDemoPostsIfFeedEmpty } from './demo-feed-posts'
 import { scheduleStaleSourceFetches } from './feed-stale-fetch'
 import { fetchSourceProfilesByHandles, mergeSourceProfilesIntoPosts } from './news-source-enrichment'
 import { expandHandleQueryVariants, normalizeSourceHandle } from './source-avatar'
+import { resolveSourceHomeUrl } from './source-home-url'
 import { resolveSourceProfile } from './source-profile'
 import { getFeedPublishedAtGte, getRecommendationFeedPublishedAtGte } from './feed-window'
 import { applyRecommendationToPosts, getUserRecommendationVisibleDays } from '@/lib/user-pipeline-rules'
@@ -68,6 +69,7 @@ type SourceMeta = {
   id: string
   handle: string
   name: string
+  url?: string
   avatar: string
   description: string
   enabled?: boolean
@@ -81,6 +83,7 @@ function withResolvedSourceProfile(row: {
   id: string
   handle: string
   name: string
+  url?: string | null
   avatar?: string | null
   description?: string | null
   platform?: string | null
@@ -97,6 +100,7 @@ function withResolvedSourceProfile(row: {
   })
   return {
     ...row,
+    url: resolveSourceHomeUrl(row),
     avatar: profile.avatar,
     description: profile.description,
   }
@@ -360,6 +364,7 @@ export async function getSubscribedSourcesMetaByHandles(handles: string[]): Prom
       id: row.id,
       handle: row.handle,
       name: row.name,
+      url: row.url,
       avatar: row.avatar,
       description: row.description,
       enabled: row.enabled,
@@ -417,6 +422,7 @@ export async function getSubscribedSourcesMetaByHandles(handles: string[]): Prom
             id: src.id,
             handle: src.handle,
             name: src.name,
+            url: src.url,
             avatar: src.avatar,
             description: src.description,
             platform: src.platform,
@@ -579,6 +585,7 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
         id: sources.id,
         handle: sources.handle,
         name: sources.name,
+        url: sources.url,
         avatar: sources.avatar,
         description: sources.description,
         platform: sources.platform,
@@ -623,6 +630,7 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
           id: s.id,
           handle: s.handle,
           name: s.name,
+          url: s.url,
           avatar: s.avatar,
           description: s.description,
           platform: s.platform,
@@ -712,6 +720,7 @@ async function demoRecommendedSourceMetas(
       avatar?: string | null
       description?: string | null
       name?: string | null
+      url?: string | null
       platform?: string | null
     }
   >()
@@ -720,6 +729,7 @@ async function demoRecommendedSourceMetas(
       .select({
         id: sources.id,
         handle: sources.handle,
+        url: sources.url,
         avatar: sources.avatar,
         description: sources.description,
         name: sources.name,
@@ -734,6 +744,7 @@ async function demoRecommendedSourceMetas(
         avatar: row.avatar,
         description: row.description,
         name: row.name,
+        url: row.url,
         platform: row.platform,
       })
     }
@@ -752,6 +763,7 @@ async function demoRecommendedSourceMetas(
       id: resolvedId,
       handle: r.handle,
       name: dbName || r.name,
+      url: dbEntry?.url,
       avatar: dbEntry?.avatar,
       description: dbEntry?.description ?? r.description,
       platform: dbEntry?.platform ?? 'X',
@@ -774,6 +786,7 @@ export async function getRecommendedSources(
     id: sources.id,
     handle: sources.handle,
     name: sources.name,
+    url: sources.url,
     avatar: sources.avatar,
     description: sources.description,
     platform: sources.platform,
@@ -831,6 +844,7 @@ export async function getRecommendedSources(
         id: String(s.id),
         handle: s.handle,
         name: s.name,
+        url: s.url,
         avatar: s.avatar,
         description: s.description,
         platform: s.platform,
