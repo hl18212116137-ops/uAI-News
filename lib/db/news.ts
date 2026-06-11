@@ -2,7 +2,7 @@ import 'server-only'
 
 import { db } from '@/lib/db/drizzle'
 import { newsItems } from '@/lib/db/schema'
-import { eq, desc, lt, gte, sql, inArray } from 'drizzle-orm'
+import { eq, desc, lt, gte, sql, inArray, isNotNull } from 'drizzle-orm'
 import { sanitizeInsightPayloadForPost } from '@/lib/insight-echo-guard'
 import { canonicalizeNewsSourceUrl } from '@/lib/news-post-url'
 import type { InsightAnalysisPayload, LongformArticle, NewsItem, SocialEngagement, XReferencedPost } from '@/lib/types'
@@ -179,6 +179,22 @@ export type AddPostOptions = {
   rawPostId?: string | null
 }
 
+export async function getRecentLongformPosts(limit = 40): Promise<NewsItem[]> {
+  try {
+    const data = await db
+      .select()
+      .from(newsItems)
+      .where(isNotNull(newsItems.longformJson))
+      .orderBy(desc(newsItems.publishedAt))
+      .limit(limit)
+
+    return data.map(mapNewsRowToItem)
+  } catch (error) {
+    console.error('Failed to fetch longform posts:', error)
+    return []
+  }
+}
+
 export function longformArticleFromDbJson(value: unknown): LongformArticle | undefined {
   if (value == null || typeof value !== 'object') return undefined
   const o = value as Record<string, unknown>
@@ -193,6 +209,10 @@ export function longformArticleFromDbJson(value: unknown): LongformArticle | und
     resolvedUrl,
     title: title || resolvedUrl,
     sourceName: typeof o.sourceName === 'string' ? o.sourceName : '',
+    authorName:
+      typeof o.authorName === 'string' && o.authorName.trim()
+        ? o.authorName.trim()
+        : undefined,
     excerpt:
       typeof o.excerpt === 'string'
         ? o.excerpt

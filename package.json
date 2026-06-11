@@ -14,6 +14,7 @@
     "init-db": "tsx scripts/init-db.ts",
     "mock-data": "tsx scripts/create-mock-data.ts",
     "seed:recommendation-pool": "tsx scripts/seed-recommendation-pool.ts",
+    "seed:longform-preview": "tsx scripts/seed-longform-preview.ts",
     "backfill:source-profiles": "tsx scripts/backfill-source-profiles.ts",
     "update-avatars": "tsx scripts/update-source-avatars.ts",
     "backfill:news-zh": "tsx scripts/backfill-news-chinese.ts"

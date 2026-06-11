@@ -15,6 +15,7 @@ type CandidateArticle = {
   resolvedUrl: string
   title: string
   sourceName: string
+  authorName?: string
   text: string
   originalWordCount: number
 }
@@ -157,6 +158,25 @@ function extractTitle(html: string, fallbackUrl: string): string {
   return sourceNameFromUrl(fallbackUrl)
 }
 
+function extractMetaContent(html: string, attrName: 'name' | 'property', attrValue: string): string | undefined {
+  const escapedValue = attrValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(
+    `<meta\\b(?=[^>]*\\b${attrName}=["']${escapedValue}["'])(?=[^>]*\\bcontent=["']([^"']+)["'])[^>]*>`,
+    'i',
+  )
+  const match = html.match(re)
+  return match?.[1] ? stripHtmlToText(match[1]).slice(0, 120) : undefined
+}
+
+function extractAuthorName(html: string): string | undefined {
+  const candidates = [
+    extractMetaContent(html, 'name', 'author'),
+    extractMetaContent(html, 'property', 'article:author'),
+    extractMetaContent(html, 'name', 'twitter:creator'),
+  ]
+  return candidates.find((candidate) => candidate && candidate.trim())?.trim()
+}
+
 function extractBestContentHtml(html: string): string {
   const blocks: string[] = []
   for (const tag of ['article', 'main']) {
@@ -237,6 +257,7 @@ async function fetchCandidateArticle(url: string): Promise<CandidateArticle | nu
     resolvedUrl,
     title,
     sourceName: sourceNameFromUrl(resolvedUrl),
+    authorName: extractAuthorName(fetched.html),
     text,
     originalWordCount: countWords(text),
   }
@@ -277,6 +298,7 @@ export async function extractLongformForRawPost(
       resolvedUrl: article.resolvedUrl,
       title: article.title,
       sourceName: article.sourceName,
+      ...(article.authorName ? { authorName: article.authorName } : {}),
       excerpt: translatedContent.slice(0, 260),
       translatedTitle,
       translatedContent,

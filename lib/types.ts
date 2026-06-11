@@ -43,6 +43,7 @@ export type LongformArticle = {
   resolvedUrl: string;
   title: string;
   sourceName: string;
+  authorName?: string;
   excerpt: string;
   translatedTitle?: string;
   translatedContent: string;
