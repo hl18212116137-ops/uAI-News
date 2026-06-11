@@ -23,6 +23,7 @@ import {
   formatTypography,
 } from "@/lib/utils";
 import { BoldLinkifiedInline } from "@/components/LinkifiedParagraph";
+import BookmarkGlyph from "@/components/BookmarkGlyph";
 import SourceAvatarImg from "@/components/SourceAvatarImg";
 import {
   InsightKeyPointsGlyph,
@@ -60,6 +61,9 @@ type AnalysisPanelProps = {
   onRetryAnalysis?: () => void;
   onClose?: () => void;
   isOpen?: boolean;
+  isBookmarked?: boolean;
+  bookmarkPending?: boolean;
+  onBookmarkToggle?: (postId: string, post: NewsItem) => void;
 };
 
 function normalizeScorePercent(n: number | null | undefined): number | null {
@@ -637,6 +641,9 @@ export default function AnalysisPanel({
   onRetryAnalysis,
   onClose,
   isOpen: _isOpen,
+  isBookmarked = false,
+  bookmarkPending = false,
+  onBookmarkToggle,
 }: AnalysisPanelProps) {
   void _isOpen;
 
@@ -1137,16 +1144,20 @@ export default function AnalysisPanel({
       >
         <button
           type="button"
-          className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
-          aria-label="收藏"
+          className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-70"
+          aria-label={isBookmarked ? "取消收藏" : "收藏"}
+          aria-pressed={isBookmarked}
+          aria-busy={bookmarkPending}
+          disabled={!post || !onBookmarkToggle || bookmarkPending}
+          onClick={() => {
+            if (!post || !onBookmarkToggle) return;
+            onBookmarkToggle(post.id, post);
+          }}
         >
           <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
-            <img
-              alt=""
-              src="/analysis-bottom-icons/bookmark.svg"
-              className="block h-3.5 w-auto max-w-full object-contain"
-              decoding="async"
-              draggable={false}
+            <BookmarkGlyph
+              className={`block size-3.5 ${isBookmarked ? "text-[#d7a220]" : "text-current"}`}
+              filled={isBookmarked}
             />
           </span>
         </button>

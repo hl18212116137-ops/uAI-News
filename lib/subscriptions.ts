@@ -1,7 +1,7 @@
 import 'server-only'
 import { db } from '@/lib/db/drizzle'
 import { userSourceSubscriptions, newsItems, sources } from '@/lib/db/schema'
-import { eq, and, desc, gte, inArray, isNotNull, notLike } from 'drizzle-orm'
+import { eq, and, desc, gte, inArray, isNotNull, notLike, sql } from 'drizzle-orm'
 import {
   mediaUrlsFromDbJson,
   referencedPostFromDbJson,
@@ -17,7 +17,12 @@ import { resolveSourceHomeUrl } from './source-home-url'
 import { resolveSourceProfile } from './source-profile'
 import { getFeedPublishedAtGte, getRecommendationFeedPublishedAtGte } from './feed-window'
 import { applyRecommendationToPosts, getUserRecommendationVisibleDays } from '@/lib/user-pipeline-rules'
-import { filterPostsForPublicFeed, getFeedMinImportanceScore } from '@/lib/feed-quality'
+import {
+  filterPostsForPublicFeed,
+  getFeedMinImportanceScore,
+  RECOMMENDED_SIDEBAR_LIMIT,
+} from '@/lib/feed-quality'
+import type { SourceType } from '@/lib/sources'
 
 /** 排除本地种子帖（source_url 为假 status，外链会 404） */
 const EXCLUDE_PLACEHOLDER_NEWS = notLike(newsItems.id, 'seed-%')
@@ -42,30 +47,49 @@ const NEWS_ITEMS_FEED_COLUMNS = {
   referencedPost: newsItems.referencedPost,
 }
 
-function mapRowToNewsItem(row: any): NewsItem {
+type NewsFeedRow = {
+  id: string
+  title: string
+  summary: string
+  content: string
+  sourcePlatform: string | null
+  sourceName: string | null
+  sourceHandle: string | null
+  sourceUrl: string | null
+  category: string | null
+  publishedAt: Date | string
+  originalText: string | null
+  createdAt: Date | string
+  importanceScore: number | null
+  mediaUrls: unknown
+  socialEngagement: unknown
+  referencedPost: unknown
+}
+
+function mapRowToNewsItem(row: NewsFeedRow): NewsItem {
   return withCanonicalPostSourceUrl({
     id: row.id,
     title: row.title,
     summary: row.summary,
     content: row.content,
     source: {
-      platform: row.sourcePlatform,
-      name: row.sourceName,
-      handle: row.sourceHandle,
-      url: row.sourceUrl,
+      platform: row.sourcePlatform as NewsItem['source']['platform'],
+      name: row.sourceName ?? '',
+      handle: row.sourceHandle ?? '',
+      url: row.sourceUrl ?? '',
     },
-    category: row.category,
+    category: row.category as NewsItem['category'],
     publishedAt: row.publishedAt instanceof Date ? row.publishedAt.toISOString() : row.publishedAt,
-    originalText: row.originalText,
+    originalText: row.originalText ?? '',
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
-    importanceScore: row.importanceScore,
+    importanceScore: row.importanceScore ?? undefined,
     mediaUrls: mediaUrlsFromDbJson(row.mediaUrls),
     socialEngagement: socialEngagementFromDbJson(row.socialEngagement),
     referencedPost: referencedPostFromDbJson(row.referencedPost),
   })
 }
 
-type SourceMeta = {
+export type SourceMeta = {
   id: string
   handle: string
   name: string
@@ -75,7 +99,72 @@ type SourceMeta = {
   enabled?: boolean
   postCount: number
   latestPostTime?: string
-  sourceType?: string
+  sourceType?: SourceType
+}
+
+type SourcePostStats = {
+  count: number
+  latest?: string
+}
+
+function normalizeSourceType(value: string | null | undefined): SourceType {
+  return value === 'media' || value === 'academic' ? value : 'blogger'
+}
+
+function dateToIso(value: unknown): string | undefined {
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'string' && value.trim()) return value
+  return undefined
+}
+
+function mergeSourcePostStats(
+  map: Map<string, SourcePostStats>,
+  handle: string | null | undefined,
+  count: unknown,
+  latest: unknown
+) {
+  const key = normalizeSourceHandle(handle)
+  if (!key) return
+
+  const latestIso = dateToIso(latest)
+  const prev = map.get(key) ?? { count: 0, latest: undefined }
+  const nextLatest =
+    latestIso && (!prev.latest || latestIso > prev.latest) ? latestIso : prev.latest
+
+  map.set(key, {
+    count: prev.count + Number(count ?? 0),
+    latest: nextLatest,
+  })
+}
+
+async function getSourcePostStatsByHandle(
+  handles: string[],
+  since: Date
+): Promise<Map<string, SourcePostStats>> {
+  const variants = expandHandleQueryVariants(handles)
+  if (variants.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      sourceHandle: newsItems.sourceHandle,
+      postCount: sql<number>`count(*)::int`,
+      latestPostTime: sql<Date | string | null>`max(${newsItems.publishedAt})`,
+    })
+    .from(newsItems)
+    .where(
+      and(
+        EXCLUDE_PLACEHOLDER_NEWS,
+        inArray(newsItems.sourceHandle, variants),
+        gte(newsItems.publishedAt, since)
+      )
+    )
+    .groupBy(newsItems.sourceHandle)
+
+  const out = new Map<string, SourcePostStats>()
+  for (const row of rows) {
+    mergeSourcePostStats(out, row.sourceHandle, row.postCount, row.latestPostTime)
+  }
+  return out
 }
 
 /** 保证侧栏/API 返回的 SourceMeta 始终带头像 URL 与非空简介 */
@@ -103,6 +192,7 @@ function withResolvedSourceProfile(row: {
     url: resolveSourceHomeUrl(row),
     avatar: profile.avatar,
     description: profile.description,
+    sourceType: normalizeSourceType(row.sourceType),
   }
 }
 
@@ -341,19 +431,18 @@ export async function getSubscribedSourcesMetaByHandles(handles: string[]): Prom
       ylecun: "Yann LeCun",
     }
 
-    const fallbackMeta = (): SourceMeta[] =>
-      normalized.slice(0, 3).map(h => ({
-        id: `guest-${h.toLowerCase()}`,
-        handle: h,
-        name: nameMap[h.toLowerCase()] || h,
-        postCount: 0,
-        latestPostTime: undefined,
-        sourceType: "blogger",
-        platform: 'X',
-      })).map((row) => withResolvedSourceProfile(row))
-
     const sourcesData = await db
-    .select()
+      .select({
+        id: sources.id,
+        handle: sources.handle,
+        name: sources.name,
+        url: sources.url,
+        avatar: sources.avatar,
+        description: sources.description,
+        enabled: sources.enabled,
+        sourceType: sources.sourceType,
+        platform: sources.platform,
+      })
       .from(sources)
       .where(and(
         inArray(sources.handle, expandHandleQueryVariants(normalized)),
@@ -376,28 +465,11 @@ export async function getSubscribedSourcesMetaByHandles(handles: string[]): Prom
     for (const s of srcs) handleToSource.set(normalizeSourceHandle(s.handle), s)
 
     const feedSinceMeta = getFeedPublishedAtGte()
-    let postCounts: { sourceHandle: string | null; publishedAt: Date }[] = []
+    let countMap = new Map<string, SourcePostStats>()
     try {
-      postCounts = await db
-        .select({ sourceHandle: newsItems.sourceHandle, publishedAt: newsItems.publishedAt })
-        .from(newsItems)
-        .where(and(
-          inArray(newsItems.sourceHandle, expandHandleQueryVariants(normalized)),
-          gte(newsItems.publishedAt, feedSinceMeta),
-        ))
+      countMap = await getSourcePostStatsByHandle(normalized, feedSinceMeta)
     } catch (err) {
       console.error("Failed to aggregate post counts by handles:", err)
-    }
-
-    const countMap = new Map<string, { count: number; latest?: string }>()
-    for (const item of postCounts) {
-      const h = normalizeSourceHandle(item.sourceHandle)
-      const pubStr = item.publishedAt instanceof Date ? item.publishedAt.toISOString() : String(item.publishedAt)
-      const prev = countMap.get(h) || { count: 0, latest: undefined }
-      countMap.set(h, {
-        count: prev.count + 1,
-        latest: !prev.latest || pubStr > prev.latest ? pubStr : prev.latest,
-      })
     }
 
     const guestRow = (h: string): SourceMeta =>
@@ -429,7 +501,7 @@ export async function getSubscribedSourcesMetaByHandles(handles: string[]): Prom
             enabled: src.enabled,
             postCount: meta.count,
             latestPostTime: meta.latest,
-            sourceType: src.sourceType as any,
+            sourceType: normalizeSourceType(src.sourceType),
           })
         )
       } else {
@@ -580,7 +652,7 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
 
     const feedSince = getFeedPublishedAtGte()
 
-    const [sourcesData, postCounts] = await Promise.all([
+    const [sourcesData, countMap] = await Promise.all([
       db.select({
         id: sources.id,
         handle: sources.handle,
@@ -594,27 +666,9 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
       }).from(sources).where(inArray(sources.id, sourceIds)),
 
       handles.length > 0
-        ? db.select({
-            sourceHandle: newsItems.sourceHandle,
-            publishedAt: newsItems.publishedAt,
-          }).from(newsItems).where(and(
-            inArray(newsItems.sourceHandle, expandHandleQueryVariants(handles)),
-            gte(newsItems.publishedAt, feedSince),
-          ))
-        : Promise.resolve([] as { sourceHandle: string | null; publishedAt: Date }[]),
+        ? getSourcePostStatsByHandle(handles, feedSince)
+        : Promise.resolve(new Map<string, SourcePostStats>()),
     ])
-
-    const countMap = new Map<string, { count: number; latest?: string }>()
-    for (const item of postCounts) {
-      const key = normalizeSourceHandle(item.sourceHandle)
-      const existing = countMap.get(key) || { count: 0 }
-      existing.count += 1
-      const pubStr = item.publishedAt instanceof Date ? item.publishedAt.toISOString() : String(item.publishedAt)
-      if (!existing.latest || pubStr > existing.latest) {
-        existing.latest = pubStr
-      }
-      countMap.set(key, existing)
-    }
 
     const idToSource = new Map<string, typeof sourcesData[number]>()
     for (const s of sourcesData) idToSource.set(String(s.id), s)
@@ -637,7 +691,7 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
           enabled: s.enabled,
           postCount: stats.count,
           latestPostTime: stats.latest,
-          sourceType: s.sourceType,
+          sourceType: normalizeSourceType(s.sourceType),
         })
       )
     }
@@ -652,7 +706,6 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
  * DB 不可用时 RECOMMEND 占位（id 前缀 uai-demo-rec-，无真实外键，仅展示）。
  * 仍按 handle 合并 sources 表中的 avatar/description，有则展示真实资料。
  */
-import { RECOMMENDED_SIDEBAR_LIMIT } from '@/lib/feed-quality'
 import { RECOMMENDATION_POOL } from '@/lib/recommendation-pool-data'
 
 export { RECOMMENDED_SIDEBAR_LIMIT }
@@ -820,23 +873,11 @@ export async function getRecommendedSources(
     }
 
     const feedSinceRec = getFeedPublishedAtGte()
-    let postCountRows: { sourceHandle: string | null }[] = []
+    let countMap = new Map<string, SourcePostStats>()
     try {
-      postCountRows = await db
-        .select({ sourceHandle: newsItems.sourceHandle })
-        .from(newsItems)
-        .where(and(
-          inArray(newsItems.sourceHandle, poolHandles),
-          gte(newsItems.publishedAt, feedSinceRec),
-        ))
+      countMap = await getSourcePostStatsByHandle(poolHandles, feedSinceRec)
     } catch (err) {
       console.error('Recommended sources: postCounts query failed', err)
-    }
-
-    const countMap = new Map<string, number>()
-    for (const item of postCountRows) {
-      const key = String(item.sourceHandle ?? '').toLowerCase()
-      countMap.set(key, (countMap.get(key) || 0) + 1)
     }
 
     const mapped = pool.map((s) =>
@@ -848,7 +889,7 @@ export async function getRecommendedSources(
         avatar: s.avatar,
         description: s.description,
         platform: s.platform,
-        postCount: countMap.get(String(s.handle || '').toLowerCase()) || 0,
+        postCount: countMap.get(normalizeSourceHandle(s.handle))?.count || 0,
         sourceType: s.sourceType,
       })
     )

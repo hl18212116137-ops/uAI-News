@@ -56,13 +56,17 @@ export interface Task {
  */
 class TaskManager {
   private tasks: Map<string, Task> = new Map();
-  private cleanupInterval: NodeJS.Timeout;
+  private cleanupInterval: ReturnType<typeof setInterval>;
 
   constructor() {
     // 每 10 分钟清理 1 小时前的任务
-    this.cleanupInterval = setInterval(() => {
+    const cleanupInterval = setInterval(() => {
       this.cleanupOldTasks();
     }, 10 * 60 * 1000);
+    this.cleanupInterval = cleanupInterval;
+
+    const maybeNodeInterval = cleanupInterval as unknown as { unref?: () => void };
+    maybeNodeInterval.unref?.();
   }
 
   /**

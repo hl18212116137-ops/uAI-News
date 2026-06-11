@@ -42,6 +42,33 @@ type SourcesListProps = {
   onToggleCollapse: () => void;    // 切换折叠状态的回调
 };
 
+const SOURCE_SECTIONS = [
+  {
+    id: "blogger" as const,
+    label: "博主",
+    sectionNode: "37:4570" as const,
+    titleNode: "37:4571" as const,
+    countNode: "37:4578" as const,
+    chevronRightNode: "37:4630" as const,
+  },
+  {
+    id: "media" as const,
+    label: "媒体",
+    sectionNode: "37:4621" as const,
+    titleNode: "37:4622" as const,
+    countNode: "37:4629" as const,
+    chevronRightNode: "37:4630" as const,
+  },
+  {
+    id: "academic" as const,
+    label: "学术",
+    sectionNode: "37:4632" as const,
+    titleNode: "37:4633" as const,
+    countNode: "37:4640" as const,
+    chevronRightNode: "37:4641" as const,
+  },
+] as const;
+
 function isSourceRowActive(handle: string | undefined, currentSource: string) {
   if (!handle && !currentSource) return true;
   return handle === currentSource;
@@ -51,7 +78,6 @@ type SourcesListSourceCardProps = {
   source: Source;
   currentSource: string;
   onSourceSelect: (handle: string) => void;
-  avatarPriority?: boolean;
   isFetching?: boolean;
 };
 
@@ -59,7 +85,6 @@ function SourcesListSourceCard({
   source,
   currentSource,
   onSourceSelect,
-  avatarPriority = false,
   isFetching = false,
 }: SourcesListSourceCardProps) {
   const profile = resolveSourceProfile({
@@ -84,7 +109,7 @@ function SourcesListSourceCard({
           type="button"
           onClick={() => onSourceSelect(source.handle)}
           aria-pressed={rowActive}
-          className="absolute inset-0 z-0 cursor-pointer rounded-[2px] border-0 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 focus-visible:ring-offset-2"
+          className="absolute inset-0 z-[1] cursor-pointer rounded-[2px] border-0 bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 focus-visible:ring-offset-2"
           aria-label={`筛选 ${source.name} 的推文`}
         />
         <Tooltip content={`打开 ${source.name} 主页`}>
@@ -93,7 +118,8 @@ function SourcesListSourceCard({
             target="_blank"
             rel="noopener noreferrer"
             data-tooltip-exclude=""
-            className="btn-press relative z-[1] shrink-0 rounded-[3px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 focus-visible:ring-offset-2"
+            onClick={(e) => e.stopPropagation()}
+            className="btn-press relative z-[3] shrink-0 rounded-[3px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 focus-visible:ring-offset-2"
             aria-label={`打开 ${source.name} 主页`}
           >
             <SourceAvatarImg
@@ -103,11 +129,10 @@ function SourcesListSourceCard({
               letter={source.name}
               imgClassName="h-8 w-8 flex-shrink-0 rounded-[2px] object-cover"
               placeholderClassName="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[2px] bg-gray-200 text-[12px] font-semibold text-[#6a7282]"
-              priority={avatarPriority}
             />
           </a>
         </Tooltip>
-        <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 flex-col items-stretch gap-1">
+        <div className="pointer-events-none relative z-[2] flex min-h-0 min-w-0 flex-1 flex-col items-stretch gap-1">
           <div className="flex min-h-[13px] items-center justify-between gap-2 self-stretch">
             <Tooltip content={`打开 ${source.name} 主页`}>
               <a
@@ -115,7 +140,8 @@ function SourcesListSourceCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 data-tooltip-exclude=""
-                className="min-w-0 truncate rounded-[3px] text-[12px] font-medium leading-4 text-[#111113] transition-colors hover:text-[#0055FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30"
+                onClick={(e) => e.stopPropagation()}
+                className="pointer-events-auto min-w-0 truncate rounded-[3px] text-[12px] font-medium leading-4 text-[#111113] transition-colors hover:text-[#0055FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30"
                 aria-label={`打开 ${source.name} 主页`}
               >
                 {source.name}
@@ -124,7 +150,7 @@ function SourcesListSourceCard({
             <div className="flex min-h-px min-w-0 flex-shrink-0 items-center justify-end gap-2">
               <Tooltip content={isFetching ? "正在抓取推文" : "已收录推文数"}>
                 <span
-                  className="inline-flex min-w-[1em] cursor-default items-center justify-center gap-1 font-mono text-[12px] font-medium tabular-nums leading-4 text-[#0055FF]"
+                  className="pointer-events-auto inline-flex min-w-[1em] cursor-default items-center justify-center gap-1 font-mono text-[12px] font-medium tabular-nums leading-4 text-[#0055FF]"
                   data-tooltip-exclude=""
                 >
                   {isFetching ? (
@@ -184,7 +210,7 @@ export default function SourcesList({
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const filteredSubscribed = sources.filter(s => {
+  const filteredSubscribed = useMemo(() => sources.filter(s => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -192,7 +218,21 @@ export default function SourcesList({
       s.handle.toLowerCase().includes(q) ||
       (s.description && s.description.toLowerCase().includes(q))
     );
-  });
+  }), [sources, searchQuery]);
+  const filteredByType = useMemo(() => {
+    const groups: Record<"blogger" | "media" | "academic", Source[]> = {
+      blogger: [],
+      media: [],
+      academic: [],
+    };
+    for (const source of filteredSubscribed) {
+      const type = source.sourceType === "media" || source.sourceType === "academic"
+        ? source.sourceType
+        : "blogger";
+      groups[type].push(source);
+    }
+    return groups;
+  }, [filteredSubscribed]);
   const fetchingCount = fetchingSourceIds?.size ?? 0;
 
   if (isCollapsed) {
@@ -286,36 +326,9 @@ export default function SourcesList({
           className="relative z-[3] flex w-full min-w-0 flex-col items-start"
         >
           <div data-name="Nav" data-node-id="37:4569" className="flex w-full min-w-0 flex-col gap-2">
-          {(
-            [
-              {
-                id: "blogger" as const,
-                label: "博主",
-                sectionNode: "37:4570" as const,
-                titleNode: "37:4571" as const,
-                countNode: "37:4578" as const,
-                chevronRightNode: "37:4630" as const,
-              },
-              {
-                id: "media" as const,
-                label: "媒体",
-                sectionNode: "37:4621" as const,
-                titleNode: "37:4622" as const,
-                countNode: "37:4629" as const,
-                chevronRightNode: "37:4630" as const,
-              },
-              {
-                id: "academic" as const,
-                label: "学术",
-                sectionNode: "37:4632" as const,
-                titleNode: "37:4633" as const,
-                countNode: "37:4640" as const,
-                chevronRightNode: "37:4641" as const,
-              },
-            ] as const
-          ).map((section) => {
+          {SOURCE_SECTIONS.map((section) => {
             const open = openSections[section.id];
-            const list = filteredSubscribed.filter((s) => (s.sourceType || "blogger") === section.id);
+            const list = filteredByType[section.id];
             const count = typeCounts[section.id];
             return (
               <div key={section.id} data-name={section.label} data-node-id={section.sectionNode} className="flex w-full flex-col items-start">
@@ -397,13 +410,12 @@ export default function SourcesList({
                   <div className="min-h-0 overflow-hidden">
                     {list.length > 0 ? (
                       <div data-name="list" className="flex w-full flex-col gap-4 pb-0 pt-0">
-                        {list.map((source, index) => (
+                        {list.map((source) => (
                           <SourcesListSourceCard
                             key={source.handle}
                             source={source}
                             currentSource={currentSource ?? ""}
-                            onSourceSelect={(h) => onSourceSelect(h)}
-                            avatarPriority={index < 6}
+                            onSourceSelect={onSourceSelect}
                             isFetching={!!fetchingSourceIds?.has(source.id)}
                           />
                         ))}

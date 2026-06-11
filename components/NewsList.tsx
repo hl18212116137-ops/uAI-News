@@ -14,7 +14,8 @@ import EmptyState from "./EmptyState";
 type NewsListProps = {
   posts: NewsItem[];
   bookmarkedIds?: Set<string>;
-  onBookmarkToggle?: (id: string) => void;
+  bookmarkPendingIds?: Set<string>;
+  onBookmarkToggle?: (id: string, post: NewsItem) => void;
   analysisActivePostId?: string | null;
   onAnalysisToggle?: (postId: string) => void;
   emptyFeedAwaitingFetch?: boolean;
@@ -25,6 +26,7 @@ export default memo(NewsList);
 function NewsList({
   posts,
   bookmarkedIds,
+  bookmarkPendingIds,
   onBookmarkToggle,
   analysisActivePostId = null,
   onAnalysisToggle,
@@ -136,6 +138,7 @@ function NewsList({
           <NewsCard
             post={post}
             isBookmarked={bookmarkedIds?.has(post.id) ?? false}
+            bookmarkPending={bookmarkPendingIds?.has(post.id) ?? false}
             onBookmarkToggle={onBookmarkToggle}
             analysisActive={analysisActivePostId === post.id}
             onAnalysisToggle={onAnalysisToggle}

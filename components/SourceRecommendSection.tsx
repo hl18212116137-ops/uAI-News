@@ -35,11 +35,9 @@ type SourceRecommendSectionProps = {
 function RecommendSourceCard({
   source,
   onSubscribe,
-  avatarPriority,
 }: {
   source: RecommendSourceRow;
   onSubscribe?: (source: RecommendSourceRow) => void | Promise<void>;
-  avatarPriority?: boolean;
 }) {
   const [isSubscribing, setIsSubscribing] = useState(false);
   const profile = resolveSourceProfile({
@@ -80,7 +78,6 @@ function RecommendSourceCard({
             letter={source.name}
             imgClassName="h-8 w-8 shrink-0 rounded-[2px] border border-[#F0F0F2] object-cover shadow-xs box-border"
             placeholderClassName="flex h-8 w-8 shrink-0 items-center justify-center rounded-[2px] border border-[#F0F0F2] bg-gray-200 text-[12px] font-semibold text-[#6a7282] shadow-xs"
-            priority={avatarPriority}
           />
         </a>
       </Tooltip>
@@ -171,12 +168,11 @@ export default function SourceRecommendSection({
       </div>
       {visible.length > 0 ? (
         <div className="flex flex-col gap-1">
-          {visible.map((source, index) => (
+          {visible.map((source) => (
             <RecommendSourceCard
               key={source.id}
               source={source}
               onSubscribe={onSubscribe}
-              avatarPriority={index < 3}
             />
           ))}
         </div>

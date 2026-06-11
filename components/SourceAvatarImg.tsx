@@ -67,17 +67,19 @@ export default function SourceAvatarImg({
     );
   }
 
+  const fetchPriorityProps = {
+    fetchPriority: priority ? "high" : "auto",
+  } as { fetchPriority?: "high" | "low" | "auto" };
+
   return (
     <img
       src={displaySrc}
       alt={alt}
-      width={24}
-      height={24}
+      width={32}
+      height={32}
       className={imgClassName}
       loading={priority ? "eager" : "lazy"}
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore fetchPriority is still experimental in some TS DOM lib versions
-      fetchPriority={priority ? "high" : "auto"}
+      {...fetchPriorityProps}
       decoding="async"
       referrerPolicy="strict-origin-when-cross-origin"
       onLoad={() => {

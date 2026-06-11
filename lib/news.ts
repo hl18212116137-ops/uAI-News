@@ -1,6 +1,14 @@
 import { NewsItem, NewsCategory } from "./types";
 import { getAllPosts } from "./db";
 
+function getSourceHandle(post: NewsItem): string | undefined {
+  const source = post.source as unknown;
+  if (typeof source === "string") return source;
+  if (!source || typeof source !== "object" || !("handle" in source)) return undefined;
+  const handle = (source as { handle?: unknown }).handle;
+  return typeof handle === "string" ? handle : undefined;
+}
+
 /**
  * 获取排序后的新闻列表
  * 统一入口：读取数据 + 筛选 + 排序
@@ -83,14 +91,7 @@ export function getPostCountBySource(posts: NewsItem[]): Record<string, number> 
   const counts: Record<string, number> = {};
 
   posts.forEach((post) => {
-    let handle: string | undefined;
-
-    // 处理 source 字段：可能是字符串或对象
-    if (typeof post.source === "string") {
-      handle = post.source;
-    } else if (post.source && typeof post.source === "object") {
-      handle = (post.source as any).handle;
-    }
+    const handle = getSourceHandle(post);
 
     if (handle) {
       const lowerHandle = handle.toLowerCase();
@@ -110,14 +111,7 @@ export function getLatestPostTimeBySource(posts: NewsItem[]): Record<string, str
   const latestTimes: Record<string, string> = {};
 
   posts.forEach((post) => {
-    let handle: string | undefined;
-
-    // 处理 source 字段：可能是字符串或对象
-    if (typeof post.source === "string") {
-      handle = post.source;
-    } else if (post.source && typeof post.source === "object") {
-      handle = (post.source as any).handle;
-    }
+    const handle = getSourceHandle(post);
 
     if (handle && post.publishedAt) {
       const lowerHandle = handle.toLowerCase();

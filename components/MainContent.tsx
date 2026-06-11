@@ -343,11 +343,21 @@ export default function MainContent({
       handleSourceFetchEvent
     );
 
+  const initialBookmarkedIdSet = useMemo(
+    () => new Set(initialBookmarkedIds),
+    [initialBookmarkedIds]
+  );
+  const initialSubscribedSourceIdSet = useMemo(
+    () => new Set(initialSubscribedSourceIds),
+    [initialSubscribedSourceIds]
+  );
+
   // 收藏功能（乐观更新）
-  const { bookmarkedIds, toggleBookmark } = useBookmark(
-    new Set(initialBookmarkedIds),
+  const { bookmarkedIds, pendingIds: bookmarkPendingIds, toggleBookmark } = useBookmark(
+    initialBookmarkedIdSet,
     user,
-    handleNeedAuth
+    handleNeedAuth,
+    { initialItems: posts }
   );
 
   const initialSubscribedHandles = useMemo(
@@ -356,7 +366,7 @@ export default function MainContent({
   );
 
   const { subscribedIds, subscribedHandles, subscribeSource } = useSubscription(
-    new Set(initialSubscribedSourceIds),
+    initialSubscribedSourceIdSet,
     initialSubscribedHandles,
     user,
     handleNeedAuth,
@@ -566,7 +576,14 @@ export default function MainContent({
   const handleAddSource = useCallback((_type: 'blogger' | 'media' | 'academic') => {
     setShowAddSourceModal(true);
     setIsSourcesListCollapsed(false);
+  }, [setIsSourcesListCollapsed]);
+  const handleAddBloggerSource = useCallback(() => handleAddSource("blogger"), [handleAddSource]);
+  const handleSourceSelect = useCallback((handle?: string) => {
+    setActiveSource(handle || "");
   }, []);
+  const toggleSourcesListCollapsed = useCallback(() => {
+    setIsSourcesListCollapsed((v) => !v);
+  }, [setIsSourcesListCollapsed]);
 
   /** 选中且未手动折叠右栏时显示 ANALYSIS */
   const showAnalysisPanel =
@@ -824,9 +841,20 @@ export default function MainContent({
     });
   }, [analysisPostId]);
 
+  const sortedPosts = useMemo(() => {
+    return [...posts].sort((a, b) => {
+      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+    });
+  }, [posts]);
+
+  const analysisPost = useMemo(
+    () => (analysisPostId ? posts.find((p) => p.id === analysisPostId) ?? null : null),
+    [posts, analysisPostId]
+  );
+
   // 在客户端进行筛选（纯内存操作，无服务端请求）
   const filteredPosts = useMemo(() => {
-    let result = posts;
+    let result = sortedPosts;
 
     if (activeCategory && activeCategory !== "all") {
       result = result.filter((post) => post.category === activeCategory);
@@ -850,10 +878,8 @@ export default function MainContent({
       });
     }
 
-    return [...result].sort((a, b) => {
-      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-    });
-  }, [posts, activeCategory, activeSource, searchQuery]);
+    return result;
+  }, [sortedPosts, activeCategory, activeSource, searchQuery]);
 
   const isGuestDefaultFeed =
     !user &&
@@ -873,7 +899,7 @@ export default function MainContent({
             <TopBar
               user={user}
               isSourcesListCollapsed={isSourcesListCollapsed}
-              onToggleSourcesListCollapsed={() => setIsSourcesListCollapsed((v) => !v)}
+              onToggleSourcesListCollapsed={toggleSourcesListCollapsed}
               analysisPanelOpen={showAnalysisPanel}
               onCollapseAnalysisSidebar={closeAnalysisSession}
               onOpenFetchPipelineSettings={openFetchPipelinePanel}
@@ -925,8 +951,8 @@ export default function MainContent({
           <SourcesList
                     sources={sourcesState}
                     currentSource={activeSource}
-                    onSourceSelect={(handle) => setActiveSource(handle || "")}
-                    onAddSource={() => handleAddSource("blogger")}
+                    onSourceSelect={handleSourceSelect}
+                    onAddSource={handleAddBloggerSource}
                     fetchingSourceIds={fetchingSourceIds}
                     user={user}
                     isCollapsed={false}
@@ -1002,6 +1028,7 @@ export default function MainContent({
                   <NewsList
                     posts={filteredPosts}
                     bookmarkedIds={bookmarkedIds}
+                    bookmarkPendingIds={bookmarkPendingIds}
                     onBookmarkToggle={toggleBookmark}
                     analysisActivePostId={analysisPostId}
                     onAnalysisToggle={handleAnalysisToggle}
@@ -1104,11 +1131,14 @@ export default function MainContent({
                     >
                       <AnalysisPanel
                         isOpen={analysisOpen}
-                        post={posts.find((p) => p.id === analysisPostId) ?? null}
+                        post={analysisPost}
                         analysis={analysisCache[analysisPostId] ?? null}
                         isLoading={analysisLoadingPostId === analysisPostId}
                         analysisError={analysisErrorByPost[analysisPostId] ?? null}
                         onRetryAnalysis={retryInsightAnalysis}
+                        isBookmarked={analysisPost ? bookmarkedIds.has(analysisPost.id) : false}
+                        bookmarkPending={analysisPost ? bookmarkPendingIds.has(analysisPost.id) : false}
+                        onBookmarkToggle={toggleBookmark}
                       />
                     </div>
                   </div>

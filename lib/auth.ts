@@ -28,7 +28,7 @@ export async function requireAuth(): Promise<AuthSuccess | AuthFailure> {
   }
 
   const user: AuthUser = {
-    id: (session.user as any).id,
+    id: session.user.id,
     email: session.user.email!,
     name: session.user.name,
   }
@@ -44,7 +44,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!session?.user) return null
 
   return {
-    id: (session.user as any).id,
+    id: session.user.id,
     email: session.user.email!,
     name: session.user.name,
   }

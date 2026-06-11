@@ -37,7 +37,12 @@ export const authOptions: NextAuthOptions = {
 
         try {
           const [user] = await db
-            .select()
+            .select({
+              id: users.id,
+              email: users.email,
+              name: users.name,
+              passwordHash: users.passwordHash,
+            })
             .from(users)
             .where(eq(users.email, normalizedEmail))
             .limit(1)

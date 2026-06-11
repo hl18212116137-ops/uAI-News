@@ -137,6 +137,7 @@ export default function TopBar({
         >
           <Link
             href="/bookmarks"
+            prefetch={false}
             data-name="Container"
             data-node-id={dualCollapsed ? "43:5033" : "3:2680"}
             className={`motion-layout-ease relative flex shrink-0 items-center justify-center text-[#111113] transition-colors hover:bg-[#f5f5f5] ${analysisPanelOpen ? "h-full min-h-[54px] w-9" : "h-[54px] w-9"}`}
