@@ -122,6 +122,19 @@ function NewsCard({
             >
               # {getCategoryTag(post.category)}
             </span>
+            {post.longform ? (
+              <>
+                <span
+                  className="flex min-h-[18px] items-center font-mono text-[12px] font-normal uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]"
+                  aria-hidden
+                >
+                  /
+                </span>
+                <span className="flex min-h-[18px] shrink-0 items-center font-mono text-[12px] font-bold leading-[18px] tracking-[0.02em] text-[#d7a220]">
+                  【优质长文】
+                </span>
+              </>
+            ) : null}
             <span
               className="flex min-h-[18px] items-center font-mono text-[12px] font-normal uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]"
               data-node-id="37:4746"

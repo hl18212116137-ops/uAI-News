@@ -4,6 +4,7 @@ import { userSourceSubscriptions, newsItems, sources } from '@/lib/db/schema'
 import { eq, and, desc, gte, inArray, isNotNull, notLike, sql } from 'drizzle-orm'
 import {
   mediaUrlsFromDbJson,
+  longformArticleFromDbJson,
   referencedPostFromDbJson,
   socialEngagementFromDbJson,
   withCanonicalPostSourceUrl,
@@ -45,6 +46,7 @@ const NEWS_ITEMS_FEED_COLUMNS = {
   mediaUrls: newsItems.mediaUrls,
   socialEngagement: newsItems.socialEngagement,
   referencedPost: newsItems.referencedPost,
+  longformJson: newsItems.longformJson,
 }
 
 type NewsFeedRow = {
@@ -64,6 +66,7 @@ type NewsFeedRow = {
   mediaUrls: unknown
   socialEngagement: unknown
   referencedPost: unknown
+  longformJson: unknown
 }
 
 function mapRowToNewsItem(row: NewsFeedRow): NewsItem {
@@ -86,6 +89,7 @@ function mapRowToNewsItem(row: NewsFeedRow): NewsItem {
     mediaUrls: mediaUrlsFromDbJson(row.mediaUrls),
     socialEngagement: socialEngagementFromDbJson(row.socialEngagement),
     referencedPost: referencedPostFromDbJson(row.referencedPost),
+    longform: longformArticleFromDbJson(row.longformJson),
   })
 }
 

@@ -8,6 +8,7 @@ import { getDefaultAIService } from '@/lib/ai/ai-factory'
 import { mergePipelineTelemetryToTask, taskManager } from '@/lib/task-manager'
 import { getEffectivePipelineRuntimeValues } from '@/lib/pipeline-settings'
 import { shouldSkipLowSignalRawPost } from '@/lib/raw-post-quality'
+import { extractLongformForRawPost } from '@/lib/longform'
 
 /**
  * 后台抓取并处理单源推文（与 POST /api/sources 添加源后的任务共用）
@@ -81,6 +82,19 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
                 post.referencedPost,
               ),
             ])
+            const longform = await extractLongformForRawPost(
+              {
+                platform: 'X',
+                text: post.post_text,
+                sourceUrl: post.post_url,
+                authorName: source.name,
+                authorHandle: source.handle,
+              },
+              (s) => aiService.translateContent(s),
+            ).catch((err) => {
+              console.warn(`[后台任务] longform extraction skipped for ${post.post_id}:`, err)
+              return undefined
+            })
 
             let importanceScore = 50
             try {
@@ -120,6 +134,7 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
                 ? { socialEngagement: post.social_engagement }
                 : {}),
               ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
+              ...(longform ? { longform } : {}),
             })
 
             return { outcome: 'success' as const, postId: post.post_id }

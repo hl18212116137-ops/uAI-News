@@ -29,6 +29,7 @@ import { computeInsightAnalysis } from '@/lib/post-insight-compute'
 import { shouldSkipLowSignalRawPost, type LowSignalThresholds } from '@/lib/raw-post-quality'
 import { NewsItem, NewsCategory } from '@/lib/types'
 import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese'
+import { extractLongformForRawPost } from '@/lib/longform'
 import { composeTextForAiProcessing } from '@/lib/x'
 import type { AIService, AIProcessedContent } from '@/lib/ai/ai-service'
 import { isMostlyChinese } from '@/lib/text-locale'
@@ -201,6 +202,19 @@ async function processOneRawPost(
 
     const mediaUrls = mediaUrlsFromDbJson(rawPost.media_urls)
     const socialEngagement = socialEngagementFromDbJson(rawPost.social_engagement)
+    const longform = await extractLongformForRawPost(
+      {
+        platform,
+        text: outerText,
+        sourceUrl: url,
+        authorName,
+        authorHandle: handle,
+      },
+      (s) => aiService.translateContent(s),
+    ).catch((err) => {
+      console.warn(`[process] longform extraction skipped for ${id}:`, err)
+      return undefined
+    })
 
     const newsItem: NewsItem = {
       id,
@@ -220,6 +234,7 @@ async function processOneRawPost(
       ...(mediaUrls ? { mediaUrls } : {}),
       ...(socialEngagement ? { socialEngagement } : {}),
       ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
+      ...(longform ? { longform } : {}),
     }
 
     try {

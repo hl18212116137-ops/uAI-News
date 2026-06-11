@@ -4,6 +4,7 @@ import { eq, and, desc, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/drizzle'
 import { newsItems, userBookmarks } from '@/lib/db/schema'
 import {
+  longformArticleFromDbJson,
   mediaUrlsFromDbJson,
   referencedPostFromDbJson,
   socialEngagementFromDbJson,
@@ -28,6 +29,7 @@ const BOOKMARK_NEWS_COLUMNS = {
   mediaUrls: newsItems.mediaUrls,
   socialEngagement: newsItems.socialEngagement,
   referencedPost: newsItems.referencedPost,
+  longformJson: newsItems.longformJson,
 }
 
 function dateToIso(value: Date | string | null): string {
@@ -94,6 +96,7 @@ export async function listBookmarkedNewsForUser(userId: string): Promise<NewsIte
         mediaUrls: mediaUrlsFromDbJson(item.mediaUrls),
         socialEngagement: socialEngagementFromDbJson(item.socialEngagement),
         referencedPost: referencedPostFromDbJson(item.referencedPost),
+        longform: longformArticleFromDbJson(item.longformJson),
       }),
     )
 }

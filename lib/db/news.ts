@@ -5,7 +5,7 @@ import { newsItems } from '@/lib/db/schema'
 import { eq, desc, lt, gte, sql, inArray } from 'drizzle-orm'
 import { sanitizeInsightPayloadForPost } from '@/lib/insight-echo-guard'
 import { canonicalizeNewsSourceUrl } from '@/lib/news-post-url'
-import type { InsightAnalysisPayload, NewsItem, SocialEngagement, XReferencedPost } from '@/lib/types'
+import type { InsightAnalysisPayload, LongformArticle, NewsItem, SocialEngagement, XReferencedPost } from '@/lib/types'
 
 /** 读取/返回前修正 X 推文 status 链接（避免 profile 或错误 url 导致无法跳转原文） */
 export function withCanonicalPostSourceUrl(item: NewsItem): NewsItem {
@@ -34,6 +34,7 @@ function mapNewsRowToItem(row: typeof newsItems.$inferSelect): NewsItem {
     mediaUrls: mediaUrlsFromDbJson(row.mediaUrls),
     socialEngagement: socialEngagementFromDbJson(row.socialEngagement),
     referencedPost: referencedPostFromDbJson(row.referencedPost),
+    longform: longformArticleFromDbJson(row.longformJson),
   })
 }
 
@@ -178,6 +179,37 @@ export type AddPostOptions = {
   rawPostId?: string | null
 }
 
+export function longformArticleFromDbJson(value: unknown): LongformArticle | undefined {
+  if (value == null || typeof value !== 'object') return undefined
+  const o = value as Record<string, unknown>
+  const url = typeof o.url === 'string' ? o.url : ''
+  const resolvedUrl = typeof o.resolvedUrl === 'string' ? o.resolvedUrl : url
+  const title = typeof o.title === 'string' ? o.title : ''
+  const translatedContent = typeof o.translatedContent === 'string' ? o.translatedContent : ''
+  if (!url || !resolvedUrl || !translatedContent.trim()) return undefined
+
+  const article: LongformArticle = {
+    url,
+    resolvedUrl,
+    title: title || resolvedUrl,
+    sourceName: typeof o.sourceName === 'string' ? o.sourceName : '',
+    excerpt:
+      typeof o.excerpt === 'string'
+        ? o.excerpt
+        : translatedContent.slice(0, 260),
+    translatedContent,
+    originalWordCount:
+      typeof o.originalWordCount === 'number' && Number.isFinite(o.originalWordCount)
+        ? Math.max(0, Math.floor(o.originalWordCount))
+        : 0,
+    fetchedAt: typeof o.fetchedAt === 'string' ? o.fetchedAt : '',
+  }
+  if (typeof o.translatedTitle === 'string' && o.translatedTitle.trim()) {
+    article.translatedTitle = o.translatedTitle
+  }
+  return article
+}
+
 function toDatabaseDate(value: unknown, fallback: Date): Date {
   if (value instanceof Date && Number.isFinite(value.getTime())) {
     return value
@@ -234,6 +266,7 @@ export async function addPost(post: NewsItem, options?: AddPostOptions): Promise
         ? { socialEngagement: post.socialEngagement }
         : {}),
       ...(post.referencedPost ? { referencedPost: post.referencedPost } : {}),
+      ...(post.longform ? { longformJson: post.longform } : {}),
       ...(options?.rawPostId ? { rawPostId: options.rawPostId } : {}),
     }
 

@@ -38,6 +38,18 @@ export type XReferencedPost = {
   mediaUrls?: string[];
 };
 
+export type LongformArticle = {
+  url: string;
+  resolvedUrl: string;
+  title: string;
+  sourceName: string;
+  excerpt: string;
+  translatedTitle?: string;
+  translatedContent: string;
+  originalWordCount: number;
+  fetchedAt: string;
+};
+
 export type NewsItem = {
   id: string;
   title: string;
@@ -55,6 +67,8 @@ export type NewsItem = {
   socialEngagement?: SocialEngagement;
   /** 被转发 / 被引用的内层推文（仅 X） */
   referencedPost?: XReferencedPost;
+  /** 推文外链或 RSS/Blog 对应的优质长文译文 */
+  longform?: LongformArticle;
 };
 
 /**

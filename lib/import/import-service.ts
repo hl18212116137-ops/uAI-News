@@ -14,6 +14,7 @@ import { ImportResult, ParsedContent } from './types';
 import { getDefaultAIService } from '../ai/ai-factory';
 import { composeTextForAiProcessing } from '@/lib/x';
 import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese';
+import { extractLongformForRawPost } from '@/lib/longform';
 
 /**
  * 统一导入服务
@@ -223,6 +224,19 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
         parsed.referencedPost,
       ),
     ])
+    const longform = await extractLongformForRawPost(
+      {
+        platform: parsed.platform,
+        text: parsed.content,
+        sourceUrl: parsed.url,
+        authorName: parsed.author.name,
+        authorHandle: parsed.author.handle || parsed.author.name,
+      },
+      (s) => aiService.translateContent(s),
+    ).catch((err) => {
+      console.warn(`[Import Service] longform extraction skipped for ${id}:`, err)
+      return undefined
+    })
 
     return {
       id,
@@ -240,6 +254,7 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       originalText: zhOriginal.originalText,
       createdAt: now, // 导入时间
       ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
+      ...(longform ? { longform } : {}),
     };
   } catch (error) {
     console.error('AI processing failed, using fallback:', error);

@@ -20,6 +20,7 @@ import TopBar from "./TopBar";
 import FetchPipelinePanel from "./FetchPipelinePanel";
 import RefreshProgress from "./RefreshButton";
 import CategoryFilter from "./CategoryFilter";
+import LongformModule from "./LongformModule";
 import NewsList from "./NewsList";
 import SourcesList from "./SourcesList";
 import SourceActivityNotice, {
@@ -873,13 +874,20 @@ export default function MainContent({
         return (
           post.title.toLowerCase().includes(lowerQuery) ||
           post.summary.toLowerCase().includes(lowerQuery) ||
-          post.content.toLowerCase().includes(lowerQuery)
+          post.content.toLowerCase().includes(lowerQuery) ||
+          post.longform?.translatedTitle?.toLowerCase().includes(lowerQuery) ||
+          post.longform?.translatedContent?.toLowerCase().includes(lowerQuery)
         );
       });
     }
 
     return result;
   }, [sortedPosts, activeCategory, activeSource, searchQuery]);
+
+  const longformPosts = useMemo(
+    () => filteredPosts.filter((post) => post.longform?.translatedContent),
+    [filteredPosts]
+  );
 
   const isGuestDefaultFeed =
     !user &&
@@ -1025,6 +1033,7 @@ export default function MainContent({
                     isGuestDefaultFeed ? "pb-80 sm:pb-96" : "pb-[128px]",
                   ].join(" ")}
                 >
+                  <LongformModule posts={longformPosts} />
                   <NewsList
                     posts={filteredPosts}
                     bookmarkedIds={bookmarkedIds}

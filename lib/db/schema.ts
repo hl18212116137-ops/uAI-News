@@ -53,6 +53,7 @@ export const newsItems = pgTable('news_items', {
   mediaUrls: jsonb('media_urls'),
   socialEngagement: jsonb('social_engagement'),
   referencedPost: jsonb('referenced_post'),
+  longformJson: jsonb('longform_json'),
   rawPostId: text('raw_post_id'),
   processingStatus: text('processing_status'),
   insightJson: jsonb('insight_json'),

@@ -1,9 +1,16 @@
-import 'dotenv/config'
-import { readFileSync } from 'fs'
+import { config as loadEnv } from 'dotenv'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { Pool } from 'pg'
 
 async function main() {
+  const localEnvPath = join(process.cwd(), '.env.local')
+  if (existsSync(localEnvPath)) {
+    loadEnv({ path: localEnvPath })
+  } else {
+    loadEnv()
+  }
+
   const url = process.env.DATABASE_URL
   if (!url) {
     console.error('DATABASE_URL is not set')

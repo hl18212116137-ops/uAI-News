@@ -75,16 +75,20 @@ CREATE TABLE IF NOT EXISTS news_items (
   media_urls jsonb,
   social_engagement jsonb,
   referenced_post jsonb,
+  longform_json jsonb,
   raw_post_id text REFERENCES raw_posts (id) ON DELETE SET NULL,
   processing_status text
     CHECK (processing_status IS NULL OR processing_status IN ('ready', 'partial', 'failed')),
   insight_json jsonb
 );
 
+ALTER TABLE news_items ADD COLUMN IF NOT EXISTS longform_json jsonb;
+
 CREATE INDEX IF NOT EXISTS news_items_published_at_idx ON news_items (published_at DESC);
 CREATE INDEX IF NOT EXISTS news_items_source_handle_idx ON news_items (source_handle);
 CREATE INDEX IF NOT EXISTS news_items_importance_score_idx ON news_items (importance_score DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS news_items_raw_post_id_idx ON news_items (raw_post_id) WHERE raw_post_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS news_items_longform_json_idx ON news_items ((longform_json->>'resolvedUrl')) WHERE longform_json IS NOT NULL;
 
 -- ─── user_source_subscriptions（用户订阅） ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS user_source_subscriptions (
@@ -163,10 +167,12 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS processing_jobs_set_updated_at ON processing_jobs;
 CREATE TRIGGER processing_jobs_set_updated_at
   BEFORE UPDATE ON processing_jobs
   FOR EACH ROW EXECUTE PROCEDURE ainews_touch_updated_at();
 
+DROP TRIGGER IF EXISTS raw_posts_set_updated_at ON raw_posts;
 CREATE TRIGGER raw_posts_set_updated_at
   BEFORE UPDATE ON raw_posts
   FOR EACH ROW EXECUTE PROCEDURE ainews_touch_updated_at();
