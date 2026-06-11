@@ -52,6 +52,8 @@ const DEFAULT_IMAGE_MIN_CHARS = 1000
 const DEFAULT_MAX_TRANSLATE_CHARS = 12000
 const TRANSLATE_CHUNK_CHARS = 2800
 const VISION_API_URL_DEFAULT = 'https://api.openai.com/v1/chat/completions'
+const TEXT_DISCOVERY_INDICATOR_RE =
+  /\b(paper|papers|preprint|arxiv|article|essay|blog|report|study|studies)\b|论文|长文|文章|预印本|研究|报告/i
 
 function envInt(name: string, fallback: number): number {
   const n = Number.parseInt(process.env[name] || '', 10)
@@ -179,6 +181,29 @@ function collectImageMediaUrls(input: ExtractLongformInput): string[] {
     if (typeof raw === 'string' && isImageMediaUrl(raw)) urls.add(raw)
   }
   return Array.from(urls).slice(0, envInt('LONGFORM_IMAGE_MAX_IMAGES', 2))
+}
+
+function arxivIdFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url)
+    if (!u.hostname.toLowerCase().endsWith('arxiv.org')) return null
+    const match = u.pathname.match(/^\/(?:abs|pdf|html)\/([^/?#]+?)(?:\.pdf)?$/i)
+    return match?.[1] ? normalizeArxivId(match[1]) ?? null : null
+  } catch {
+    return null
+  }
+}
+
+function expandCandidateUrlVariants(url: string): string[] {
+  const normalized = normalizeCandidateUrl(url)
+  if (!normalized) return []
+  const arxivId = arxivIdFromUrl(normalized)
+  if (!arxivId) return [normalized]
+  return [
+    `https://ar5iv.labs.arxiv.org/html/${arxivId}`,
+    `https://arxiv.org/html/${arxivId}`,
+    `https://arxiv.org/abs/${arxivId}`,
+  ]
 }
 
 function decodeEntities(text: string): string {
@@ -583,16 +608,63 @@ async function fetchSearchCandidates(query: string): Promise<string[]> {
   }
 }
 
+async function fetchArxivSearchCandidates(query: string): Promise<string[]> {
+  if (!envBool('LONGFORM_ARXIV_SEARCH_ENABLED', true)) return []
+  const trimmed = query.replace(/"/g, '').replace(/\s+/g, ' ').trim()
+  if (!trimmed) return []
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), envInt('LONGFORM_ARXIV_SEARCH_TIMEOUT_MS', 8000))
+  try {
+    const urls = new Set<string>()
+    const phrases = [...query.matchAll(/"([^"]{8,160})"/g)]
+      .map((match) => match[1].replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)
+    const exactPhrase = phrases[0]
+    const apiQueries = exactPhrase
+      ? [`ti:"${exactPhrase}"`, `all:"${exactPhrase}"`]
+      : [`all:${trimmed}`]
+
+    for (const apiQuery of apiQueries) {
+      const searchParams = new URLSearchParams({
+        search_query: apiQuery,
+        start: '0',
+        max_results: String(envInt('LONGFORM_ARXIV_SEARCH_MAX_RESULTS', 4)),
+      })
+      const res = await fetch(`https://export.arxiv.org/api/query?${searchParams}`, {
+        signal: controller.signal,
+        headers: {
+          'user-agent': HTML_USER_AGENT,
+          accept: 'application/atom+xml,application/xml,text/xml',
+        },
+      })
+      if (!res.ok) continue
+      const xml = await res.text()
+      const re = /<entry\b[\s\S]*?<id>(https?:\/\/arxiv\.org\/abs\/[^<]+)<\/id>[\s\S]*?<\/entry>/gi
+      for (const match of xml.matchAll(re)) {
+        for (const variant of expandCandidateUrlVariants(match[1])) urls.add(variant)
+      }
+    }
+    return Array.from(urls)
+  } catch {
+    return []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function candidateUrlsFromClues(clues: ScreenshotArticleClues): Promise<string[]> {
   const urls = new Set<string>()
   if (clues.doi) urls.add(`https://doi.org/${clues.doi}`)
   if (clues.arxivId) {
-    urls.add(`https://ar5iv.labs.arxiv.org/html/${clues.arxivId}`)
-    urls.add(`https://arxiv.org/html/${clues.arxivId}`)
-    urls.add(`https://arxiv.org/abs/${clues.arxivId}`)
+    for (const url of expandCandidateUrlVariants(`https://arxiv.org/abs/${clues.arxivId}`)) {
+      urls.add(url)
+    }
   }
   for (const query of buildSearchQueries(clues)) {
-    for (const url of await fetchSearchCandidates(query)) urls.add(url)
+    for (const url of await fetchSearchCandidates(query)) {
+      for (const variant of expandCandidateUrlVariants(url)) urls.add(variant)
+    }
   }
   return Array.from(urls).slice(0, envInt('LONGFORM_IMAGE_MAX_CANDIDATES', 8))
 }
@@ -678,14 +750,160 @@ function scoreCandidateArticleMatch(article: CandidateArticle, clues: Screenshot
   return clamp01(score)
 }
 
+function hasTextDiscoverySignal(input: ExtractLongformInput): boolean {
+  return TEXT_DISCOVERY_INDICATOR_RE.test(collectTextBlocks(input).join('\n'))
+}
+
+function uniqueList(values: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const value of values) {
+    const cleaned = value.replace(/\s+/g, ' ').trim()
+    const key = cleaned.toLowerCase()
+    if (!cleaned || seen.has(key)) continue
+    seen.add(key)
+    out.push(cleaned)
+  }
+  return out
+}
+
+function extractTextSignalTerms(text: string): string[] {
+  const terms: string[] = []
+  const acronyms = text.match(/\b[A-Z][A-Z0-9-]{2,}\b/g) ?? []
+  for (const acronym of acronyms) {
+    if (['THE', 'AND', 'HTTP', 'HTTPS', 'WWW'].includes(acronym)) continue
+    terms.push(acronym)
+  }
+
+  const lower = text.toLowerCase()
+  const addIf = (needles: string[], hints: string[]) => {
+    if (needles.some((needle) => lower.includes(needle.toLowerCase()))) terms.push(...hints)
+  }
+  addIf(['超级适应智能', '超强自适应智能', '自适应智能', 'SAI'], [
+    'Superhuman Adaptable Intelligence',
+    'adaptable intelligence',
+    'SAI',
+  ])
+  addIf(['通用人工智能', 'AGI'], ['Artificial General Intelligence', 'AGI'])
+  addIf(['世界模型', 'world model', 'world models'], ['world models'])
+  addIf(['自监督', 'self-supervised', 'self supervised', 'SSL'], ['self supervised learning', 'SSL'])
+  addIf(['专业化', 'specialization'], ['specialization'])
+
+  const quoted = text.match(/[“"']([^“”"']{12,120})[”"']/g) ?? []
+  for (const raw of quoted) {
+    const cleaned = raw.replace(/^[“"']|[”"']$/g, '').trim()
+    if (/[A-Za-z]/.test(cleaned)) terms.push(cleaned)
+  }
+
+  return uniqueList(terms).slice(0, envInt('LONGFORM_TEXT_MAX_TERMS', 8))
+}
+
+function authorSearchTerms(input: ExtractLongformInput): string[] {
+  const candidates = [
+    input.authorName,
+    input.authorHandle.replace(/^@/, ''),
+    input.referencedPost?.name,
+    input.referencedPost?.userName,
+  ].filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+
+  const out: string[] = []
+  for (const candidate of candidates) {
+    out.push(candidate)
+    const parts = candidate.split(/\s+/).filter(Boolean)
+    const last = parts.at(-1)
+    if (last && last.length >= 4) out.push(last)
+  }
+  return uniqueList(out)
+}
+
+function buildTextSearchQueries(input: ExtractLongformInput): string[] {
+  if (!envBool('LONGFORM_TEXT_DISCOVERY_ENABLED', true)) return []
+  if (!hasTextDiscoverySignal(input)) return []
+
+  const text = collectTextBlocks(input).join('\n')
+  const terms = extractTextSignalTerms(text)
+  if (terms.length < 2) return []
+
+  const authors = authorSearchTerms(input)
+  const primaryAuthor = authors[0]
+  const strongTerms = terms.filter((term) => term.length > 3).slice(0, 4)
+  const queries: string[] = []
+
+  if (primaryAuthor && strongTerms.length > 0) {
+    queries.push(`"${primaryAuthor}" ${strongTerms.map((term) => `"${term}"`).join(' ')} paper`)
+  }
+  if (primaryAuthor) {
+    queries.push(`"${primaryAuthor}" ${terms.slice(0, 5).join(' ')} arxiv`)
+  }
+  if (strongTerms.length > 0) {
+    queries.push(`${strongTerms.map((term) => `"${term}"`).join(' ')} arxiv`)
+  }
+
+  return uniqueList(queries).slice(0, envInt('LONGFORM_TEXT_MAX_SEARCH_QUERIES', 4))
+}
+
+function normalizedIncludes(haystack: string, term: string): boolean {
+  const normalizedTerm = normalizeForMatch(term)
+  if (!normalizedTerm) return false
+  return haystack.includes(normalizedTerm)
+}
+
+function scoreTextSearchCandidate(
+  article: CandidateArticle,
+  input: ExtractLongformInput,
+  signalTerms: string[],
+): number {
+  const haystack = normalizeForMatch(
+    `${article.requestedUrl} ${article.resolvedUrl} ${article.title} ${article.authorName ?? ''} ${article.text.slice(0, 6000)}`,
+  )
+  const authors = authorSearchTerms(input)
+  const authorScore = authors.some((author) => normalizedIncludes(haystack, author)) ? 1 : 0
+  const terms = uniqueList(signalTerms)
+  const matchedTerms = terms.filter((term) => normalizedIncludes(haystack, term))
+  const denominator = Math.min(Math.max(terms.length, 1), 5)
+  const termScore = clamp01(matchedTerms.length / denominator)
+  const sourceHost = hostOf(article.resolvedUrl)
+  const sourceScore =
+    sourceHost.includes('arxiv.org') ||
+    sourceHost.includes('doi.org') ||
+    sourceHost.includes('acm.org') ||
+    sourceHost.includes('nature.com') ||
+    sourceHost.includes('science.org')
+      ? 1
+      : isExcludedLongformHost(article.resolvedUrl)
+        ? 0
+        : 0.45
+  const titleScore = terms.some((term) => term.length >= 12 && normalizedIncludes(normalizeForMatch(article.title), term))
+    ? 1
+    : 0
+
+  if (termScore < 0.35) return 0
+  if (authorScore === 0 && termScore < 0.75) return 0
+  return clamp01(authorScore * 0.28 + termScore * 0.42 + sourceScore * 0.12 + titleScore * 0.18)
+}
+
+async function textSearchCandidateUrls(input: ExtractLongformInput): Promise<string[]> {
+  const queries = buildTextSearchQueries(input)
+  const urls = new Set<string>()
+  for (const query of queries) {
+    for (const url of await fetchArxivSearchCandidates(query)) urls.add(url)
+    for (const url of await fetchSearchCandidates(query)) {
+      for (const variant of expandCandidateUrlVariants(url)) urls.add(variant)
+    }
+  }
+  return Array.from(urls).slice(0, envInt('LONGFORM_TEXT_MAX_CANDIDATES', 24))
+}
+
 async function extractLongformFromUrlCandidates(
   urls: string[],
   translate: (text: string) => Promise<string>,
 ): Promise<LongformArticle | undefined> {
   for (const candidate of urls) {
-    const article = await fetchCandidateArticle(candidate, 'url')
-    if (!article) continue
-    return articleToLongform(article, translate)
+    for (const variant of expandCandidateUrlVariants(candidate)) {
+      const article = await fetchCandidateArticle(variant, 'url')
+      if (!article) continue
+      return articleToLongform(article, translate)
+    }
   }
   return undefined
 }
@@ -727,6 +945,37 @@ async function extractLongformFromImages(
   return best ? articleToLongform(best.article, translate) : undefined
 }
 
+async function extractLongformFromTextSearch(
+  input: ExtractLongformInput,
+  translate: (text: string) => Promise<string>,
+): Promise<LongformArticle | undefined> {
+  const urls = await textSearchCandidateUrls(input)
+  if (urls.length === 0) return undefined
+
+  const signalTerms = extractTextSignalTerms(collectTextBlocks(input).join('\n'))
+  const minScore = envFloat('LONGFORM_TEXT_MATCH_MIN_SCORE', 0.62)
+  let best: { article: CandidateArticle; score: number } | null = null
+
+  for (const url of urls) {
+    const article = await fetchCandidateArticle(url, 'text-search', {
+      confidence: 0.7,
+    })
+    if (!article) continue
+    const score = scoreTextSearchCandidate(article, input, signalTerms)
+    if (score >= minScore && (!best || score > best.score)) {
+      best = {
+        article: {
+          ...article,
+          confidence: score,
+        },
+        score,
+      }
+    }
+  }
+
+  return best ? articleToLongform(best.article, translate) : undefined
+}
+
 export async function extractLongformForRawPost(
   input: ExtractLongformInput,
   translate: (text: string) => Promise<string>,
@@ -736,5 +985,8 @@ export async function extractLongformForRawPost(
   const direct = await extractLongformFromUrlCandidates(extractCandidateUrls(input), translate)
   if (direct) return direct
 
-  return extractLongformFromImages(input, translate)
+  const image = await extractLongformFromImages(input, translate)
+  if (image) return image
+
+  return extractLongformFromTextSearch(input, translate)
 }

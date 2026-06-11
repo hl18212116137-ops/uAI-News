@@ -227,7 +227,7 @@ export function longformArticleFromDbJson(value: unknown): LongformArticle | und
   if (typeof o.translatedTitle === 'string' && o.translatedTitle.trim()) {
     article.translatedTitle = o.translatedTitle
   }
-  if (o.discoveryMethod === 'url' || o.discoveryMethod === 'image-search') {
+  if (o.discoveryMethod === 'url' || o.discoveryMethod === 'image-search' || o.discoveryMethod === 'text-search') {
     article.discoveryMethod = o.discoveryMethod
   }
   if (typeof o.confidence === 'number' && Number.isFinite(o.confidence)) {

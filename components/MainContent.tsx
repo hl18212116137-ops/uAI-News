@@ -868,7 +868,7 @@ export default function MainContent({
       result = result.filter((post) => post.category === activeCategory);
     }
 
-    if (activeSource && activeSource.trim() !== "") {
+    if (!isLongformCategory && activeSource && activeSource.trim() !== "") {
       result = result.filter((post) => {
         const handle = typeof post.source === "string" ? post.source : post.source?.handle;
         return handle && handle.toLowerCase() === activeSource.toLowerCase();
