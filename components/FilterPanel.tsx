@@ -57,13 +57,15 @@ export default function FilterPanel({
           >
             <span># {categoryLabel}</span>
             {hoveredFilter === "category" && (
-              <button
-                onClick={onClearCategory}
-                className="flex-shrink-0 flex items-center justify-center text-[#99a1af] hover:text-[#101828] transition-colors text-[12px] leading-none"
-                title="清除分类筛选"
-              >
-                ×
-              </button>
+              <Tooltip content="清除分类筛选">
+                <button
+                  onClick={onClearCategory}
+                  className="flex-shrink-0 flex items-center justify-center text-[#99a1af] hover:text-[#101828] transition-colors text-[12px] leading-none"
+                  aria-label="清除分类筛选"
+                >
+                  ×
+                </button>
+              </Tooltip>
             )}
           </div>
         )}
@@ -75,13 +77,15 @@ export default function FilterPanel({
           >
             <span># {sourceName}</span>
             {hoveredFilter === "source" && (
-              <button
-                onClick={onClearSource}
-                className="flex-shrink-0 flex items-center justify-center text-[#99a1af] hover:text-[#101828] transition-colors text-[12px] leading-none"
-                title="清除作者筛选"
-              >
-                ×
-              </button>
+              <Tooltip content="清除作者筛选">
+                <button
+                  onClick={onClearSource}
+                  className="flex-shrink-0 flex items-center justify-center text-[#99a1af] hover:text-[#101828] transition-colors text-[12px] leading-none"
+                  aria-label="清除作者筛选"
+                >
+                  ×
+                </button>
+              </Tooltip>
             )}
           </div>
         )}
