@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import type { NewsItem } from "@/lib/types";
 import { formatTypography } from "@/lib/utils";
 
@@ -21,10 +22,13 @@ function getLongformPosts(posts: NewsItem[]): LongformPost[] {
 
     seenUrls.add(key);
     out.push(post as LongformPost);
-    if (out.length >= 4) break;
   }
 
   return out;
+}
+
+function getArticleKey(post: LongformPost): string {
+  return (post.longform.resolvedUrl || post.longform.url || post.id).trim().toLowerCase();
 }
 
 function getArticleTitle(post: LongformPost): string {
@@ -40,14 +44,40 @@ function getParagraphs(text: string): string[] {
 }
 
 export default function LongformModule({ posts }: LongformModuleProps) {
-  const longformPosts = getLongformPosts(posts);
-  if (longformPosts.length === 0) return null;
+  const longformPosts = useMemo(() => getLongformPosts(posts), [posts]);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOpenKey((current) => {
+      if (current && longformPosts.some((post) => getArticleKey(post) === current)) {
+        return current;
+      }
+      return longformPosts[0] ? getArticleKey(longformPosts[0]) : null;
+    });
+  }, [longformPosts]);
+
+  if (longformPosts.length === 0) {
+    return (
+      <section
+        aria-label="优质长文"
+        data-name="Premium longform"
+        className="w-full min-w-0 border-y border-[#f3f4f6] py-16 text-center"
+      >
+        <h2 className="m-0 text-[16px] font-semibold leading-6 tracking-[-0.25px] text-[#101828]">
+          暂无优质长文
+        </h2>
+        <p className="m-0 mt-2 text-[13px] leading-5 text-[#6a7282]">
+          抓取到博客或媒体长文链接后，系统会自动读取原文并把译文存到这里。
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section
       aria-label="优质长文"
       data-name="Premium longform"
-      className="mb-[28px] w-full min-w-0 border-y border-[#f3f4f6] py-5"
+      className="w-full min-w-0 border-y border-[#f3f4f6] py-5"
     >
       <div className="mb-4 flex min-w-0 items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
@@ -74,7 +104,7 @@ export default function LongformModule({ posts }: LongformModuleProps) {
               优质长文
             </h2>
             <p className="m-0 text-[12px] leading-[18px] text-[#6a7282]">
-              已抓取并翻译的深度文章，来自当前筛选结果
+              已自动抓取、翻译并存储的原文文章
             </p>
           </div>
         </div>
@@ -84,18 +114,24 @@ export default function LongformModule({ posts }: LongformModuleProps) {
       </div>
 
       <div className="flex w-full min-w-0 flex-col divide-y divide-[#f3f4f6]">
-        {longformPosts.map((post, index) => {
+        {longformPosts.map((post) => {
           const article = post.longform;
           const paragraphs = getParagraphs(article.translatedContent);
           const title = getArticleTitle(post);
+          const articleKey = getArticleKey(post);
+          const isOpen = openKey === articleKey;
 
           return (
-            <details
-              key={`${post.id}-${article.resolvedUrl}`}
-              className="group min-w-0 py-4 first:pt-0 last:pb-0"
-              open={index === 0}
+            <article
+              key={articleKey}
+              className="min-w-0 py-4 first:pt-0 last:pb-0"
             >
-              <summary className="flex cursor-pointer list-none items-start justify-between gap-4 rounded-[4px] outline-none transition-colors hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-primary-500/30 [&::-webkit-details-marker]:hidden">
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                onClick={() => setOpenKey(isOpen ? null : articleKey)}
+                className="group flex w-full cursor-pointer items-start justify-between gap-4 rounded-[4px] text-left outline-none transition-colors hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-primary-500/30"
+              >
                 <div className="min-w-0 px-2 py-1">
                   <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="font-mono text-[11px] font-bold uppercase leading-4 tracking-[0.08em] text-[#d7a220]">
@@ -116,24 +152,29 @@ export default function LongformModule({ posts }: LongformModuleProps) {
                   </p>
                 </div>
                 <span
-                  className="mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] text-[#99a1af] transition-transform group-open:rotate-180"
+                  className={[
+                    "mt-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] text-[#99a1af] transition-transform",
+                    isOpen ? "rotate-180" : "",
+                  ].join(" ")}
                   aria-hidden
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
                   </svg>
                 </span>
-              </summary>
+              </button>
 
-              <div className="mt-3 max-h-[420px] overflow-y-auto rounded-[4px] border border-[#f3f4f6] bg-[#fcfcfd] px-4 py-3">
-                <div className="flex flex-col gap-3 text-[14px] leading-6 text-[#101828]">
-                  {paragraphs.map((paragraph, paragraphIndex) => (
-                    <p key={paragraphIndex} className="m-0 break-words">
-                      {formatTypography(paragraph)}
-                    </p>
-                  ))}
+              {isOpen ? (
+                <div className="mt-3 max-h-[520px] overflow-y-auto rounded-[4px] border border-[#f3f4f6] bg-[#fcfcfd] px-4 py-3">
+                  <div className="flex flex-col gap-3 text-[14px] leading-6 text-[#101828]">
+                    {paragraphs.map((paragraph, paragraphIndex) => (
+                      <p key={paragraphIndex} className="m-0 break-words">
+                        {formatTypography(paragraph)}
+                      </p>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               <div className="mt-3 flex flex-wrap items-center gap-3 px-2 text-[12px] leading-[18px]">
                 <a
@@ -150,10 +191,10 @@ export default function LongformModule({ posts }: LongformModuleProps) {
                   rel="noopener noreferrer"
                   className="font-medium text-[#6a7282] transition-colors hover:text-[#101828]"
                 >
-                  查看推文
+                  来源推文
                 </a>
               </div>
-            </details>
+            </article>
           );
         })}
       </div>

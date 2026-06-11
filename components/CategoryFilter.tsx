@@ -11,6 +11,7 @@ const categories = [
   { value: "研究", label: "研究", tooltip: "研究与论文突破" },
   { value: "行业", label: "行业", tooltip: "行业与公司动态" },
   { value: "政策", label: "政策", tooltip: "政策与监管" },
+  { value: "优质长文", label: "优质长文", tooltip: "已抓取并翻译的原文长文" },
 ];
 
 type CategoryFilterProps = {

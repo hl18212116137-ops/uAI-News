@@ -64,6 +64,7 @@ function scheduleIdleTask(fn: () => void) {
 
 /** 停滚 200ms 后移除亮态；随后滑块在 300ms 内从可见淡至完全透明（见 globals.css） */
 const MAIN_SCROLL_THUMB_IDLE_MS = 200;
+const LONGFORM_CATEGORY = "优质长文";
 
 type Source = {
   id: string;
@@ -853,11 +854,17 @@ export default function MainContent({
     [posts, analysisPostId]
   );
 
+  const isLongformCategory = activeCategory === LONGFORM_CATEGORY;
+
   // 在客户端进行筛选（纯内存操作，无服务端请求）
   const filteredPosts = useMemo(() => {
-    let result = sortedPosts;
+    let result = sortedPosts.filter((post) =>
+      isLongformCategory
+        ? Boolean(post.longform?.translatedContent)
+        : !post.longform?.translatedContent
+    );
 
-    if (activeCategory && activeCategory !== "all") {
+    if (!isLongformCategory && activeCategory && activeCategory !== "all") {
       result = result.filter((post) => post.category === activeCategory);
     }
 
@@ -882,12 +889,7 @@ export default function MainContent({
     }
 
     return result;
-  }, [sortedPosts, activeCategory, activeSource, searchQuery]);
-
-  const longformPosts = useMemo(
-    () => filteredPosts.filter((post) => post.longform?.translatedContent),
-    [filteredPosts]
-  );
+  }, [sortedPosts, activeCategory, activeSource, searchQuery, isLongformCategory]);
 
   const isGuestDefaultFeed =
     !user &&
@@ -1033,17 +1035,20 @@ export default function MainContent({
                     isGuestDefaultFeed ? "pb-80 sm:pb-96" : "pb-[128px]",
                   ].join(" ")}
                 >
-                  <LongformModule posts={longformPosts} />
-                  <NewsList
-                    posts={filteredPosts}
-                    bookmarkedIds={bookmarkedIds}
-                    bookmarkPendingIds={bookmarkPendingIds}
-                    onBookmarkToggle={toggleBookmark}
-                    analysisActivePostId={analysisPostId}
-                    onAnalysisToggle={handleAnalysisToggle}
-                    emptyFeedAwaitingFetch={emptyFeedAwaitingFetch}
-                  />
-                  {isGuestDefaultFeed && (
+                  {isLongformCategory ? (
+                    <LongformModule posts={filteredPosts} />
+                  ) : (
+                    <NewsList
+                      posts={filteredPosts}
+                      bookmarkedIds={bookmarkedIds}
+                      bookmarkPendingIds={bookmarkPendingIds}
+                      onBookmarkToggle={toggleBookmark}
+                      analysisActivePostId={analysisPostId}
+                      onAnalysisToggle={handleAnalysisToggle}
+                      emptyFeedAwaitingFetch={emptyFeedAwaitingFetch}
+                    />
+                  )}
+                  {isGuestDefaultFeed && !isLongformCategory && (
                     <section
                       className="mt-8 w-full min-w-0 pt-8"
                       aria-label="登录以解锁更多内容"
