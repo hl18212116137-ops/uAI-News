@@ -39,8 +39,7 @@ function getParagraphs(text: string): string[] {
   return text
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .slice(0, 12);
+    .filter(Boolean);
 }
 
 export default function LongformModule({ posts }: LongformModuleProps) {
@@ -165,7 +164,7 @@ export default function LongformModule({ posts }: LongformModuleProps) {
               </button>
 
               {isOpen ? (
-                <div className="mt-3 max-h-[520px] overflow-y-auto rounded-[4px] border border-[#f3f4f6] bg-[#fcfcfd] px-4 py-3">
+                <div className="mt-3 rounded-[4px] border border-[#f3f4f6] bg-[#fcfcfd] px-4 py-3">
                   <div className="flex flex-col gap-3 text-[14px] leading-6 text-[#101828]">
                     {paragraphs.map((paragraph, paragraphIndex) => (
                       <p key={paragraphIndex} className="m-0 break-words">
