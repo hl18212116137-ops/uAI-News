@@ -68,6 +68,41 @@ type AnalysisPanelProps = {
   onLongformExtract?: (post: NewsItem) => void;
 };
 
+function OpenOriginalGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      focusable="false"
+    >
+      <path
+        d="M14 4.5h5.5V10"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M19.25 4.75 11 13"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 6.25H6.75a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V14"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function AddToLongformModuleGlyph({ className }: { className?: string }) {
   return (
     <svg
@@ -79,20 +114,20 @@ function AddToLongformModuleGlyph({ className }: { className?: string }) {
       focusable="false"
     >
       <path
-        d="M4.75 5.25h9.5a2 2 0 0 1 2 2v11.5H6.75a2 2 0 0 1-2-2V5.25Z"
+        d="M4.75 4.5h9.5a2 2 0 0 1 2 2v12.75H6.75a2 2 0 0 1-2-2V4.5Z"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M8 9h4.25M8 12h5M8 15h3.25"
+        d="M8 8.75h4.25M8 12h5M8 15.25h3.25"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
       />
       <path
-        d="M17.5 3v7M14 6.5h7"
+        d="M18.25 3.25v7.5M14.5 7h7.5"
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
@@ -726,7 +761,7 @@ export default function AnalysisPanel({
   const hasLongformArticle = Boolean(post?.longform?.translatedContent);
   const bottomActionButtonClass =
     "btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60";
-  const bottomActionIconClass = "relative flex size-3.5 shrink-0 items-center justify-center";
+  const bottomActionIconClass = "relative flex size-4 shrink-0 items-center justify-center";
   const referencedTweetHref =
     refPost?.id && refUserName
       ? `https://x.com/${refUserName.replace(/^@/, "")}/status/${refPost.id}`
@@ -1214,7 +1249,7 @@ export default function AnalysisPanel({
         >
           <span className={bottomActionIconClass} aria-hidden>
             <BookmarkGlyph
-              className={`block size-3.5 ${isBookmarked ? "text-[#d7a220]" : "text-current"}`}
+              className={`block size-4 ${isBookmarked ? "text-[#d7a220]" : "text-current"}`}
               filled={isBookmarked}
             />
           </span>
@@ -1228,13 +1263,7 @@ export default function AnalysisPanel({
             aria-label="打开原文链接"
           >
             <span className={bottomActionIconClass} aria-hidden>
-              <img
-                alt=""
-                src="/analysis-bottom-icons/open.svg"
-                className="block size-3.5 max-h-full max-w-full object-contain"
-                decoding="async"
-                draggable={false}
-              />
+              <OpenOriginalGlyph className="block size-4 max-h-full max-w-full" />
             </span>
           </a>
         ) : (
@@ -1245,13 +1274,7 @@ export default function AnalysisPanel({
             aria-label="打开"
           >
             <span className={bottomActionIconClass} aria-hidden>
-              <img
-                alt=""
-                src="/analysis-bottom-icons/open.svg"
-                className="block size-3.5 max-h-full max-w-full object-contain"
-                decoding="async"
-                draggable={false}
-              />
+              <OpenOriginalGlyph className="block size-4 max-h-full max-w-full" />
             </span>
           </button>
         )}
@@ -1269,7 +1292,7 @@ export default function AnalysisPanel({
         >
           <span className={bottomActionIconClass} aria-hidden>
             <AddToLongformModuleGlyph
-              className={`block size-3.5 max-h-full max-w-full ${hasLongformArticle ? "text-[#d7a220]" : "text-current"} ${longformPending ? "animate-pulse" : ""}`}
+              className={`block size-4 max-h-full max-w-full ${hasLongformArticle ? "text-[#d7a220]" : "text-current"} ${longformPending ? "animate-pulse" : ""}`}
             />
           </span>
         </button>
