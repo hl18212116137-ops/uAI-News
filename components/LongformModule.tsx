@@ -13,6 +13,7 @@ import { cleanNewsTitle } from "@/lib/news-title-cleanup";
 import { formatTypography } from "@/lib/utils";
 import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
 import { MathBlockText, MathInlineText } from "@/components/MathText";
+import Tooltip from "@/components/Tooltip";
 
 type LongformPost = NewsItem & { longform: NonNullable<NewsItem["longform"]> };
 
@@ -1297,20 +1298,41 @@ function getCleanBodyParagraphs(paragraphs: string[], title: string): string[] {
     : paragraphs.map(cleanLongformBodyParagraph).filter(Boolean);
 }
 
+function PlusGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      focusable="false"
+    >
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function AddArticleButton({ onClick }: { onClick?: () => void }) {
   if (!onClick) return null;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="btn-press inline-flex h-8 shrink-0 items-center gap-2 rounded-md border border-[#e5e7eb] bg-white px-3 text-[12px] font-semibold leading-[18px] text-[#101828] shadow-xs transition-colors hover:border-primary-100 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30"
-    >
-      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m-7-7h14" />
-      </svg>
-      添加文章
-    </button>
+    <Tooltip content="添加文章">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="添加文章"
+        className="btn-press inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#e5e7eb] bg-white p-0 text-[#6a7282] shadow-xs transition-colors hover:border-primary-100 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30"
+      >
+        <PlusGlyph className="block size-4" />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -1869,7 +1891,7 @@ export default function LongformModule({
         id={LONGFORM_HEADER_ID}
         className="flex min-h-[58px] flex-col justify-center gap-3 border-b border-[#f3f4f6] py-3 sm:flex-row sm:items-center sm:justify-between"
       >
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
             onClick={() => setIsTocOpen(true)}
@@ -1880,8 +1902,8 @@ export default function LongformModule({
           >
             目录（{longformPosts.length}）
           </button>
+          <AddArticleButton onClick={onAddArticle} />
         </div>
-        <AddArticleButton onClick={onAddArticle} />
       </div>
 
       <div className="flex w-full min-w-0 flex-col divide-y divide-[#f3f4f6]">
