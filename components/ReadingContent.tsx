@@ -146,9 +146,65 @@ function renderAnnotatedText(
   return nodes.length > 0 ? nodes : formatted;
 }
 
+const FACET_LABEL_STYLES: Record<ReadingFacet, { mark: string; text: string }> = {
+  problem: {
+    mark: "bg-slate-500",
+    text: "text-slate-600",
+  },
+  method: {
+    mark: "bg-blue-500",
+    text: "text-blue-600",
+  },
+  finding: {
+    mark: "bg-emerald-500",
+    text: "text-emerald-600",
+  },
+  risk: {
+    mark: "bg-amber-500",
+    text: "text-amber-700",
+  },
+  impact: {
+    mark: "bg-gold",
+    text: "text-[#a66f00]",
+  },
+};
+
+function buildVisibleFacetIndexes(
+  blocks: ReadingContentBlock[],
+  annotations: ReadingBlockAnnotation[],
+): Set<number> {
+  const bestByFacet = new Map<ReadingFacet, { index: number; score: number }>();
+
+  annotations.forEach((annotation, index) => {
+    if (!annotation.facet || blocks[index]?.kind !== "paragraph") return;
+
+    const textLength = blocks[index].kind === "paragraph" ? blocks[index].text.length : 0;
+    const score =
+      (annotation.claim ? 4 : 0) +
+      Math.min(annotation.emphasisTerms.length, 2) +
+      Math.min(textLength / 140, 1.5) -
+      index * 0.01;
+    const current = bestByFacet.get(annotation.facet);
+
+    if (!current || score > current.score) {
+      bestByFacet.set(annotation.facet, { index, score });
+    }
+  });
+
+  return new Set([...bestByFacet.values()].map((item) => item.index));
+}
+
 function ReadingFacetLabel({ facet }: { facet: ReadingFacet }) {
+  const style = FACET_LABEL_STYLES[facet];
+
   return (
-    <span className="mr-2 inline-flex translate-y-[-1px] items-center rounded-[3px] border border-[#e5e7eb] px-1.5 py-0 text-[11px] font-semibold leading-4 text-[#6a7282]">
+    <span
+      className={[
+        "mr-2 inline-flex translate-y-[-1px] items-center gap-1.5 text-[12px] font-semibold leading-5",
+        style.text,
+      ].join(" ")}
+    >
+      <span className={["h-3 w-[2px] rounded-full", style.mark].join(" ")} aria-hidden="true" />
       {getReadingFacetLabel(facet)}
     </span>
   );
@@ -175,6 +231,10 @@ export default function ReadingContent({ blocks, idPrefix, title = "" }: Reading
   const annotations = useMemo(
     () => buildReadingAnnotationPlan(blocks, title),
     [blocks, title],
+  );
+  const visibleFacetIndexes = useMemo(
+    () => buildVisibleFacetIndexes(blocks, annotations),
+    [blocks, annotations],
   );
 
   return (
@@ -234,7 +294,11 @@ export default function ReadingContent({ blocks, idPrefix, title = "" }: Reading
             <MathBlockText
               text={block.text}
               textClassName="m-0 break-words text-[15px] font-normal leading-7 text-[#101828] [text-wrap:pretty] sm:leading-[30px]"
-              prefix={annotation.facet ? <ReadingFacetLabel facet={annotation.facet} /> : undefined}
+              prefix={
+                annotation.facet && visibleFacetIndexes.has(blockIndex)
+                  ? <ReadingFacetLabel facet={annotation.facet} />
+                  : undefined
+              }
               renderTextSegment={(segment, segmentKey) => (
                 <Fragment key={segmentKey}>
                   {renderAnnotatedText(segment, annotation, `${key}-${segmentKey}`)}
