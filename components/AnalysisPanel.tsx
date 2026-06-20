@@ -114,21 +114,21 @@ function AddToLongformModuleGlyph({ className }: { className?: string }) {
       focusable="false"
     >
       <path
-        d="M7.25 4.75h9.5a2 2 0 0 1 2 2v8.5"
+        d="M7.25 3.75H17a2 2 0 0 1 2 2v8.75"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M4.75 8.75h10.5a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2v-9.5Z"
+        d="M4.75 7.25H15.5a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H6.75a2 2 0 0 1-2-2V7.25Z"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M11 12.75v3.5M9.25 14.5h3.5"
+        d="M11.125 12.75v4M9.125 14.75h4"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
