@@ -81,11 +81,6 @@ type LongformBodyBlock =
   | { kind: "paragraph"; text: string }
   | { kind: "list"; ordered: boolean; items: string[] };
 
-type BodyReadingHighlight = {
-  blockIndex: number;
-  text: string;
-};
-
 type BodyListItem = {
   ordered: boolean;
   text: string;
@@ -135,7 +130,6 @@ const DIGEST_EMPHASIS_TERM_LIMIT = 7;
 const DIGEST_EMPHASIS_TOTAL_LIMIT = 4;
 const DIGEST_EMPHASIS_PER_TERM_LIMIT = 1;
 const BODY_ACRONYM_EXPANSION_LIMIT = 4;
-const BODY_READING_HIGHLIGHT_LIMIT = 3;
 const BODY_FOCUS_SCORE = 3.5;
 const SENTENCE_RE = /[^。！？!?；;.\n]+[。！？!?；;.]?/g;
 const STRONG_CONCLUSION_RE =
@@ -1272,45 +1266,6 @@ function scoreBodyReadingBlock(block: LongformBodyBlock, blockIndex: number, blo
   return score;
 }
 
-function getBodyHighlightText(block: LongformBodyBlock): string {
-  const text = getLongformBodyBlockText(block);
-  const sentences = getTextSentences(text);
-  const bestSentence = [...sentences]
-    .sort((a, b) => scoreConclusionSentence(b, 1, 2, null) - scoreConclusionSentence(a, 1, 2, null))[0];
-
-  return truncateText(bestSentence || text, PLAIN_POINT_MAX_LENGTH);
-}
-
-function getBodyReadingHighlights(blocks: LongformBodyBlock[]): BodyReadingHighlight[] {
-  const candidates = blocks
-    .map((block, blockIndex) => ({
-      blockIndex,
-      text: getBodyHighlightText(block),
-      score: scoreBodyReadingBlock(block, blockIndex, blocks.length),
-    }))
-    .filter((candidate) => candidate.score >= BODY_FOCUS_SCORE && candidate.text.length >= 18)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return a.blockIndex - b.blockIndex;
-    });
-
-  const selected: BodyReadingHighlight[] = [];
-  const seen = new Set<string>();
-
-  for (const candidate of candidates) {
-    const key = sentenceFingerprint(candidate.text);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    selected.push({
-      blockIndex: candidate.blockIndex,
-      text: candidate.text,
-    });
-    if (selected.length >= BODY_READING_HIGHLIGHT_LIMIT) break;
-  }
-
-  return selected.sort((a, b) => a.blockIndex - b.blockIndex);
-}
-
 function shouldStopLongformBody(paragraph: string, index: number): boolean {
   const clean = cleanLongformBodyParagraph(paragraph).replace(/[：:]+$/g, "");
   return index > 0 && clean.length <= 48 && BODY_STOP_HEADING_RE.test(clean);
@@ -1602,38 +1557,14 @@ function LongformCollapse({
 function LongformBodyReader({
   articleKey,
   bodyBlocks,
-  highlights,
   renderTextSegment,
-  renderHighlightTextSegment,
 }: {
   articleKey: string;
   bodyBlocks: LongformBodyBlock[];
-  highlights: BodyReadingHighlight[];
   renderTextSegment?: (text: string, keyPrefix: string) => ReactNode;
-  renderHighlightTextSegment?: (text: string, keyPrefix: string) => ReactNode;
 }) {
-  const highlightIndexes = new Set(highlights.map((highlight) => highlight.blockIndex));
-
   return (
     <div className="mx-auto flex max-w-[76ch] flex-col">
-      {highlights.length > 0 ? (
-        <section className="mb-5 border-b border-[#e5e7eb] pb-4">
-          <p className="m-0 text-[12px] font-semibold leading-4 text-[#6a7282]">
-            正文重点
-          </p>
-          <ul className="m-0 mt-3 flex list-none flex-col gap-2.5 p-0">
-            {highlights.map((highlight) => (
-              <li
-                key={`${articleKey}-highlight-${highlight.blockIndex}`}
-                className="list-none break-words text-[13px] font-medium leading-6 text-[#374151]"
-              >
-                <MathInlineText text={highlight.text} renderTextSegment={renderHighlightTextSegment} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
       <div className="flex flex-col">
         {bodyBlocks.map((block, blockIndex) => {
           if (block.kind === "heading") {
@@ -1679,7 +1610,7 @@ function LongformBodyReader({
           }
 
           const score = scoreBodyReadingBlock(block, blockIndex, bodyBlocks.length);
-          const isFocus = highlightIndexes.has(blockIndex) || score >= BODY_FOCUS_SCORE + 0.7;
+          const isFocus = score >= BODY_FOCUS_SCORE + 0.7;
           const isLead = blockIndex <= 1 && block.text.length > 80 && !isFocus;
 
           return (
@@ -2109,16 +2040,11 @@ export default function LongformModule({
           const emphasisTerms = getLongformEmphasisTerms(title, rawBodyBlocks);
           const digestEmphasisTerms = getLongformDigestEmphasisTerms(title, digest, emphasisTerms);
           const bodyBlocks = expandKnownAcronymsInBlocks(rawBodyBlocks);
-          const bodyReadingHighlights = getBodyReadingHighlights(bodyBlocks);
           const textAnnotationState: TextAnnotationState = {
             emphasisTotal: 0,
             emphasisByTerm: new Map(),
           };
           const digestTextAnnotationState: TextAnnotationState = {
-            emphasisTotal: 0,
-            emphasisByTerm: new Map(),
-          };
-          const bodyHighlightTextAnnotationState: TextAnnotationState = {
             emphasisTotal: 0,
             emphasisByTerm: new Map(),
           };
@@ -2139,17 +2065,6 @@ export default function LongformModule({
               `${articleKey}-${keyPrefix}`,
               emphasisTerms,
               textAnnotationState,
-            );
-          const renderBodyHighlightTextSegment = (text: string, keyPrefix: string) =>
-            renderTextWithLongformAnnotations(
-              text,
-              `${articleKey}-highlight-${keyPrefix}`,
-              emphasisTerms,
-              bodyHighlightTextAnnotationState,
-              {
-                total: DIGEST_EMPHASIS_TOTAL_LIMIT,
-                perTerm: DIGEST_EMPHASIS_PER_TERM_LIMIT,
-              },
             );
           const isPreview = previewPostIds?.has(post.id) ?? false;
           const isFullLoading = fullLoadingPostIds?.has(post.id) ?? false;
@@ -2283,9 +2198,7 @@ export default function LongformModule({
                           <LongformBodyReader
                             articleKey={articleKey}
                             bodyBlocks={bodyBlocks}
-                            highlights={bodyReadingHighlights}
                             renderTextSegment={renderBodyTextSegment}
-                            renderHighlightTextSegment={renderBodyHighlightTextSegment}
                           />
                         )}
                       </div>
