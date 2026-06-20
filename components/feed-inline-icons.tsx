@@ -29,18 +29,25 @@ export function FeedInsightSparkleGlyph(props: { className?: string }) {
 
 export function FeedLongformGlyph(props: { className?: string }) {
   return (
-    <svg className={props.className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <svg
+      className={props.className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      focusable="false"
+    >
       <path
-        d="M7 4.5h7.25L18 8.25V19.5H7V4.5Z"
+        d="M6.75 4.25h7.35l3.15 3.15v12.35H6.75V4.25Z"
         stroke="currentColor"
-        strokeWidth="1.65"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M14 4.75V8.5h3.75M9.75 12h5M9.75 15h5M9.75 18h3"
+        d="M14 4.75V8.5h3.75M9.6 12h4.9M9.6 15h4.9M9.6 18h2.9"
         stroke="currentColor"
-        strokeWidth="1.65"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

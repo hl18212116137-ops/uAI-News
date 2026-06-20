@@ -75,12 +75,6 @@ function NewsCard({
       : "pt-8 pb-12 sm:pt-[40px] sm:pb-14 lg:pt-[48px] lg:pb-[64px]";
   const showLongformAction = !readonly && Boolean(onLongformExtract);
   const showAnalysisAction = !readonly && Boolean(onAnalysisToggle);
-  const actionRowJustify =
-    showLongformAction && showAnalysisAction
-      ? "justify-between"
-      : showAnalysisAction
-        ? "justify-end"
-        : "justify-start";
 
   return (
     <article
@@ -105,27 +99,52 @@ function NewsCard({
             filled={isBookmarked}
           />
         </div>
-      ) : onBookmarkToggle ? (
-        <Tooltip content={bookmarkPending ? "正在同步收藏状态" : isBookmarked ? "取消收藏" : "收藏这篇文章"}>
-          <button
-            type="button"
-            className="absolute right-3 top-8 z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04] disabled:cursor-wait disabled:opacity-70 sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]"
-            aria-label={isBookmarked ? "取消收藏" : "收藏"}
-            aria-pressed={isBookmarked}
-            aria-busy={bookmarkPending}
-            disabled={bookmarkPending}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onBookmarkToggle(post.id, post);
-            }}
-          >
-            <BookmarkGlyph
-              className={`h-4 w-4 transition-colors ${isBookmarked ? "text-[#d7a220]" : "text-[#99a1af]"}`}
-              filled={isBookmarked}
-            />
-          </button>
-        </Tooltip>
+      ) : showLongformAction || onBookmarkToggle ? (
+        <div className="absolute right-3 top-8 z-[1] flex items-center gap-1 sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]">
+          {showLongformAction ? (
+            <Tooltip content={longformPending ? "正在抓取长文" : "抓取这条推文里的长文"}>
+              <button
+                type="button"
+                className="flex h-6 w-6 items-center justify-center rounded-[10px] text-[#d7a220] transition-colors hover:bg-[#fff7e0] disabled:cursor-wait disabled:opacity-70"
+                aria-label="抓取这条推文里的长文"
+                aria-busy={longformPending}
+                disabled={longformPending}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onLongformExtract?.(post);
+                }}
+              >
+                <FeedLongformGlyph
+                  className={`h-4 w-4 transition-colors ${longformPending ? "animate-pulse" : ""}`}
+                />
+              </button>
+            </Tooltip>
+          ) : null}
+
+          {onBookmarkToggle ? (
+            <Tooltip content={bookmarkPending ? "正在同步收藏状态" : isBookmarked ? "取消收藏" : "收藏这篇文章"}>
+              <button
+                type="button"
+                className="flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04] disabled:cursor-wait disabled:opacity-70"
+                aria-label={isBookmarked ? "取消收藏" : "收藏"}
+                aria-pressed={isBookmarked}
+                aria-busy={bookmarkPending}
+                disabled={bookmarkPending}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onBookmarkToggle(post.id, post);
+                }}
+              >
+                <BookmarkGlyph
+                  className={`h-4 w-4 transition-colors ${isBookmarked ? "text-[#d7a220]" : "text-[#99a1af]"}`}
+                  filled={isBookmarked}
+                />
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="flex w-full min-w-0 flex-col gap-[32px]">
@@ -260,66 +279,30 @@ function NewsCard({
         </div>
       </div>
 
-      {showLongformAction || showAnalysisAction ? (
+      {showAnalysisAction ? (
         <div
-          className={[
-            "z-[1] flex w-full items-center gap-3",
-            actionRowJustify,
-            "sm:absolute sm:bottom-5 sm:left-5 sm:right-5 sm:w-auto lg:bottom-[24.5px] lg:left-[32px] lg:right-[32px]",
-          ].join(" ")}
+          className="z-[1] self-end sm:absolute sm:bottom-5 sm:right-5 lg:bottom-[24.5px] lg:right-[32px]"
         >
-          {showLongformAction ? (
-            <Tooltip content={longformPending ? "正在抓取长文" : "抓取这条推文里的长文"}>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onLongformExtract?.(post);
-                }}
-                aria-label="抓取这条推文里的长文"
-                aria-busy={longformPending}
-                disabled={longformPending}
-                className={[
-                  "btn-press motion-layout-ease inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[2px] border border-solid border-[#e5e7eb] bg-white text-[#8a8a93] transition-colors",
-                  "hover:border-[#d7a220] hover:bg-[#fffaf0] hover:text-[#d7a220] focus-visible:border-[#d7a220] focus-visible:bg-[#fffaf0] focus-visible:text-[#d7a220] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7a220]/20",
-                  "disabled:cursor-wait disabled:opacity-70",
-                ].join(" ")}
-              >
-                <FeedLongformGlyph
-                  className={`h-[15px] w-[15px] ${longformPending ? "animate-pulse" : ""}`}
-                />
-              </button>
-            </Tooltip>
-          ) : null}
-
-          {showAnalysisAction ? (
-            <div
-              data-name={analysisActive ? "Overlay+Border+Shadow" : "Background+Border"}
-              data-node-id={analysisActive ? "37:4759" : "37:4781"}
-            >
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onAnalysisToggle?.(post.id);
-                }}
-                aria-pressed={analysisActive}
-                className={[
-                  "motion-layout-ease flex items-center gap-[8px] rounded-[2px] px-[15px] py-2 font-sans text-[12px] font-bold uppercase leading-none tracking-[0.06em] transition-opacity hover:opacity-90",
-                  analysisActive
-                    ? "border border-solid border-[#ffb224] bg-[rgba(255,178,36,0.1)] text-[#ffb224] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
-                    : "border border-solid border-[#e5e7eb] bg-white text-[#8a8a93]",
-                ].join(" ")}
-              >
-                <span className="relative size-[14.667px] shrink-0" data-node-id="37:4760">
-                  <FeedInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
-                </span>
-                解读
-              </button>
-            </div>
-          ) : null}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onAnalysisToggle?.(post.id);
+            }}
+            aria-pressed={analysisActive}
+            className={[
+              "motion-layout-ease flex items-center gap-[8px] rounded-[2px] px-[15px] py-2 font-sans text-[12px] font-bold uppercase leading-none tracking-[0.06em] transition-opacity hover:opacity-90",
+              analysisActive
+                ? "border border-solid border-[#ffb224] bg-[rgba(255,178,36,0.1)] text-[#ffb224] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
+                : "border border-solid border-[#e5e7eb] bg-white text-[#8a8a93]",
+            ].join(" ")}
+          >
+            <span className="relative size-[14.667px] shrink-0" data-node-id="37:4760">
+              <FeedInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
+            </span>
+            解读
+          </button>
         </div>
       ) : null}
     </article>
