@@ -1328,9 +1328,9 @@ function AddArticleButton({ onClick }: { onClick?: () => void }) {
         type="button"
         onClick={onClick}
         aria-label="添加文章"
-        className="btn-press inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-[#6a7282] transition-colors hover:bg-[#f5f5f5] hover:text-[#101828] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30"
+        className="btn-press inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-[#0055FF] transition-colors hover:bg-[#f5f7ff] hover:text-[#0046d5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30"
       >
-        <PlusGlyph className="block size-4" />
+        <PlusGlyph className="block size-5" />
       </button>
     </Tooltip>
   );
@@ -1889,7 +1889,7 @@ export default function LongformModule({
       ) : null}
       <div
         id={LONGFORM_HEADER_ID}
-        className="flex min-h-[58px] flex-col justify-center gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+        className="flex min-h-[58px] items-center justify-between gap-3 py-3"
       >
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -1902,8 +1902,8 @@ export default function LongformModule({
           >
             目录（{longformPosts.length}）
           </button>
-          <AddArticleButton onClick={onAddArticle} />
         </div>
+        <AddArticleButton onClick={onAddArticle} />
       </div>
 
       <div className="flex w-full min-w-0 flex-col">
