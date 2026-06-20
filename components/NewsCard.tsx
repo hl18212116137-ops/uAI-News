@@ -7,7 +7,7 @@ import { cleanNewsTitle } from "@/lib/news-title-cleanup";
 import { isNewPost, formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
 import BookmarkGlyph from "@/components/BookmarkGlyph";
-import { FeedInsightSparkleGlyph, FeedLongformGlyph } from "@/components/feed-inline-icons";
+import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
 
 function formatDateZH(dateString: string): string {
   const d = new Date(dateString);
@@ -37,8 +37,6 @@ type NewsCardProps = {
   onBookmarkToggle?: (id: string, post: NewsItem) => void;
   passPending?: boolean;
   onPassPost?: (post: NewsItem) => void;
-  longformPending?: boolean;
-  onLongformExtract?: (post: NewsItem) => void;
   readonly?: boolean;
   analysisActive?: boolean;
   onAnalysisToggle?: (postId: string) => void;
@@ -54,8 +52,6 @@ function NewsCard({
   onBookmarkToggle,
   passPending = false,
   onPassPost,
-  longformPending = false,
-  onLongformExtract,
   readonly = false,
   analysisActive = false,
   onAnalysisToggle,
@@ -73,7 +69,6 @@ function NewsCard({
     variant === "compact"
       ? "pt-10 pb-12"
       : "pt-8 pb-12 sm:pt-[40px] sm:pb-14 lg:pt-[48px] lg:pb-[64px]";
-  const showLongformAction = !readonly && Boolean(onLongformExtract);
   const showAnalysisAction = !readonly && Boolean(onAnalysisToggle);
 
   return (
@@ -99,52 +94,27 @@ function NewsCard({
             filled={isBookmarked}
           />
         </div>
-      ) : showLongformAction || onBookmarkToggle ? (
-        <div className="absolute right-3 top-8 z-[1] flex items-center gap-1 sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]">
-          {showLongformAction ? (
-            <Tooltip content={longformPending ? "正在抓取长文" : "抓取这条推文里的长文"}>
-              <button
-                type="button"
-                className="flex h-6 w-6 items-center justify-center rounded-[10px] text-[#d7a220] transition-colors hover:bg-[#fff7e0] disabled:cursor-wait disabled:opacity-70"
-                aria-label="抓取这条推文里的长文"
-                aria-busy={longformPending}
-                disabled={longformPending}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onLongformExtract?.(post);
-                }}
-              >
-                <FeedLongformGlyph
-                  className={`h-4 w-4 transition-colors ${longformPending ? "animate-pulse" : ""}`}
-                />
-              </button>
-            </Tooltip>
-          ) : null}
-
-          {onBookmarkToggle ? (
-            <Tooltip content={bookmarkPending ? "正在同步收藏状态" : isBookmarked ? "取消收藏" : "收藏这篇文章"}>
-              <button
-                type="button"
-                className="flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04] disabled:cursor-wait disabled:opacity-70"
-                aria-label={isBookmarked ? "取消收藏" : "收藏"}
-                aria-pressed={isBookmarked}
-                aria-busy={bookmarkPending}
-                disabled={bookmarkPending}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onBookmarkToggle(post.id, post);
-                }}
-              >
-                <BookmarkGlyph
-                  className={`h-4 w-4 transition-colors ${isBookmarked ? "text-[#d7a220]" : "text-[#99a1af]"}`}
-                  filled={isBookmarked}
-                />
-              </button>
-            </Tooltip>
-          ) : null}
-        </div>
+      ) : onBookmarkToggle ? (
+        <Tooltip content={bookmarkPending ? "正在同步收藏状态" : isBookmarked ? "取消收藏" : "收藏这篇文章"}>
+          <button
+            type="button"
+            className="absolute right-3 top-8 z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04] disabled:cursor-wait disabled:opacity-70 sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]"
+            aria-label={isBookmarked ? "取消收藏" : "收藏"}
+            aria-pressed={isBookmarked}
+            aria-busy={bookmarkPending}
+            disabled={bookmarkPending}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onBookmarkToggle(post.id, post);
+            }}
+          >
+            <BookmarkGlyph
+              className={`h-4 w-4 transition-colors ${isBookmarked ? "text-[#d7a220]" : "text-[#99a1af]"}`}
+              filled={isBookmarked}
+            />
+          </button>
+        </Tooltip>
       ) : null}
 
       <div className="flex w-full min-w-0 flex-col gap-[32px]">

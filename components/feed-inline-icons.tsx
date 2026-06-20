@@ -26,31 +26,3 @@ export function FeedInsightSparkleGlyph(props: { className?: string }) {
     </svg>
   );
 }
-
-export function FeedLongformGlyph(props: { className?: string }) {
-  return (
-    <svg
-      className={props.className}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-      focusable="false"
-    >
-      <path
-        d="M6.75 4.25h7.35l3.15 3.15v12.35H6.75V4.25Z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M14 4.75V8.5h3.75M9.6 12h4.9M9.6 15h4.9M9.6 18h2.9"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}

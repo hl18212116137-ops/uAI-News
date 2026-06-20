@@ -64,7 +64,42 @@ type AnalysisPanelProps = {
   isBookmarked?: boolean;
   bookmarkPending?: boolean;
   onBookmarkToggle?: (postId: string, post: NewsItem) => void;
+  longformPending?: boolean;
+  onLongformExtract?: (post: NewsItem) => void;
 };
+
+function AddToLongformModuleGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      focusable="false"
+    >
+      <path
+        d="M4.75 5.25h9.5a2 2 0 0 1 2 2v11.5H6.75a2 2 0 0 1-2-2V5.25Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 9h4.25M8 12h5M8 15h3.25"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M17.5 3v7M14 6.5h7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 function normalizeScorePercent(n: number | null | undefined): number | null {
   if (n == null || Number.isNaN(n)) return null;
@@ -658,6 +693,8 @@ export default function AnalysisPanel({
   isBookmarked = false,
   bookmarkPending = false,
   onBookmarkToggle,
+  longformPending = false,
+  onLongformExtract,
 }: AnalysisPanelProps) {
   void _isOpen;
 
@@ -686,6 +723,7 @@ export default function AnalysisPanel({
   const refName = safeTrimmedText(refPost?.name);
   const refMediaUrls = safeStringArray(refPost?.mediaUrls);
   const sourceUrl = post ? resolveNewsPostUrl(post) : "";
+  const hasLongformArticle = Boolean(post?.longform?.translatedContent);
   const referencedTweetHref =
     refPost?.id && refUserName
       ? `https://x.com/${refUserName.replace(/^@/, "")}/status/${refPost.id}`
@@ -1216,16 +1254,25 @@ export default function AnalysisPanel({
         )}
         <button
           type="button"
-          className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
-          aria-label="分享"
+          className={[
+            "btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1",
+            hasLongformArticle
+              ? "text-[#d7a220]"
+              : "text-[#6a7282] hover:bg-[#fff7e0] hover:text-[#d7a220]",
+            "disabled:cursor-wait disabled:opacity-70",
+          ].join(" ")}
+          aria-label={hasLongformArticle ? "已加入长文" : "加入长文"}
+          aria-pressed={hasLongformArticle}
+          aria-busy={longformPending}
+          disabled={!post || !onLongformExtract || longformPending || hasLongformArticle}
+          onClick={() => {
+            if (!post || !onLongformExtract) return;
+            onLongformExtract(post);
+          }}
         >
           <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
-            <img
-              alt=""
-              src="/analysis-bottom-icons/share.svg"
-              className="block h-3.5 w-3 max-h-full max-w-full object-contain"
-              decoding="async"
-              draggable={false}
+            <AddToLongformModuleGlyph
+              className={`block size-4 max-h-full max-w-full ${longformPending ? "animate-pulse" : ""}`}
             />
           </span>
         </button>

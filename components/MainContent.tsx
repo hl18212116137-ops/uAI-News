@@ -1462,8 +1462,6 @@ export default function MainContent({
                       onBookmarkToggle={toggleBookmark}
                       passPendingIds={passPendingIds}
                       onPassPost={handlePassPost}
-                      longformPendingIds={longformActionPendingIds}
-                      onLongformExtract={handleLongformExtractFromPost}
                       analysisActivePostId={analysisPostId}
                       onAnalysisToggle={handleAnalysisToggle}
                       emptyFeedAwaitingFetch={emptyFeedAwaitingFetch}
@@ -1596,6 +1594,8 @@ export default function MainContent({
                         isBookmarked={analysisPost ? bookmarkedIds.has(analysisPost.id) : false}
                         bookmarkPending={analysisPost ? bookmarkPendingIds.has(analysisPost.id) : false}
                         onBookmarkToggle={toggleBookmark}
+                        longformPending={analysisPost ? longformActionPendingIds.has(analysisPost.id) : false}
+                        onLongformExtract={handleLongformExtractFromPost}
                       />
                     </div>
                   </div>
