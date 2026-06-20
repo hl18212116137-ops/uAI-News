@@ -79,21 +79,21 @@ function OpenOriginalGlyph({ className }: { className?: string }) {
       focusable="false"
     >
       <path
-        d="M14 4.5h5.5V10"
+        d="M14 3.5h6.5V10"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M19.25 4.75 11 13"
+        d="M20.25 3.75 10.75 13.25"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M10 6.25H6.75a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V14"
+        d="M9.75 4.75h-3.5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.5"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
@@ -114,21 +114,21 @@ function AddToLongformModuleGlyph({ className }: { className?: string }) {
       focusable="false"
     >
       <path
-        d="M4.75 4.5h9.5a2 2 0 0 1 2 2v12.75H6.75a2 2 0 0 1-2-2V4.5Z"
+        d="M4.75 3.25h9.5a2 2 0 0 1 2 2v15.5H6.75a2 2 0 0 1-2-2V3.25Z"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M8 8.75h4.25M8 12h5M8 15.25h3.25"
+        d="M8 8h4.25M8 12h5M8 16h3.25"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
-        d="M18.25 3.25v7.5M14.5 7h7.5"
+        d="M18.5 3.25v7.5M14.75 7h7.5"
         stroke="currentColor"
         strokeWidth={1.5}
         strokeLinecap="round"
