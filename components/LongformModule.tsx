@@ -1541,7 +1541,7 @@ function LongformBodyReader({
   renderTextSegment?: (text: string, keyPrefix: string) => ReactNode;
 }) {
   return (
-    <div className="mx-auto flex max-w-[76ch] flex-col">
+    <div className="mx-auto flex max-w-[66ch] flex-col">
       <div className="flex flex-col">
         {bodyBlocks.map((block, blockIndex) => {
           if (block.kind === "heading") {
@@ -1549,8 +1549,8 @@ function LongformBodyReader({
               <h4
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 max-w-[68ch] break-words text-[15px] font-semibold leading-7 text-[#101828]",
-                  blockIndex > 0 ? "mt-9" : "",
+                  "m-0 max-w-[66ch] break-words text-[14px] font-semibold leading-6 text-[#101828]",
+                  blockIndex > 0 ? "mt-8" : "",
                 ].join(" ")}
               >
                 <MathInlineText text={block.text} />
@@ -1566,19 +1566,19 @@ function LongformBodyReader({
               <div
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 flex max-w-[70ch] flex-col gap-2 text-[14px] leading-7 sm:text-[15px] sm:leading-[30px]",
+                  "m-0 flex max-w-[66ch] flex-col gap-1.5 text-[14px] leading-[26px] sm:leading-7",
                   isNarrative ? "font-medium text-[#101828]" : "font-normal text-[#6a7282]",
-                  blockIndex > 0 ? "mt-4" : "",
+                  blockIndex > 0 ? (isNarrative ? "mt-5" : "mt-3.5") : "",
                 ].join(" ")}
                 role="list"
               >
                 {block.items.map((item, itemIndex) => (
                   <div
                     key={`${articleKey}-body-${blockIndex}-${itemIndex}`}
-                    className="grid grid-cols-[1.35rem_minmax(0,1fr)] gap-2.5"
+                    className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-2.5"
                     role="listitem"
                   >
-                    <span className="pt-[2px] text-[11px] font-semibold leading-7 text-[#99a1af] tabular-nums sm:leading-[30px]">
+                    <span className="pt-[1px] text-[11px] font-semibold leading-[26px] text-[#99a1af] tabular-nums sm:leading-7">
                       {block.ordered ? itemIndex + 1 : "•"}
                     </span>
                     <span className="min-w-0 break-words">
@@ -1597,8 +1597,8 @@ function LongformBodyReader({
             <div
               key={`${articleKey}-body-${blockIndex}`}
               className={[
-                "max-w-[70ch]",
-                blockIndex > 0 ? (isNarrative ? "mt-5" : "mt-4") : "",
+                "max-w-[66ch]",
+                blockIndex > 0 ? (isNarrative ? "mt-5" : "mt-3.5") : "",
               ].join(" ")}
             >
               <MathBlockText
@@ -1606,8 +1606,8 @@ function LongformBodyReader({
                 textClassName={[
                   "m-0 break-words [text-wrap:pretty]",
                   isNarrative
-                    ? "text-[14px] font-medium leading-7 text-[#101828] sm:text-[15px] sm:leading-[30px]"
-                    : "text-[14px] font-normal leading-7 text-[#6a7282] sm:text-[15px] sm:leading-[30px]",
+                    ? "text-[14px] font-medium leading-[26px] text-[#101828] sm:leading-7"
+                    : "text-[14px] font-normal leading-[26px] text-[#6a7282] sm:leading-7",
                 ].join(" ")}
                 renderTextSegment={renderTextSegment}
               />
