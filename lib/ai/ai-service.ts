@@ -23,7 +23,6 @@ export interface AIProcessedContent {
 export type LongformDigestDraft = {
   summary: string;
   points: string[];
-  readingContent?: string;
 };
 
 export type LongformDigestInput = {

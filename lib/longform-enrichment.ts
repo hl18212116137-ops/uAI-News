@@ -14,20 +14,11 @@ function cleanDigestPoints(points: string[] | undefined): string[] {
     .slice(0, 3)
 }
 
-function cleanReadingContent(value: string | undefined): string {
-  return String(value ?? '')
-    .replace(/\r/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
-
 export async function enrichLongformArticle(
   article: LongformArticle,
   aiService: AIService,
 ): Promise<LongformArticle> {
-  const hasDigest = Boolean(article.digestSummary?.trim()) && cleanDigestPoints(article.digestPoints).length === 3
-  if (hasDigest && cleanReadingContent(article.readingContent)) {
+  if (article.digestSummary?.trim() && cleanDigestPoints(article.digestPoints).length === 3) {
     return article
   }
 
@@ -38,14 +29,12 @@ export async function enrichLongformArticle(
     })
     const summary = digest.summary.trim()
     const points = cleanDigestPoints(digest.points)
-    const readingContent = cleanReadingContent(digest.readingContent)
-    if (!summary && points.length === 0 && !readingContent) return article
+    if (!summary && points.length === 0) return article
 
     return {
       ...article,
       ...(summary ? { digestSummary: summary } : {}),
       ...(points.length > 0 ? { digestPoints: points } : {}),
-      ...(readingContent ? { readingContent } : {}),
       excerpt: summary || article.excerpt,
     }
   } catch (error) {

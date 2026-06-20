@@ -3,7 +3,6 @@ import type { LongformDigestDraft, LongformDigestInput } from './ai-service'
 const DIGEST_CONTENT_MAX_CHARS = 9000
 const SUMMARY_MAX_CHARS = 60
 const POINT_MAX_CHARS = 58
-const READING_CONTENT_MAX_CHARS = 12000
 
 function normalizeText(text: unknown): string {
   return typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : ''
@@ -17,43 +16,6 @@ function trimSentence(text: string, maxChars: number): string {
   if (!clean) return ''
   const clipped = clean.length > maxChars ? `${clean.slice(0, maxChars).replace(/[；;，,\s]+$/g, '')}…` : clean
   return /[。！？!?]$/.test(clipped) ? clipped : `${clipped}。`
-}
-
-function normalizeReadingContent(text: unknown): string {
-  if (typeof text !== 'string') return ''
-
-  const blocks: string[] = []
-  let paragraphLines: string[] = []
-  const flushParagraph = () => {
-    const paragraph = paragraphLines
-      .map((line) => line.replace(/[ \t]+/g, ' ').trim())
-      .filter(Boolean)
-      .join(' ')
-      .trim()
-    if (paragraph) blocks.push(paragraph)
-    paragraphLines = []
-  }
-
-  for (const rawLine of text.replace(/\r/g, '').split('\n')) {
-    const line = rawLine.replace(/[ \t]+/g, ' ').trim()
-    if (!line) {
-      flushParagraph()
-      continue
-    }
-    if (/^#{1,3}\s+\S/.test(line)) {
-      flushParagraph()
-      blocks.push(line.replace(/^#{1,3}\s+/, '## '))
-      continue
-    }
-    paragraphLines.push(line)
-  }
-  flushParagraph()
-
-  return blocks
-    .join('\n\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, READING_CONTENT_MAX_CHARS)
 }
 
 export function buildLongformDigestPrompt(input: LongformDigestInput): string {
@@ -70,18 +32,13 @@ export function buildLongformDigestPrompt(input: LongformDigestInput): string {
 - 不要废话，不要写“本文主要”“这篇文章主要”。
 - summary 一句话，40 字以内，说清这篇文章讲什么。
 - points 恰好 3 条，每条 45 字以内，按“问题 / 做法 / 结果或意义”的顺序写。
-- readingContent 是正文阅读版，不要照搬原文自然段；你可以自行合并、拆分、重排段落。
-- readingContent 可以加入少量小标题，格式用 "## 小标题" 单独成段，小标题后空一行再写正文；小标题要具体，不要写“背景/方法/总结”这种空标题。
-- readingContent 不是短摘要，要保留文章的主要论证、方法、结果和限制；删掉参考文献、致谢、网页噪音。
-- readingContent 用清楚简洁的中文写，段落宜短，避免一段超过 180 字。
 - 如果文章是论文，保留关键模型名、方法名和重要数字。
-- 只返回 JSON，不要在 JSON 外写 Markdown 或解释。
+- 只返回 JSON，不要 Markdown，不要解释。
 
 JSON 格式：
 {
   "summary": "一句话讲什么",
-  "points": ["重点1", "重点2", "重点3"],
-  "readingContent": "## 小标题\\n正文段落...\\n\\n## 小标题\\n正文段落..."
+  "points": ["重点1", "重点2", "重点3"]
 }
 
 标题：
@@ -95,11 +52,7 @@ export function parseLongformDigestResponse(responseText: string): LongformDiges
   const jsonMatch = responseText.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('No JSON found in longform digest response')
 
-  const parsed = JSON.parse(jsonMatch[0]) as {
-    summary?: unknown;
-    points?: unknown;
-    readingContent?: unknown;
-  }
+  const parsed = JSON.parse(jsonMatch[0]) as { summary?: unknown; points?: unknown }
   const summary = trimSentence(normalizeText(parsed.summary), SUMMARY_MAX_CHARS)
   const points = Array.isArray(parsed.points)
     ? parsed.points
@@ -107,15 +60,10 @@ export function parseLongformDigestResponse(responseText: string): LongformDiges
         .filter((point) => point.length >= 6)
         .slice(0, 3)
     : []
-  const readingContent = normalizeReadingContent(parsed.readingContent)
 
-  if (!summary && points.length === 0 && !readingContent) {
+  if (!summary && points.length === 0) {
     throw new Error('Longform digest response is empty')
   }
 
-  return {
-    summary,
-    points,
-    ...(readingContent ? { readingContent } : {}),
-  }
+  return { summary, points }
 }
