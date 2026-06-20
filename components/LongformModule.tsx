@@ -107,10 +107,12 @@ type AcronymExpansionState = {
   expansionTotal: number;
 };
 
-type DigestSentenceCandidate = {
+type ArticleDigestRole = "scope" | "approach" | "finding" | "boundary";
+
+type ArticleDigestRoleCandidate = {
+  role: ArticleDigestRole;
   text: string;
   score: number;
-  hasSignal: boolean;
   paragraphIndex: number;
   sentenceIndex: number;
   fingerprint: string;
@@ -119,8 +121,8 @@ type DigestSentenceCandidate = {
 const DIGEST_POINT_LIMIT = 3;
 const SUMMARY_MAX_LENGTH = 150;
 const POINT_MAX_LENGTH = 112;
-const PLAIN_SUMMARY_MAX_LENGTH = 170;
-const PLAIN_POINT_MAX_LENGTH = 116;
+const PLAIN_SUMMARY_MAX_LENGTH = 112;
+const PLAIN_POINT_MAX_LENGTH = 88;
 const BODY_PARAGRAPH_TARGET_LENGTH = 360;
 const BODY_PARAGRAPH_MAX_LENGTH = 520;
 const BODY_EMPHASIS_TERM_LIMIT = 5;
@@ -146,16 +148,25 @@ const METHOD_RE =
   /(被试|参与者|样本|问卷|实验设计|预先注册|我们采用|为了测试|为了避免|方法|研究\s*\d|考察|评估|测量|探究|校准|自我报告|完成模式|study\s*\d|participants?|sample|methodology|measure|evaluate|examine|calibration)/i;
 const FIGURE_RE =
   /(图\s*\d+|表\s*\d+|Figure\s*\d+|Table\s*\d+|青色|橙色|蓝色|绿色|红色|紫色|灰色|柱状|曲线|坐标轴|图中)/i;
-const BACKGROUND_CLASSIFICATION_RE =
-  /(定义分为|分为.+类|分类为|框架包括|主要包括|taxonomy|classified into)/i;
-const ATTRIBUTED_CLAIM_RE =
-  /(他们主张|有人认为|声称|宣称|被认为|所谓|argues? that|claim(?:s|ed)? that)/i;
 const FINDING_RE =
   /(发现|结果|表明|显示|显著|高于|低于|风险|降低|提升|提高|减少|增加|需要|必须|不应|不能|因此|所以|意味着|不是.+而是|found|results?|show|suggest|indicate|significant|risk|need|must|therefore)/i;
 const CONCLUSION_SECTION_RE =
   /(结论|结语|总结|发现|结果|讨论|启示|影响|建议|实践意义|局限|展望|conclusion|findings|results|discussion|implications|recommendations|takeaways|limitations)/i;
 const INTRO_SECTION_RE =
   /^(摘要|abstract|概要|summary|引言|介绍|背景|introduction|overview|background)$/i;
+const DIGEST_ROLE_LABELS: Record<Exclude<ArticleDigestRole, "scope">, string> = {
+  approach: "做法",
+  finding: "发现",
+  boundary: "注意",
+};
+const DIGEST_SCOPE_RE =
+  /(本文|这篇文章|这项研究|本研究|论文|报告|提出|介绍|围绕|讨论|研究|检验|评估|探索|旨在|we (present|introduce|study|explore|evaluate|propose)|this (paper|study|article|report))/i;
+const DIGEST_APPROACH_RE =
+  /(通过|采用|构建|训练|微调|实验|数据|基准|评测|比较|观察|分析|验证|样本|方法|框架|benchmark|dataset|method|framework|train|fine-tun|evaluate|experiment|test|SFT|RL)/i;
+const DIGEST_FINDING_RE =
+  /(发现|结果|表明|显示|证明|达到|超过|提升|优于|显著|降低|提高|说明|意味着|found|results?|show|suggest|indicate|achieve|outperform|improve|significant)/i;
+const DIGEST_BOUNDARY_RE =
+  /(但|但是|然而|仍然|仍|局限|不足|边界|依赖|限制|风险|挑战|难以|不能|并不|不是|需要|未来|展望|however|but|limitation|challenge|remain|depend|risk|future)/i;
 
 function getLongformPosts(posts: NewsItem[]): LongformPost[] {
   const seenUrls = new Set<string>();
@@ -656,66 +667,154 @@ function stripAcademicNoise(text: string): string {
     .trim();
 }
 
-function plainifyConclusion(raw: string, maxLength: number, title = ""): string {
-  const clean = stripAcademicNoise(raw);
-  const titleContext = `${title} ${clean}`;
+function plainDigestText(text: string): string {
+  return normalizeText(text)
+    .replace(/本研究|本文|本论文|这项研究|该研究/g, "文章")
+    .replace(/旨在|意在/g, "想")
+    .replace(/探究|探索|考察/g, "弄清")
+    .replace(/验证/g, "检验")
+    .replace(/表明|显示|揭示/g, "说明")
+    .replace(/显著/g, "明显")
+    .replace(/性能/g, "表现")
+    .replace(/模型规模/g, "模型大小")
+    .replace(/开放域知识/g, "开放知识")
+    .replace(/泛化能力|泛化/g, "迁移能力")
+    .replace(/长尾场景|长尾经验/g, "冷门场景")
+    .replace(/可及性/g, "更容易用上")
+    .replace(/可验证推理/g, "可检验推理")
+    .replace(/专项能力/g, "专门能力")
+    .replace(/推理效率/g, "推理速度")
+    .replace(/复杂编程任务/g, "复杂编程")
+    .replace(/高难数学/g, "难数学")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  const rewrites: Array<[RegExp, string]> = [
-    [/AI.*使用频率|使用\s*AI.*频率|高估.*收益|简单任务.*AI|AI.*节省时间/i, "人们会比自己预期更频繁地把简单任务交给 AI，但这类任务本来就很快，AI 不一定省时间，反而可能增加依赖和误判。"],
-    [/简单任务.*AI.*风险|经常使用\s*AI.*风险|依赖.*AI/i, "连简单任务都老用 AI，可能会削弱自己的思考、学习和独立完成能力。"],
-    [/无需其辅助.*快速完成.*无法提升效率|简单任务.*无法提升效率.*低效/i, "简单活本来很快能做完，硬上 AI 反而可能更慢。"],
-    [/AI.*节省时间.*误判.*AI\s*使用率|AI.*省时间.*误判.*依赖/i, "用过 AI 后，人会更容易高估它省时间，也更容易继续依赖它。"],
-    [/Agent.*能力差距|Agent.*放大|Agent.*工作流|Agent 生态/i, "Agent 不会自动抹平能力差距，反而会放大目标清晰、资料完整、流程组织好的人；不会组织任务的人，也会被放大混乱。"],
-    [/模型足够强|能力差距.*抹平|平权|放大能力差距/i, "Agent 不会自动让大家站到同一起跑线，反而更考验人的判断和组织能力。"],
-    [/Skill.*Prompt|Prompt.*Skill|调用效率|分发.*成本|工程化内容/i, "Skill 比普通提示词更像可复用工具，重点在低成本复用和工程化。"],
-    [/Skill.*经验|Skill.*工作流|Skill.*品味|演示经验.*外化/i, "Skill 的价值，是把人的经验、流程和品味打包成别人能调用的东西。"],
-    [/用户.*不要理解底层|MCP|CLI|workflow|memory|上下文工程/i, "好的 Skill 应该把复杂工具链藏到背后，让用户只关心自己要完成什么。"],
-    [/产品设计|交互设计|用户教育|降低.*门槛|门槛/i, "门槛不再只靠产品设计降低，关键变成谁能把流程组织得更好。"],
-    [/防御方式不是.*藏起来.*开源覆盖/i, "防抄袭不能靠藏起来，而是要靠开源覆盖、持续迭代和品牌影响力。"],
-    [/3B.*可验证推理|可验证推理.*3B|小型语言模型.*可验证推理/i, "VibeThinker-3B 说明，小模型经过专门训练也能把可验证推理做得很强；但它更像专项能力突破，开放知识和通用能力仍然依赖更大模型的覆盖面。"],
-    [/可验证推理.*参数密集|参数密集.*可验证推理|开放域知识.*模型规模|通用能力.*模型规模/i, "可验证推理更像可以被压进小模型的专项能力，开放域知识和通用能力则更吃规模、数据覆盖和长尾经验。"],
-    [/代表性前沿 LLM|前沿 LLM|GLM-5|Kimi K2|DeepSeek/i, "VibeThinker-3B 的亮点是：体量很小，但推理成绩已经能碰到一些大模型。"],
-    [/3B 规模.*极限|复杂可验证推理.*极限|小模型.*极限/i, "作者是在用 3B 小模型探边界：看看少参数到底能把复杂推理推到哪里。"],
-    [/部署成本|推理效率|学术研究|更广泛可及性|小语言模型.*优势/i, "小模型便宜、快、好部署，但一遇到高难数学和复杂编程还是会吃力。"],
-    [/使用\s*AI\s*的频率.*高于.*预测|使用\s*AI.*高于.*预测|参与者实际使用\s*AI.*高于.*预测/i, "人们用 AI 的次数，比自己以为的更多。"],
-    [/移除智能体与现实之间的解释接口|客观衡量性能.*解释接口/i, "想公平比较 AI 能力，不能只看人类怎么解释它的表现。"],
-    [/UTM.*不会对性能产生实质性影响|改变.*UTM.*实质性影响/i, "单纯改一个计算模型，并不能真正解决 AGI 评估问题。"],
-    [/AGI.*要可计算的通用先验|通用人工智能.*通用先验/i, "如果 AGI 要能被验证，它的底层假设也得是能计算的。"],
-    [/KC.*压缩能力|最压缩表示.*压缩能力/i, "如果用压缩能力衡量智能，AI 至少得真的会压缩信息。"],
-    [/Agent 生态里真正的大机会/i, "Agent 生态真正的大机会，可能在可复用的经验和工作流。"],
-    [/Skill.*经验.*工作流.*品味/i, "Skill 的价值，是把人的经验、流程和品味打包成别人能调用的东西。"],
-    [/好 Skill.*业务 SOP.*品味.*测试.*迭代/i, "好 Skill 不是随便写提示词，还得有业务流程、品味、测试和迭代。"],
-    [/超人适应智能|SAI.*适应性 AI/i, "别只盯着 AGI 这个模糊目标，更可操作的方向是看 AI 能不能在更多重要任务上持续适应、进步并超过人类基线。"],
-    [/觉得自己很通用.*盲区|没有盲区/i, "人类觉得自己很通用，很多时候只是看不到自己的短板。"],
-    [/客观标准.*下棋.*人类无法企及|高于人类.*下棋/i, "很多任务机器早就能远超人类，所以“像人一样通用”不是好标准。"],
-    [/围绕 SAI 重构讨论|SAI.*更有效的沟通/i, "把目标从 AGI 换成 SAI，讨论会更清楚，推进也可能更快。"],
-  ];
+function compactDigestLead(text: string): string {
+  return normalizeText(text)
+    .replace(
+      /^(这篇文章|这篇论文|文章|论文|报告|这个研究|这项研究|这份报告|本文|本研究)(主要)?(讲|讨论|研究|围绕|想|试图|旨在|介绍|提出|检验|评估|说明)?[:：，,]?\s*/,
+      "",
+    )
+    .replace(/^(它|该文|该研究|作者)(主要)?(说明|发现|认为|展示|提出)?[:：，,]?\s*/, "")
+    .replace(/^(结果是|结论是|核心是|重点是)[:：，,]?\s*/, "")
+    .trim();
+}
 
-  for (const [pattern, replacement] of rewrites) {
-    if (pattern.test(clean)) return replacement;
-  }
-
-  if (/效率增益错觉|低估了 AI 的使用频率|高估了其在简单任务上的收益/i.test(titleContext)) {
-    return truncateText("人们会频繁把简单任务交给 AI，却容易高估它带来的省时收益；真正的问题不是 AI 能不能用，而是哪些任务值得用、哪些任务会越用越依赖。", maxLength);
-  }
-
-  if (/VibeThinker|3B.*可验证推理|小型语言模型/i.test(titleContext)) {
-    return truncateText("VibeThinker-3B 展示了小模型在可验证推理上的上限：专项训练能把数学、代码等任务推得很远，但它不等于小模型已经补齐开放知识和通用能力。", maxLength);
-  }
-
-  if (/(模型|参数|推理|benchmark|LLM|小语言模型)/i.test(titleContext) && !/(Skill|Agent|Prompt)/i.test(titleContext)) {
-    return truncateText("专门训练可以显著拉高某些模型能力，但这通常是专项突破，不代表模型在知识覆盖、泛化和复杂场景里都同样可靠。", maxLength);
-  }
-
-  if (/(AGI|通用人工智能|智能|适应|general intelligence)/i.test(titleContext)) {
-    return truncateText("讨论 AGI 之前，先要说清楚智能如何定义、如何衡量、哪些能力能被计算验证；否则“通用智能”很容易变成一个听起来宏大但难落地的口号。", maxLength);
-  }
-
-  if (/(研究|实验|数据|结果|发现|论文|报告)/i.test(titleContext)) {
-    return truncateText("重点不只是论文给了什么结论，而是它暴露了能力边界、适用条件和实际取舍；这些比一句漂亮总结更有参考价值。", maxLength);
-  }
-
+function formatArticleDigestLine(raw: string, maxLength: number): string {
+  const clean = compactDigestLead(plainDigestText(stripAcademicNoise(raw)));
   return finishSentence(truncateText(clean, maxLength));
+}
+
+function formatArticleDigestSummaryLine(raw: string | undefined): string {
+  return formatArticleDigestLine(raw || "", PLAIN_SUMMARY_MAX_LENGTH);
+}
+
+function scoreArticleDigestRole(
+  sentence: string,
+  role: ArticleDigestRole,
+  paragraphIndex: number,
+  paragraphCount: number,
+  sectionHeading: string | null,
+): number {
+  const clean = normalizeText(sentence);
+  const position = paragraphCount > 1 ? paragraphIndex / (paragraphCount - 1) : 0;
+  let score = 0;
+
+  if (role === "scope") {
+    if (DIGEST_SCOPE_RE.test(clean)) score += 4;
+    if (position <= 0.22) score += 1.6;
+    if (sectionHeading && INTRO_SECTION_RE.test(normalizeText(sectionHeading))) score += 1;
+  }
+
+  if (role === "approach") {
+    if (DIGEST_APPROACH_RE.test(clean)) score += 4;
+    if (position >= 0.12 && position <= 0.62) score += 1.2;
+    if (METHOD_RE.test(clean)) score += 0.9;
+  }
+
+  if (role === "finding") {
+    if (DIGEST_FINDING_RE.test(clean) || FINDING_RE.test(clean)) score += 4;
+    if (position >= 0.32) score += 1.2;
+    if (sectionHeading && CONCLUSION_SECTION_RE.test(sectionHeading)) score += 1.4;
+  }
+
+  if (role === "boundary") {
+    if (DIGEST_BOUNDARY_RE.test(clean)) score += 4;
+    if (position >= 0.42) score += 1.3;
+    if (sectionHeading && CONCLUSION_SECTION_RE.test(sectionHeading)) score += 1;
+  }
+
+  if (hasQuantitativeSignal(clean)) score += 0.7;
+  if (LOW_VALUE_RE.test(clean)) score -= 5;
+  if (FIGURE_RE.test(clean) && !FINDING_RE.test(clean)) score -= 2;
+  if (EXAMPLE_RE.test(clean) && role !== "approach") score -= 1.8;
+  if (clean.length < 24) score -= 2;
+  if (clean.length > 220) score -= 0.6;
+
+  return score;
+}
+
+function collectArticleDigestRoleCandidates(post: LongformPost, paragraphs: string[]): ArticleDigestRoleCandidate[] {
+  const title = getArticleTitle(post);
+  const titleKey = sentenceFingerprint(title);
+  const candidates: ArticleDigestRoleCandidate[] = [];
+  let sectionHeading: string | null = null;
+
+  paragraphs.forEach((paragraph, paragraphIndex) => {
+    const cleanParagraph = normalizeText(paragraph);
+    if (!cleanParagraph) return;
+
+    if (isLikelySectionHeading(cleanParagraph, paragraphIndex)) {
+      sectionHeading = cleanParagraph;
+      return;
+    }
+
+    if (isBoilerplateParagraph(cleanParagraph, title) && !DIGEST_SCOPE_RE.test(cleanParagraph)) {
+      return;
+    }
+
+    getTextSentences(cleanParagraph).forEach((sentence, sentenceIndex) => {
+      const cleanSentence = truncateText(sentence, POINT_MAX_LENGTH);
+      const fingerprint = sentenceFingerprint(cleanSentence);
+      if (!fingerprint || fingerprint === titleKey) return;
+
+      (["scope", "approach", "finding", "boundary"] as ArticleDigestRole[]).forEach((role) => {
+        const score = scoreArticleDigestRole(cleanSentence, role, paragraphIndex, paragraphs.length, sectionHeading);
+        if (score < 2.2) return;
+        candidates.push({
+          role,
+          text: cleanSentence,
+          score,
+          paragraphIndex,
+          sentenceIndex,
+          fingerprint,
+        });
+      });
+    });
+  });
+
+  return candidates;
+}
+
+function pickArticleDigestRoleCandidate(
+  candidates: ArticleDigestRoleCandidate[],
+  role: ArticleDigestRole,
+  usedFingerprints: Set<string>,
+): ArticleDigestRoleCandidate | null {
+  return [...candidates]
+    .filter((candidate) => candidate.role === role && !usedFingerprints.has(candidate.fingerprint))
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (a.paragraphIndex !== b.paragraphIndex) return a.paragraphIndex - b.paragraphIndex;
+      return a.sentenceIndex - b.sentenceIndex;
+    })[0] ?? null;
+}
+
+function buildArticleDigestPoint(role: Exclude<ArticleDigestRole, "scope">, text: string): string {
+  const label = DIGEST_ROLE_LABELS[role];
+  const body = formatArticleDigestLine(text, PLAIN_POINT_MAX_LENGTH - label.length - 1);
+  return `${label}：${body}`;
 }
 
 function sentenceFingerprint(text: string): string {
@@ -743,143 +842,6 @@ function isBoilerplateParagraph(paragraph: string, title: string): boolean {
 
 function hasQuantitativeSignal(text: string): boolean {
   return /(\d+(?:\.\d+)?\s*(%|倍|个|项|次|分钟|小时|天|周|月|年|k|K|M|B|万|亿)|p\s*[<=>]|β\s*=|N\s*=)/.test(text);
-}
-
-function hasConclusionSignal(text: string): boolean {
-  return (
-    STRONG_CONCLUSION_RE.test(text) ||
-    WEAK_CONCLUSION_RE.test(text) ||
-    /不是.+而是|并非.+而是|rather than|not .+ but/i.test(text)
-  );
-}
-
-function scoreConclusionSentence(
-  sentence: string,
-  paragraphIndex: number,
-  paragraphCount: number,
-  sectionHeading: string | null,
-): number {
-  const clean = normalizeText(sentence);
-  const position = paragraphCount > 1 ? paragraphIndex / (paragraphCount - 1) : 0;
-  const hasStrongSignal = STRONG_CONCLUSION_RE.test(clean);
-  const hasWeakSignal = WEAK_CONCLUSION_RE.test(clean);
-  let score = 0;
-
-  if (hasStrongSignal) score += 5;
-  else if (hasWeakSignal) score += 2.25;
-
-  if (hasQuantitativeSignal(clean)) score += 1.25;
-  if (/不是.+而是|并非.+而是|rather than|not .+ but/i.test(clean)) score += 1.5;
-  if (/[？?]$/.test(clean)) score -= 2;
-
-  if (position >= 0.72) score += 1.75;
-  else if (position >= 0.42) score += 0.9;
-  else if (position <= 0.16) score -= 1.25;
-
-  if (paragraphIndex === 0) score -= 1.5;
-  if (sectionHeading && CONCLUSION_SECTION_RE.test(sectionHeading)) score += 3;
-  if (sectionHeading && INTRO_SECTION_RE.test(normalizeText(sectionHeading))) score -= 3;
-
-  if (INTRO_RE.test(clean)) {
-    score -= hasStrongSignal ? 1.25 : 3.25;
-  }
-
-  if (/(是否|能否|whether)/i.test(clean) && /(我们|研究|实验|study|experiment|examine|test|evaluate)/i.test(clean)) {
-    score -= 3;
-  }
-
-  const hasFindingSignal = FINDING_RE.test(clean);
-
-  if (LOW_VALUE_RE.test(clean)) score -= 5;
-  if (EXAMPLE_RE.test(clean)) score -= 4.5;
-  if (METHOD_RE.test(clean)) score -= hasFindingSignal ? 1 : 4;
-  if (FIGURE_RE.test(clean)) score -= hasFindingSignal ? 1.25 : 4;
-  if (BACKGROUND_CLASSIFICATION_RE.test(clean)) score -= 4;
-  if (ATTRIBUTED_CLAIM_RE.test(clean) && !/(但|然而|不过|问题|错误|不成立|but|however|problem|wrong)/i.test(clean)) {
-    score -= 4;
-  }
-
-  if (/^(例如|比如|包括|首先|其次|此外|另外)|^(for example|for instance|first|second)\b/i.test(clean)) {
-    score -= 1.5;
-  }
-
-  if (clean.length < 22) score -= 2;
-  if (clean.length > 180) score -= 0.5;
-
-  return score;
-}
-
-function collectConclusionCandidates(post: LongformPost, paragraphs: string[]): DigestSentenceCandidate[] {
-  const title = getArticleTitle(post);
-  const titleKey = sentenceFingerprint(title);
-  const candidates: DigestSentenceCandidate[] = [];
-  let sectionHeading: string | null = null;
-
-  paragraphs.forEach((paragraph, paragraphIndex) => {
-    const cleanParagraph = normalizeText(paragraph);
-    if (!cleanParagraph) return;
-
-    if (isLikelySectionHeading(cleanParagraph, paragraphIndex)) {
-      sectionHeading = cleanParagraph;
-      return;
-    }
-
-    if (isBoilerplateParagraph(cleanParagraph, title) && !WEAK_CONCLUSION_RE.test(cleanParagraph)) {
-      return;
-    }
-
-    getTextSentences(cleanParagraph).forEach((sentence, sentenceIndex) => {
-      const cleanSentence = truncateText(sentence, POINT_MAX_LENGTH);
-      const fingerprint = sentenceFingerprint(cleanSentence);
-      if (!fingerprint || fingerprint === titleKey) return;
-      if ((METHOD_RE.test(cleanSentence) || FIGURE_RE.test(cleanSentence)) && !FINDING_RE.test(cleanSentence)) return;
-
-      candidates.push({
-        text: cleanSentence,
-        score: scoreConclusionSentence(cleanSentence, paragraphIndex, paragraphs.length, sectionHeading),
-        hasSignal: hasConclusionSignal(cleanSentence),
-        paragraphIndex,
-        sentenceIndex,
-        fingerprint,
-      });
-    });
-  });
-
-  return candidates;
-}
-
-function pickConclusionSentences(candidates: DigestSentenceCandidate[], limit: number): string[] {
-  const sorted = [...candidates].sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    if (b.paragraphIndex !== a.paragraphIndex) return b.paragraphIndex - a.paragraphIndex;
-    return a.sentenceIndex - b.sentenceIndex;
-  });
-  const selected: DigestSentenceCandidate[] = [];
-  const paragraphUse = new Map<number, number>();
-
-  const addPass = (pool: DigestSentenceCandidate[], minimumScore: number, maxPerParagraph: number) => {
-    for (const candidate of pool) {
-      if (selected.length >= limit) return;
-      if (candidate.score < minimumScore) continue;
-      if (selected.some((item) => item.fingerprint === candidate.fingerprint)) continue;
-
-      const used = paragraphUse.get(candidate.paragraphIndex) ?? 0;
-      if (used >= maxPerParagraph) continue;
-
-      selected.push(candidate);
-      paragraphUse.set(candidate.paragraphIndex, used + 1);
-    }
-  };
-
-  const signaled = sorted.filter((candidate) => candidate.hasSignal);
-  addPass(signaled, 3.25, 1);
-  addPass(signaled, 2, 2);
-
-  if (selected.length === 0) {
-    addPass(sorted, 3.25, 1);
-  }
-
-  return selected.map((candidate) => candidate.text);
 }
 
 function getDigestParagraphs(post: LongformPost, paragraphs: string[]): string[] {
@@ -947,79 +909,41 @@ function getParagraphs(text: string): string[] {
   return grouped;
 }
 
-function getFallbackDigestPoints(title: string): string[] {
-  if (/效率增益错觉|低估了 AI 的使用频率|高估了其在简单任务上的收益/i.test(title)) {
-    return [
-      "三项预注册用户研究显示，用户实际使用 AI 的频率高于自己事前预测。",
-      "低难度任务里，AI 带来的“省事感”和真实效率可能脱节，甚至可能更慢。",
-      "使用 AI 后，人会更容易相信它继续省时间，依赖惯性会被进一步强化。",
-    ];
-  }
-
-  if (/VibeThinker|小型语言模型.*可验证推理/i.test(title)) {
-    return [
-      "3B 小模型的优势在于成本低、推理快、部署容易，适合做可验证任务的专项优化。",
-      "论文的边界也很清楚：数学、代码推理能被强化，但开放知识和通用能力还需要更大覆盖面。",
-      "这类结果更像证明“小模型可专精”，不是证明“小模型已全面替代大模型”。",
-    ];
-  }
-
-  if (/Skills|Skill|Agent/i.test(title)) {
-    return [
-      "Agent 时代真正稀缺的不是会不会聊天，而是能不能把目标、资料和流程组织清楚。",
-      "Skill 把可复用经验做成工具，降低重复劳动，也让好流程更容易分发。",
-      "门槛会转移到判断力和流程设计上，强用户被放大，混乱用户也会被放大。",
-    ];
-  }
-
-  return [];
-}
 
 function buildLongformDigest(post: LongformPost, paragraphs: string[]): LongformDigest {
   const article = post.longform;
   const title = getArticleTitle(post);
   const digestParagraphs = getDigestParagraphs(post, paragraphs);
-  const conclusionSentences = pickConclusionSentences(
-    collectConclusionCandidates(post, paragraphs),
-    DIGEST_POINT_LIMIT + 3,
-  );
-  const summarySource = [conclusionSentences[0], digestParagraphs[1], digestParagraphs[0], article.excerpt, paragraphs[0]]
+  const roleCandidates = collectArticleDigestRoleCandidates(post, paragraphs);
+  const usedFingerprints = new Set<string>();
+  const scopeCandidate = pickArticleDigestRoleCandidate(roleCandidates, "scope", usedFingerprints);
+  if (scopeCandidate) usedFingerprints.add(scopeCandidate.fingerprint);
+
+  const summarySource = [scopeCandidate?.text, digestParagraphs[0], article.excerpt, paragraphs[0]]
     .map((value) => normalizeText(value || ""))
     .find((value) => value && !isBoilerplateParagraph(value, title));
 
   const seen = new Set<string>();
-  const lines: string[] = [];
 
-  const addLine = (raw: string | undefined, maxLength: number) => {
-    if (!raw) return;
-    const line = plainifyConclusion(raw, maxLength, title);
-    if (line.length < 16) return;
+  const buildLine = (raw: string | undefined, maxLength: number, summaryLine = false) => {
+    if (!raw) return "";
+    const line = summaryLine ? formatArticleDigestSummaryLine(raw) : formatArticleDigestLine(raw, maxLength);
+    if (line.length < 16) return "";
     const key = sentenceFingerprint(line);
-    if (!key || seen.has(key)) return;
+    if (!key || seen.has(key)) return "";
     seen.add(key);
-    lines.push(line);
+    return line;
   };
 
-  addLine(summarySource, PLAIN_SUMMARY_MAX_LENGTH);
-
-  const seedSentences = [
-    ...conclusionSentences.slice(1),
-    ...digestParagraphs.flatMap((paragraph) => getTextSentences(paragraph).slice(0, 2)),
-    ...digestParagraphs,
-  ];
-
-  for (const seed of seedSentences) {
-    if (lines.length >= DIGEST_POINT_LIMIT + 1) break;
-    addLine(seed, PLAIN_POINT_MAX_LENGTH);
-  }
-
-  const [summary = "", ...linePoints] = lines;
+  const summary = buildLine(summarySource, PLAIN_SUMMARY_MAX_LENGTH, true);
   const points: string[] = [];
   const summaryKey = sentenceFingerprint(summary);
   const pointSeen = new Set<string>();
 
   const addPoint = (raw: string, alreadyPlain = false) => {
-    const point = alreadyPlain ? truncateText(raw, PLAIN_POINT_MAX_LENGTH) : plainifyConclusion(raw, PLAIN_POINT_MAX_LENGTH, title);
+    const point = alreadyPlain
+      ? finishSentence(truncateText(raw, PLAIN_POINT_MAX_LENGTH))
+      : formatArticleDigestLine(raw, PLAIN_POINT_MAX_LENGTH);
     if (point.length < 16) return;
     const key = sentenceFingerprint(point);
     if (!key || pointSeen.has(key) || key === summaryKey) return;
@@ -1035,21 +959,36 @@ function buildLongformDigest(post: LongformPost, paragraphs: string[]): Longform
     points.push(point);
   };
 
-  for (const point of linePoints) {
-    addPoint(point, true);
-    if (points.length >= DIGEST_POINT_LIMIT) break;
+  for (const role of ["approach", "finding", "boundary"] as const) {
+    const candidate = pickArticleDigestRoleCandidate(roleCandidates, role, usedFingerprints);
+    if (!candidate) continue;
+    usedFingerprints.add(candidate.fingerprint);
+    addPoint(buildArticleDigestPoint(role, candidate.text), true);
+  }
+
+  if (points.length < DIGEST_POINT_LIMIT) {
+    const fallbackCandidates = [...roleCandidates]
+      .filter((candidate) => !usedFingerprints.has(candidate.fingerprint))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.paragraphIndex - b.paragraphIndex;
+      });
+
+    for (const candidate of fallbackCandidates) {
+      addPoint(
+        candidate.role === "scope"
+          ? formatArticleDigestLine(candidate.text, PLAIN_POINT_MAX_LENGTH)
+          : buildArticleDigestPoint(candidate.role, candidate.text),
+        true,
+      );
+      usedFingerprints.add(candidate.fingerprint);
+      if (points.length >= DIGEST_POINT_LIMIT) break;
+    }
   }
 
   if (points.length < 2) {
     for (const paragraph of digestParagraphs.slice(0, 5)) {
       addPoint(paragraph);
-      if (points.length >= DIGEST_POINT_LIMIT) break;
-    }
-  }
-
-  if (points.length < DIGEST_POINT_LIMIT) {
-    for (const fallback of getFallbackDigestPoints(title)) {
-      addPoint(fallback, true);
       if (points.length >= DIGEST_POINT_LIMIT) break;
     }
   }
