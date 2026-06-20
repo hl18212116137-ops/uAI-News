@@ -1617,28 +1617,20 @@ function LongformBodyReader({
   return (
     <div className="mx-auto flex max-w-[76ch] flex-col">
       {highlights.length > 0 ? (
-        <section className="mb-6 rounded-md bg-[#f5f5f5] px-4 py-4 sm:px-5">
+        <section className="mb-5 border-b border-[#e5e7eb] pb-4">
           <p className="m-0 text-[12px] font-semibold leading-4 text-[#6a7282]">
             正文重点
           </p>
-          <ol className="m-0 mt-3 flex list-none flex-col gap-3 p-0">
-            {highlights.map((highlight, highlightIndex) => (
+          <ul className="m-0 mt-3 flex list-none flex-col gap-2.5 p-0">
+            {highlights.map((highlight) => (
               <li
                 key={`${articleKey}-highlight-${highlight.blockIndex}`}
-                className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-3"
+                className="list-none break-words text-[13px] font-medium leading-6 text-[#374151]"
               >
-                <span
-                  className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[11px] font-semibold leading-none text-[#d7a220] tabular-nums"
-                  aria-hidden
-                >
-                  {highlightIndex + 1}
-                </span>
-                <span className="min-w-0 break-words text-[14px] font-medium leading-6 text-[#101828]">
-                  <MathInlineText text={highlight.text} renderTextSegment={renderHighlightTextSegment} />
-                </span>
+                <MathInlineText text={highlight.text} renderTextSegment={renderHighlightTextSegment} />
               </li>
             ))}
-          </ol>
+          </ul>
         </section>
       ) : null}
 
@@ -1649,7 +1641,7 @@ function LongformBodyReader({
               <h4
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 max-w-[68ch] break-words text-[16px] font-semibold leading-7 text-[#101828]",
+                  "m-0 max-w-[68ch] break-words text-[15px] font-semibold leading-7 text-[#101828]",
                   blockIndex > 0 ? "mt-9" : "",
                 ].join(" ")}
               >
@@ -1663,7 +1655,7 @@ function LongformBodyReader({
               <div
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 flex flex-col gap-2 rounded-md bg-[#f5f5f5] px-4 py-3 text-[14px] leading-6 text-[#374151]",
+                  "m-0 flex flex-col gap-2 rounded-md bg-[#f5f5f5] px-4 py-3 text-[13px] leading-6 text-[#374151] sm:text-[14px]",
                   blockIndex > 0 ? "mt-5" : "",
                 ].join(" ")}
                 role="list"
@@ -1674,7 +1666,7 @@ function LongformBodyReader({
                     className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2.5"
                     role="listitem"
                   >
-                    <span className="pt-[1px] text-[11px] font-semibold leading-6 text-[#d7a220] tabular-nums">
+                    <span className="pt-[1px] text-[11px] font-semibold leading-6 text-[#99a1af] tabular-nums">
                       {block.ordered ? itemIndex + 1 : "•"}
                     </span>
                     <span className="min-w-0 break-words">
@@ -1696,7 +1688,7 @@ function LongformBodyReader({
               className={[
                 "max-w-[70ch]",
                 blockIndex > 0 ? (isFocus ? "mt-6" : "mt-4") : "",
-                isFocus ? "border-l-2 border-[#d7a220] bg-white py-3 pl-4 pr-3" : "",
+                isFocus ? "border-l border-[#e5e7eb] py-2 pl-4 pr-3" : "",
               ].join(" ")}
             >
               <MathBlockText
@@ -1704,10 +1696,10 @@ function LongformBodyReader({
                 textClassName={[
                   "m-0 break-words [text-wrap:pretty]",
                   isFocus
-                    ? "text-[15px] font-medium leading-[30px] text-[#101828] sm:text-[16px] sm:leading-8"
+                    ? "text-[14px] font-medium leading-7 text-[#101828] sm:text-[15px] sm:leading-[30px]"
                     : isLead
-                      ? "text-[16px] font-medium leading-8 text-[#101828] sm:text-[17px] sm:leading-9"
-                      : "text-[15px] leading-[30px] text-[#374151] sm:text-[16px] sm:leading-8",
+                      ? "text-[15px] font-medium leading-[30px] text-[#101828] sm:text-[16px] sm:leading-8"
+                      : "text-[14px] leading-7 text-[#374151] sm:text-[15px] sm:leading-[30px]",
                 ].join(" ")}
                 renderTextSegment={renderTextSegment}
               />
