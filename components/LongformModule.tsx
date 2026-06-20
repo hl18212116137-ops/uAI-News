@@ -1328,7 +1328,7 @@ function AddArticleButton({ onClick }: { onClick?: () => void }) {
         type="button"
         onClick={onClick}
         aria-label="添加文章"
-        className="btn-press inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#e5e7eb] bg-white p-0 text-[#6a7282] shadow-xs transition-colors hover:border-primary-100 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30"
+        className="btn-press inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-[#6a7282] transition-colors hover:bg-[#f5f5f5] hover:text-[#101828] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30"
       >
         <PlusGlyph className="block size-4" />
       </button>
@@ -1691,7 +1691,7 @@ function LongformArticleToc({
       }}
       aria-label="长文目录"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-[#f3f4f6] px-4 py-3.5">
+      <div className="flex items-center justify-between gap-3 px-4 py-3.5">
         <div
           className="flex min-w-0 flex-1 cursor-grab touch-none items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 active:cursor-grabbing"
           role="button"
@@ -1857,7 +1857,7 @@ export default function LongformModule({
       <section
         aria-label="优质长文"
         data-name="Premium longform"
-        className="w-full min-w-0 border-y border-[#f3f4f6] py-16 text-center"
+        className="w-full min-w-0 py-16 text-center"
       >
         <h2 className="m-0 text-[16px] font-semibold leading-6 text-[#101828]">
           暂无长文
@@ -1877,7 +1877,7 @@ export default function LongformModule({
       id={LONGFORM_SECTION_ID}
       aria-label="优质长文"
       data-name="Premium longform"
-      className="relative w-full min-w-0 border-y border-[#f3f4f6]"
+      className="relative w-full min-w-0"
     >
       {showFloatingToc && isTocOpen ? (
         <LongformArticleToc
@@ -1889,7 +1889,7 @@ export default function LongformModule({
       ) : null}
       <div
         id={LONGFORM_HEADER_ID}
-        className="flex min-h-[58px] flex-col justify-center gap-3 border-b border-[#f3f4f6] py-3 sm:flex-row sm:items-center sm:justify-between"
+        className="flex min-h-[58px] flex-col justify-center gap-3 py-3 sm:flex-row sm:items-center sm:justify-between"
       >
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -1906,7 +1906,7 @@ export default function LongformModule({
         </div>
       </div>
 
-      <div className="flex w-full min-w-0 flex-col divide-y divide-[#f3f4f6]">
+      <div className="flex w-full min-w-0 flex-col">
         {longformPosts.map((post, index) => {
           const article = post.longform;
           const paragraphs = getParagraphs(article.translatedContent);
@@ -2050,7 +2050,7 @@ export default function LongformModule({
                     renderTextSegment={renderDigestTextSegment}
                   >
                     <LongformCollapse isOpen={isOpen}>
-                      <div className="border-t border-[#e5e7eb]" data-longform-keep-open>
+                      <div data-longform-keep-open>
                       <div className="px-4 py-5 sm:px-6 sm:py-6">
                         {isPreview ? (
                           <div
@@ -2141,7 +2141,7 @@ export default function LongformModule({
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-3 border-t border-[#f3f4f6] bg-[#fcfcfd] px-4 py-3 text-[12px] leading-[18px] sm:px-5">
+                      <div className="flex flex-wrap items-center gap-3 bg-[#fcfcfd] px-4 py-3 text-[12px] leading-[18px] sm:px-5">
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
                           {isHttpUrl(article.resolvedUrl) ? (
                             <a
