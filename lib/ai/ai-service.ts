@@ -20,6 +20,16 @@ export interface AIProcessedContent {
   passReason?: string;
 }
 
+export type LongformDigestDraft = {
+  summary: string;
+  points: string[];
+};
+
+export type LongformDigestInput = {
+  title: string;
+  content: string;
+};
+
 /**
  * AI 服务接口
  * 统一的 AI 服务抽象，支持多个 AI 提供商
@@ -45,6 +55,11 @@ export interface AIService {
    * @returns Promise<string> 翻译后的中文内容
    */
   translateContent(content: string): Promise<string>;
+
+  /**
+   * 为长文生成读者摘要：一句讲什么 + 三个重点
+   */
+  summarizeLongform(input: LongformDigestInput): Promise<LongformDigestDraft>;
 
   /**
    * 生成博主简介摘要

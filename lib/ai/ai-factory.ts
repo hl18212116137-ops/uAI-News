@@ -1,4 +1,4 @@
-import { AIService, AIProcessedContent, PostInsightContext } from './ai-service';
+import { AIService, AIProcessedContent, LongformDigestDraft, LongformDigestInput, PostInsightContext } from './ai-service';
 import { NewsCategory } from '../types';
 import { MinimaxService } from './minimax-service';
 import { ClaudeService } from './claude-service';
@@ -119,6 +119,30 @@ class AIServiceWithFallback implements AIService {
       } catch (fallbackError) {
         console.error('Both AI services failed:', { primaryError, fallbackError });
         throw new Error('All AI services failed');
+      }
+    }
+  }
+
+  async summarizeLongform(input: LongformDigestInput): Promise<LongformDigestDraft> {
+    try {
+      return await this.retryWithExponentialBackoff(
+        () => this.primaryService.summarizeLongform(input),
+        3
+      );
+    } catch (primaryError) {
+      console.warn(
+        `Primary AI service (${this.primaryService.getProviderName()}) failed, falling back to ${this.fallbackService.getProviderName()}`,
+        primaryError
+      );
+
+      try {
+        return await this.retryWithExponentialBackoff(
+          () => this.fallbackService.summarizeLongform(input),
+          2
+        );
+      } catch (fallbackError) {
+        console.error('Both AI services failed:', { primaryError, fallbackError });
+        throw fallbackError;
       }
     }
   }

@@ -107,7 +107,7 @@ type AcronymExpansionState = {
   expansionTotal: number;
 };
 
-type ArticleDigestRole = "scope" | "approach" | "finding" | "boundary";
+type ArticleDigestRole = "problem" | "method" | "result";
 
 type ArticleDigestRoleCandidate = {
   role: ArticleDigestRole;
@@ -121,8 +121,8 @@ type ArticleDigestRoleCandidate = {
 const DIGEST_POINT_LIMIT = 3;
 const SUMMARY_MAX_LENGTH = 150;
 const POINT_MAX_LENGTH = 112;
-const PLAIN_SUMMARY_MAX_LENGTH = 112;
-const PLAIN_POINT_MAX_LENGTH = 88;
+const PLAIN_SUMMARY_MAX_LENGTH = 76;
+const PLAIN_POINT_MAX_LENGTH = 72;
 const BODY_PARAGRAPH_TARGET_LENGTH = 360;
 const BODY_PARAGRAPH_MAX_LENGTH = 520;
 const BODY_EMPHASIS_TERM_LIMIT = 5;
@@ -154,19 +154,12 @@ const CONCLUSION_SECTION_RE =
   /(结论|结语|总结|发现|结果|讨论|启示|影响|建议|实践意义|局限|展望|conclusion|findings|results|discussion|implications|recommendations|takeaways|limitations)/i;
 const INTRO_SECTION_RE =
   /^(摘要|abstract|概要|summary|引言|介绍|背景|introduction|overview|background)$/i;
-const DIGEST_ROLE_LABELS: Record<Exclude<ArticleDigestRole, "scope">, string> = {
-  approach: "做法",
-  finding: "发现",
-  boundary: "注意",
-};
-const DIGEST_SCOPE_RE =
-  /(本文|这篇文章|这项研究|本研究|论文|报告|提出|介绍|围绕|讨论|研究|检验|评估|探索|旨在|we (present|introduce|study|explore|evaluate|propose)|this (paper|study|article|report))/i;
-const DIGEST_APPROACH_RE =
-  /(通过|采用|构建|训练|微调|实验|数据|基准|评测|比较|观察|分析|验证|样本|方法|框架|benchmark|dataset|method|framework|train|fine-tun|evaluate|experiment|test|SFT|RL)/i;
-const DIGEST_FINDING_RE =
-  /(发现|结果|表明|显示|证明|达到|超过|提升|优于|显著|降低|提高|说明|意味着|found|results?|show|suggest|indicate|achieve|outperform|improve|significant)/i;
-const DIGEST_BOUNDARY_RE =
-  /(但|但是|然而|仍然|仍|局限|不足|边界|依赖|限制|风险|挑战|难以|不能|并不|不是|需要|未来|展望|however|but|limitation|challenge|remain|depend|risk|future)/i;
+const DIGEST_PROBLEM_RE =
+  /(问题|矛盾|挑战|难题|瓶颈|成本|昂贵|误差|限制|难以|当前|传统|现有|要解决|需要解决|面临|problem|challenge|trade-off|cost|expensive|error|limitation)/i;
+const DIGEST_METHOD_RE =
+  /(提出|引入|设计|采用|构建|训练|方法|模型|框架|架构|系统|通过|用来|解决|we (propose|present|introduce|design)|method|model|framework|architecture)/i;
+const DIGEST_RESULT_RE =
+  /(结果|实验|实现|达到|超过|优于|提升|降低|提高|效率|参数|倍|任务|表现|证明|说明|demonstrate|outperform|achieve|improve|efficient|results?|tasks?|parameters?)/i;
 
 function getLongformPosts(posts: NewsItem[]): LongformPost[] {
   const seenUrls = new Set<string>();
@@ -670,6 +663,7 @@ function stripAcademicNoise(text: string): string {
 function plainDigestText(text: string): string {
   return normalizeText(text)
     .replace(/本研究|本文|本论文|这项研究|该研究/g, "文章")
+    .replace(/当前的?([^，。；;：:]{2,24})面临(?:一个)?(?:根本性的)?矛盾[:：]/g, "$1的问题是")
     .replace(/旨在|意在/g, "想")
     .replace(/探究|探索|考察/g, "弄清")
     .replace(/验证/g, "检验")
@@ -684,6 +678,11 @@ function plainDigestText(text: string): string {
     .replace(/可验证推理/g, "可检验推理")
     .replace(/专项能力/g, "专门能力")
     .replace(/推理效率/g, "推理速度")
+    .replace(/要实现可靠的长期模拟要深度计算/g, "长期模拟要大量计算")
+    .replace(/更深的模型部署成本高昂/g, "模型越深成本越高")
+    .replace(/容易产生累积误差/g, "误差也容易累积")
+    .replace(/自适应计算能力/g, "按难度调整计算量")
+    .replace(/自动调整深度以匹配每一步预测的复杂度/g, "能按每一步的难度决定算多深")
     .replace(/复杂编程任务/g, "复杂编程")
     .replace(/高难数学/g, "难数学")
     .replace(/\s+/g, " ")
@@ -706,8 +705,26 @@ function formatArticleDigestLine(raw: string, maxLength: number): string {
   return finishSentence(truncateText(clean, maxLength));
 }
 
-function formatArticleDigestSummaryLine(raw: string | undefined): string {
-  return formatArticleDigestLine(raw || "", PLAIN_SUMMARY_MAX_LENGTH);
+function getArticleDigestName(title: string, text: string): string {
+  const cleanTitle = compactDigestLead(title).replace(/[。！？!?]$/g, "").trim();
+  const acronym = text.match(/\b[A-Z][A-Za-z0-9-]{2,}\b/)?.[0];
+  if (cleanTitle && acronym && !cleanTitle.includes(acronym)) return `${cleanTitle}（${acronym}）`;
+  return cleanTitle || acronym || "这篇文章";
+}
+
+function buildDigestSummary(title: string, problem: string | undefined, method: string | undefined, fallback: string | undefined): string {
+  const context = [method, problem, fallback].filter(Boolean).join(" ");
+  const name = getArticleDigestName(title, context);
+  const definitionMatch = context.match(/(?:这?是|属于|作为)([^。！？；;]{4,42}(?:架构|方法|模型|系统|框架))/);
+  const problemText = formatArticleDigestLine(problem || "", 34).replace(/[。！？!?]$/g, "");
+
+  if (definitionMatch?.[1] && problemText) {
+    return finishSentence(truncateText(`${name}：${definitionMatch[1]}，用来解决${problemText}`, PLAIN_SUMMARY_MAX_LENGTH));
+  }
+  if (problemText) {
+    return finishSentence(truncateText(`${name}：解决${problemText}`, PLAIN_SUMMARY_MAX_LENGTH));
+  }
+  return formatArticleDigestLine(fallback || name, PLAIN_SUMMARY_MAX_LENGTH);
 }
 
 function scoreArticleDigestRole(
@@ -721,34 +738,29 @@ function scoreArticleDigestRole(
   const position = paragraphCount > 1 ? paragraphIndex / (paragraphCount - 1) : 0;
   let score = 0;
 
-  if (role === "scope") {
-    if (DIGEST_SCOPE_RE.test(clean)) score += 4;
-    if (position <= 0.22) score += 1.6;
-    if (sectionHeading && INTRO_SECTION_RE.test(normalizeText(sectionHeading))) score += 1;
+  if (role === "problem") {
+    if (DIGEST_PROBLEM_RE.test(clean)) score += 4;
+    if (position <= 0.35) score += 1.4;
+    if (sectionHeading && INTRO_SECTION_RE.test(normalizeText(sectionHeading))) score += 0.8;
   }
 
-  if (role === "approach") {
-    if (DIGEST_APPROACH_RE.test(clean)) score += 4;
-    if (position >= 0.12 && position <= 0.62) score += 1.2;
+  if (role === "method") {
+    if (DIGEST_METHOD_RE.test(clean)) score += 4;
+    if (position <= 0.58) score += 1.1;
     if (METHOD_RE.test(clean)) score += 0.9;
   }
 
-  if (role === "finding") {
-    if (DIGEST_FINDING_RE.test(clean) || FINDING_RE.test(clean)) score += 4;
-    if (position >= 0.32) score += 1.2;
-    if (sectionHeading && CONCLUSION_SECTION_RE.test(sectionHeading)) score += 1.4;
-  }
-
-  if (role === "boundary") {
-    if (DIGEST_BOUNDARY_RE.test(clean)) score += 4;
-    if (position >= 0.42) score += 1.3;
-    if (sectionHeading && CONCLUSION_SECTION_RE.test(sectionHeading)) score += 1;
+  if (role === "result") {
+    if (DIGEST_RESULT_RE.test(clean) || FINDING_RE.test(clean)) score += 4;
+    if (position >= 0.18) score += 1.1;
+    if (sectionHeading && CONCLUSION_SECTION_RE.test(sectionHeading)) score += 1.2;
   }
 
   if (hasQuantitativeSignal(clean)) score += 0.7;
   if (LOW_VALUE_RE.test(clean)) score -= 5;
   if (FIGURE_RE.test(clean) && !FINDING_RE.test(clean)) score -= 2;
-  if (EXAMPLE_RE.test(clean) && role !== "approach") score -= 1.8;
+  if (EXAMPLE_RE.test(clean) && role !== "method") score -= 1.8;
+  if (role === "result" && /TransDreamer|DreamerV3/i.test(clean) && !/(相比|与传统|参数|任务|效率|表现|超过|优于)/.test(clean)) score -= 2.5;
   if (clean.length < 24) score -= 2;
   if (clean.length > 220) score -= 0.6;
 
@@ -770,7 +782,7 @@ function collectArticleDigestRoleCandidates(post: LongformPost, paragraphs: stri
       return;
     }
 
-    if (isBoilerplateParagraph(cleanParagraph, title) && !DIGEST_SCOPE_RE.test(cleanParagraph)) {
+    if (isBoilerplateParagraph(cleanParagraph, title) && !DIGEST_PROBLEM_RE.test(cleanParagraph) && !DIGEST_METHOD_RE.test(cleanParagraph)) {
       return;
     }
 
@@ -779,7 +791,7 @@ function collectArticleDigestRoleCandidates(post: LongformPost, paragraphs: stri
       const fingerprint = sentenceFingerprint(cleanSentence);
       if (!fingerprint || fingerprint === titleKey) return;
 
-      (["scope", "approach", "finding", "boundary"] as ArticleDigestRole[]).forEach((role) => {
+      (["problem", "method", "result"] as ArticleDigestRole[]).forEach((role) => {
         const score = scoreArticleDigestRole(cleanSentence, role, paragraphIndex, paragraphs.length, sectionHeading);
         if (score < 2.2) return;
         candidates.push({
@@ -811,10 +823,8 @@ function pickArticleDigestRoleCandidate(
     })[0] ?? null;
 }
 
-function buildArticleDigestPoint(role: Exclude<ArticleDigestRole, "scope">, text: string): string {
-  const label = DIGEST_ROLE_LABELS[role];
-  const body = formatArticleDigestLine(text, PLAIN_POINT_MAX_LENGTH - label.length - 1);
-  return `${label}：${body}`;
+function buildArticleDigestPoint(text: string): string {
+  return formatArticleDigestLine(text, PLAIN_POINT_MAX_LENGTH);
 }
 
 function sentenceFingerprint(text: string): string {
@@ -912,30 +922,35 @@ function getParagraphs(text: string): string[] {
 
 function buildLongformDigest(post: LongformPost, paragraphs: string[]): LongformDigest {
   const article = post.longform;
+  const storedSummary = normalizeText(article.digestSummary || "");
+  const storedPoints = (article.digestPoints ?? [])
+    .map((point) => normalizeText(point))
+    .filter(Boolean)
+    .slice(0, DIGEST_POINT_LIMIT);
+  if (storedSummary || storedPoints.length > 0) {
+    return { summary: storedSummary, points: storedPoints };
+  }
+
   const title = getArticleTitle(post);
   const digestParagraphs = getDigestParagraphs(post, paragraphs);
   const roleCandidates = collectArticleDigestRoleCandidates(post, paragraphs);
   const usedFingerprints = new Set<string>();
-  const scopeCandidate = pickArticleDigestRoleCandidate(roleCandidates, "scope", usedFingerprints);
-  if (scopeCandidate) usedFingerprints.add(scopeCandidate.fingerprint);
+  const problemCandidate = pickArticleDigestRoleCandidate(roleCandidates, "problem", usedFingerprints);
+  if (problemCandidate) usedFingerprints.add(problemCandidate.fingerprint);
+  const methodCandidate = pickArticleDigestRoleCandidate(roleCandidates, "method", usedFingerprints);
+  if (methodCandidate) usedFingerprints.add(methodCandidate.fingerprint);
+  const resultCandidate = pickArticleDigestRoleCandidate(roleCandidates, "result", usedFingerprints);
+  if (resultCandidate) usedFingerprints.add(resultCandidate.fingerprint);
 
-  const summarySource = [scopeCandidate?.text, digestParagraphs[0], article.excerpt, paragraphs[0]]
+  const fallbackSummarySource = [article.excerpt, digestParagraphs[0], paragraphs[0]]
     .map((value) => normalizeText(value || ""))
     .find((value) => value && !isBoilerplateParagraph(value, title));
-
-  const seen = new Set<string>();
-
-  const buildLine = (raw: string | undefined, maxLength: number, summaryLine = false) => {
-    if (!raw) return "";
-    const line = summaryLine ? formatArticleDigestSummaryLine(raw) : formatArticleDigestLine(raw, maxLength);
-    if (line.length < 16) return "";
-    const key = sentenceFingerprint(line);
-    if (!key || seen.has(key)) return "";
-    seen.add(key);
-    return line;
-  };
-
-  const summary = buildLine(summarySource, PLAIN_SUMMARY_MAX_LENGTH, true);
+  const summary = buildDigestSummary(
+    title,
+    problemCandidate?.text,
+    methodCandidate?.text,
+    fallbackSummarySource,
+  );
   const points: string[] = [];
   const summaryKey = sentenceFingerprint(summary);
   const pointSeen = new Set<string>();
@@ -959,11 +974,9 @@ function buildLongformDigest(post: LongformPost, paragraphs: string[]): Longform
     points.push(point);
   };
 
-  for (const role of ["approach", "finding", "boundary"] as const) {
-    const candidate = pickArticleDigestRoleCandidate(roleCandidates, role, usedFingerprints);
+  for (const candidate of [problemCandidate, methodCandidate, resultCandidate]) {
     if (!candidate) continue;
-    usedFingerprints.add(candidate.fingerprint);
-    addPoint(buildArticleDigestPoint(role, candidate.text), true);
+    addPoint(buildArticleDigestPoint(candidate.text), true);
   }
 
   if (points.length < DIGEST_POINT_LIMIT) {
@@ -975,12 +988,7 @@ function buildLongformDigest(post: LongformPost, paragraphs: string[]): Longform
       });
 
     for (const candidate of fallbackCandidates) {
-      addPoint(
-        candidate.role === "scope"
-          ? formatArticleDigestLine(candidate.text, PLAIN_POINT_MAX_LENGTH)
-          : buildArticleDigestPoint(candidate.role, candidate.text),
-        true,
-      );
+      addPoint(buildArticleDigestPoint(candidate.text), true);
       usedFingerprints.add(candidate.fingerprint);
       if (points.length >= DIGEST_POINT_LIMIT) break;
     }

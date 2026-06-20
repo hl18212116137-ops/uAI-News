@@ -224,6 +224,8 @@ type LongformPreviewRow = {
   sourceNameLongform: string
   authorName: string
   excerpt: string
+  digestSummary: string
+  digestPoints: unknown
   translatedTitle: string
   translatedContentPreview: string
   originalWordCount: string
@@ -261,6 +263,11 @@ function mapLongformPreviewRowToItem(row: LongformPreviewRow): NewsItem | null {
     excerpt: row.excerpt.trim() || translatedContent.slice(0, 260),
   }
   if (row.authorName.trim()) longform.authorName = row.authorName.trim()
+  if (row.digestSummary.trim()) longform.digestSummary = row.digestSummary.trim()
+  const digestPoints = Array.isArray(row.digestPoints)
+    ? row.digestPoints.map((point) => String(point).trim()).filter(Boolean).slice(0, 3)
+    : []
+  if (digestPoints.length > 0) longform.digestPoints = digestPoints
   if (row.translatedTitle.trim()) longform.translatedTitle = row.translatedTitle.trim()
   if (
     discoveryMethod === 'url' ||
@@ -318,6 +325,8 @@ export async function getRecentLongformPostPreviews(limit = 40): Promise<NewsIte
         sourceNameLongform: sql<string>`coalesce(${newsItems.longformJson}->>'sourceName', '')`,
         authorName: sql<string>`coalesce(${newsItems.longformJson}->>'authorName', '')`,
         excerpt: sql<string>`coalesce(${newsItems.longformJson}->>'excerpt', '')`,
+        digestSummary: sql<string>`coalesce(${newsItems.longformJson}->>'digestSummary', '')`,
+        digestPoints: sql<unknown>`${newsItems.longformJson}->'digestPoints'`,
         translatedTitle: sql<string>`coalesce(${newsItems.longformJson}->>'translatedTitle', '')`,
         translatedContentPreview: sql<string>`substring(coalesce(${newsItems.longformJson}->>'translatedContent', '') from 1 for ${previewLength})`,
         originalWordCount: sql<string>`coalesce(${newsItems.longformJson}->>'originalWordCount', '')`,
@@ -373,7 +382,19 @@ export function longformArticleFromDbJson(value: unknown): LongformArticle | und
   if (typeof o.translatedTitle === 'string' && o.translatedTitle.trim()) {
     article.translatedTitle = o.translatedTitle
   }
-  if (o.discoveryMethod === 'url' || o.discoveryMethod === 'image-search' || o.discoveryMethod === 'text-search') {
+  if (typeof o.digestSummary === 'string' && o.digestSummary.trim()) {
+    article.digestSummary = o.digestSummary.trim()
+  }
+  if (Array.isArray(o.digestPoints)) {
+    const digestPoints = o.digestPoints.map((point) => String(point).trim()).filter(Boolean).slice(0, 3)
+    if (digestPoints.length > 0) article.digestPoints = digestPoints
+  }
+  if (
+    o.discoveryMethod === 'url' ||
+    o.discoveryMethod === 'image-search' ||
+    o.discoveryMethod === 'text-search' ||
+    o.discoveryMethod === 'x-article'
+  ) {
     article.discoveryMethod = o.discoveryMethod
   }
   if (typeof o.confidence === 'number' && Number.isFinite(o.confidence)) {

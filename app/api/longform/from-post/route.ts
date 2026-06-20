@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { getDefaultAIService } from '@/lib/ai/ai-factory'
 import { getPostById, normalizeNewsItemId, updateNewsItemLongform } from '@/lib/db/news'
 import { extractLongformForRawPost } from '@/lib/longform'
+import { enrichLongformArticle, precomputeLongformInsight } from '@/lib/longform-enrichment'
 import type { NewsItem } from '@/lib/types'
 
 export const runtime = 'nodejs'
@@ -23,12 +24,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: '没有找到这条推文' }, { status: 404 })
     }
 
+    const aiService = getDefaultAIService()
+
     if (existing.longform?.translatedContent) {
+      const enriched = await enrichLongformArticle(existing.longform, aiService)
+      if (
+        enriched.digestSummary !== existing.longform.digestSummary ||
+        JSON.stringify(enriched.digestPoints ?? []) !== JSON.stringify(existing.longform.digestPoints ?? [])
+      ) {
+        const saved = await updateNewsItemLongform(existing.id, enriched)
+        if (!saved.ok) {
+          return NextResponse.json(
+            { success: false, error: saved.error || '长文保存失败' },
+            { status: 500 },
+          )
+        }
+        await precomputeLongformInsight({
+          postId: existing.id,
+          article: enriched,
+          aiService,
+          source: existing.source,
+        })
+        return NextResponse.json({
+          success: true,
+          post: { ...existing, longform: enriched } satisfies NewsItem,
+          alreadyExists: true,
+        })
+      }
       return NextResponse.json({ success: true, post: existing, alreadyExists: true })
     }
 
-    const aiService = getDefaultAIService()
-    const longform = await extractLongformForRawPost(
+    const extracted = await extractLongformForRawPost(
       {
         platform: existing.source.platform,
         text: existing.originalText || existing.content || existing.summary,
@@ -41,13 +67,14 @@ export async function POST(request: Request) {
       (text) => aiService.translateContent(text),
     )
 
-    if (!longform?.translatedContent) {
+    if (!extracted?.translatedContent) {
       return NextResponse.json(
         { success: false, code: 'NO_LONGFORM', error: NO_LONGFORM_MESSAGE },
         { status: 404 },
       )
     }
 
+    const longform = await enrichLongformArticle(extracted, aiService)
     const saved = await updateNewsItemLongform(existing.id, longform)
     if (!saved.ok) {
       return NextResponse.json(
@@ -55,6 +82,13 @@ export async function POST(request: Request) {
         { status: 500 },
       )
     }
+
+    await precomputeLongformInsight({
+      postId: existing.id,
+      article: longform,
+      aiService,
+      source: existing.source,
+    })
 
     revalidatePath('/')
     const post: NewsItem = { ...existing, longform }

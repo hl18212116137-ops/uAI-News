@@ -45,6 +45,8 @@ export type LongformArticle = {
   sourceName: string;
   authorName?: string;
   excerpt: string;
+  digestSummary?: string;
+  digestPoints?: string[];
   translatedTitle?: string;
   translatedContent: string;
   originalWordCount: number;

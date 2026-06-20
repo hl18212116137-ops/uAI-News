@@ -1,4 +1,5 @@
-import { AIService, AIProcessedContent, PostInsightContext } from './ai-service';
+import { AIService, AIProcessedContent, LongformDigestDraft, LongformDigestInput, PostInsightContext } from './ai-service';
+import { buildLongformDigestPrompt, parseLongformDigestResponse } from './longform-digest';
 import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
@@ -191,6 +192,16 @@ ${content}`;
       return cleaned;
     } catch (error) {
       console.error('MiniMax translateContent error:', error);
+      throw error;
+    }
+  }
+
+  async summarizeLongform(input: LongformDigestInput): Promise<LongformDigestDraft> {
+    try {
+      const responseText = await this.callAPI(buildLongformDigestPrompt(input));
+      return parseLongformDigestResponse(responseText);
+    } catch (error) {
+      console.error('MiniMax summarizeLongform error:', error);
       throw error;
     }
   }

@@ -3,10 +3,12 @@ import 'server-only'
 import { createHash } from 'crypto'
 import { addPost } from '@/lib/db'
 import { getDefaultAIService } from '@/lib/ai/ai-factory'
+import type { AIService } from '@/lib/ai/ai-service'
 import {
   createLongformFromTextArticle,
   extractLongformFromDirectUrl,
 } from '@/lib/longform'
+import { enrichLongformArticle, precomputeLongformInsight } from '@/lib/longform-enrichment'
 import { parseXStatusUrl } from '@/lib/news-post-url'
 import { fetchTweetById, fetchXArticleByTweetId, hasXArticleEntity } from '@/lib/x'
 import { isMostlyChinese } from '@/lib/text-locale'
@@ -128,6 +130,7 @@ async function persistLongformArticle(params: {
   source?: NewsItem['source']
   publishedAt?: string
   idPrefix?: string
+  aiService?: AIService
 }): Promise<NewsItem> {
   const now = new Date().toISOString()
   const sourceHost = hostFromUrl(params.sourceUrl)
@@ -135,7 +138,7 @@ async function persistLongformArticle(params: {
   const post: NewsItem = {
     id: `${params.idPrefix || 'manual-longform'}-${sha256(params.idSeed).slice(0, 20)}`,
     title,
-    summary: params.article.excerpt || params.article.translatedContent.slice(0, 180),
+    summary: params.article.digestSummary || params.article.excerpt || params.article.translatedContent.slice(0, 180),
     content: params.article.translatedContent,
     source: params.source || {
       platform: 'Blog',
@@ -145,13 +148,21 @@ async function persistLongformArticle(params: {
     },
     category: '行业' as NewsItem['category'],
     publishedAt: params.publishedAt || now,
-    originalText: params.originalText.slice(0, 12000),
+    originalText: (params.originalText || params.article.translatedContent).slice(0, 12000),
     createdAt: now,
     importanceScore: 85,
     longform: params.article,
   }
 
   await addPost(post)
+  if (params.aiService) {
+    await precomputeLongformInsight({
+      postId: post.id,
+      article: params.article,
+      aiService: params.aiService,
+      source: post.source,
+    })
+  }
   return post
 }
 
@@ -185,12 +196,12 @@ async function importXArticleLongformFromUrl(rawUrl: string): Promise<LongformIm
     },
     translate,
   )
-  const article: LongformArticle = {
+  const article: LongformArticle = await enrichLongformArticle({
     ...articleBase,
     url: sourceUrl,
     resolvedUrl: sourceUrl,
     discoveryMethod: 'x-article',
-  }
+  }, aiService)
   const handle = (xArticle.authorHandle || tweet.handle || parsed.handle).replace(/^@/, '')
   const post = await persistLongformArticle({
     article,
@@ -199,6 +210,7 @@ async function importXArticleLongformFromUrl(rawUrl: string): Promise<LongformIm
     originalText: xArticle.text,
     publishedAt: xArticle.createdAt || tweet.posted_at,
     idPrefix: 'x-longform',
+    aiService,
     source: {
       platform: 'X',
       name: xArticle.authorName || tweet.author_name || handle,
@@ -216,19 +228,21 @@ export async function importLongformFromUrl(rawUrl: string): Promise<LongformImp
   if (xArticle) return xArticle
 
   const aiService = getDefaultAIService()
-  const article = await extractLongformFromDirectUrl(url, (text) =>
+  const articleBase = await extractLongformFromDirectUrl(url, (text) =>
     aiService.translateContent(text),
   )
 
-  if (!article) {
+  if (!articleBase) {
     throw new Error('没有抓取到足够完整的文章正文，请换一个原文页面或上传文本文件')
   }
+  const article = await enrichLongformArticle(articleBase, aiService)
 
   const post = await persistLongformArticle({
     article,
     idSeed: article.resolvedUrl || article.url,
     sourceUrl: article.resolvedUrl || article.url,
-    originalText: `${article.title}\n\n${article.resolvedUrl || article.url}`,
+    originalText: `${article.translatedTitle || article.title}\n\n${article.translatedContent}`,
+    aiService,
   })
 
   return { post }
@@ -249,7 +263,7 @@ export async function importLongformFromTextFile(
   const digest = sha256(`${input.fileName}\n${text}`)
   const pseudoUrl = `manual-upload:${digest.slice(0, 20)}`
   const aiService = getDefaultAIService()
-  const article = await createLongformFromTextArticle(
+  const articleBase = await createLongformFromTextArticle(
     {
       requestedUrl: pseudoUrl,
       resolvedUrl: pseudoUrl,
@@ -259,12 +273,14 @@ export async function importLongformFromTextFile(
     },
     (chunk) => aiService.translateContent(chunk),
   )
+  const article = await enrichLongformArticle(articleBase, aiService)
 
   const post = await persistLongformArticle({
     article,
     idSeed: pseudoUrl,
     sourceUrl: pseudoUrl,
     originalText: text,
+    aiService,
   })
 
   return { post }
