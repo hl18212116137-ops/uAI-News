@@ -1152,14 +1152,9 @@ function splitBodyParagraph(paragraph: string): string[] {
   return chunks.length > 0 ? chunks : [clean];
 }
 
-function buildOptimizedBodyBlocks(
-  paragraphs: string[],
-  title: string,
-  options: { detectHeadings?: boolean } = {},
-): LongformBodyBlock[] {
+function buildOptimizedBodyBlocks(paragraphs: string[], title: string): LongformBodyBlock[] {
   const blocks: LongformBodyBlock[] = [];
   let pendingList: Extract<LongformBodyBlock, { kind: "list" }> | null = null;
-  const detectHeadings = options.detectHeadings ?? true;
 
   const flushList = () => {
     if (!pendingList || pendingList.items.length === 0) return;
@@ -1168,7 +1163,7 @@ function buildOptimizedBodyBlocks(
   };
 
   getCleanBodyParagraphs(paragraphs, title).forEach((paragraph, paragraphIndex) => {
-    if (detectHeadings && isLikelySectionHeading(paragraph, paragraphIndex)) {
+    if (isLikelySectionHeading(paragraph, paragraphIndex)) {
       flushList();
       blocks.push({ kind: "heading", text: normalizeLongformBodyDisplayText(paragraph) });
       return;
@@ -2012,7 +2007,6 @@ export default function LongformModule({
         {longformPosts.map((post, index) => {
           const article = post.longform;
           const sourceParagraphs = getParagraphs(article.translatedContent);
-          const hasReadingContent = Boolean(article.readingContent?.trim());
           const readingParagraphs = getParagraphs(article.readingContent || article.translatedContent);
           const digest = buildLongformDigest(post, sourceParagraphs);
           const title = getArticleTitle(post);
@@ -2020,9 +2014,7 @@ export default function LongformModule({
           const articleKey = getArticleKey(post);
           const articleId = getLongformArticleDomId(post.id);
           const isOpen = openKey === articleKey;
-          const rawBodyBlocks = buildOptimizedBodyBlocks(readingParagraphs, title, {
-            detectHeadings: !hasReadingContent,
-          });
+          const rawBodyBlocks = buildOptimizedBodyBlocks(readingParagraphs, title);
           const emphasisTerms = getLongformEmphasisTerms(title, rawBodyBlocks);
           const digestEmphasisTerms = getLongformDigestEmphasisTerms(title, digest, emphasisTerms);
           const bodyBlocks = expandKnownAcronymsInBlocks(rawBodyBlocks);
