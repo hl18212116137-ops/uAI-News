@@ -1541,7 +1541,7 @@ function LongformBodyReader({
   renderTextSegment?: (text: string, keyPrefix: string) => ReactNode;
 }) {
   return (
-    <div className="mx-auto flex max-w-[66ch] flex-col">
+    <div className="mx-auto flex max-w-[76ch] flex-col">
       <div className="flex flex-col">
         {bodyBlocks.map((block, blockIndex) => {
           if (block.kind === "heading") {
@@ -1549,8 +1549,8 @@ function LongformBodyReader({
               <h4
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 max-w-[66ch] break-words text-[14px] font-semibold leading-6 text-[#101828]",
-                  blockIndex > 0 ? "mt-8" : "",
+                  "m-0 max-w-[68ch] break-words text-[15px] font-semibold leading-7 text-[#101828]",
+                  blockIndex > 0 ? "mt-9" : "",
                 ].join(" ")}
               >
                 <MathInlineText text={block.text} />
@@ -1566,7 +1566,7 @@ function LongformBodyReader({
               <div
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 flex max-w-[66ch] flex-col gap-1.5 text-[14px] leading-[26px] sm:leading-7",
+                  "m-0 flex max-w-[70ch] flex-col gap-1.5 text-[14px] leading-[26px] sm:leading-7",
                   isNarrative ? "font-medium text-[#101828]" : "font-normal text-[#6a7282]",
                   blockIndex > 0 ? (isNarrative ? "mt-5" : "mt-3.5") : "",
                 ].join(" ")}
@@ -1597,7 +1597,7 @@ function LongformBodyReader({
             <div
               key={`${articleKey}-body-${blockIndex}`}
               className={[
-                "max-w-[66ch]",
+                "max-w-[70ch]",
                 blockIndex > 0 ? (isNarrative ? "mt-5" : "mt-3.5") : "",
               ].join(" ")}
             >
@@ -2006,14 +2006,15 @@ export default function LongformModule({
       <div className="flex w-full min-w-0 flex-col">
         {longformPosts.map((post, index) => {
           const article = post.longform;
-          const paragraphs = getParagraphs(article.translatedContent);
-          const digest = buildLongformDigest(post, paragraphs);
+          const sourceParagraphs = getParagraphs(article.translatedContent);
+          const readingParagraphs = getParagraphs(article.readingContent || article.translatedContent);
+          const digest = buildLongformDigest(post, sourceParagraphs);
           const title = getArticleTitle(post);
           const author = getArticleAuthor(post);
           const articleKey = getArticleKey(post);
           const articleId = getLongformArticleDomId(post.id);
           const isOpen = openKey === articleKey;
-          const rawBodyBlocks = buildOptimizedBodyBlocks(paragraphs, title);
+          const rawBodyBlocks = buildOptimizedBodyBlocks(readingParagraphs, title);
           const emphasisTerms = getLongformEmphasisTerms(title, rawBodyBlocks);
           const digestEmphasisTerms = getLongformDigestEmphasisTerms(title, digest, emphasisTerms);
           const bodyBlocks = expandKnownAcronymsInBlocks(rawBodyBlocks);

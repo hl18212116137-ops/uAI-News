@@ -382,6 +382,9 @@ export function longformArticleFromDbJson(value: unknown): LongformArticle | und
   if (typeof o.translatedTitle === 'string' && o.translatedTitle.trim()) {
     article.translatedTitle = o.translatedTitle
   }
+  if (typeof o.readingContent === 'string' && o.readingContent.trim()) {
+    article.readingContent = o.readingContent.trim()
+  }
   if (typeof o.digestSummary === 'string' && o.digestSummary.trim()) {
     article.digestSummary = o.digestSummary.trim()
   }

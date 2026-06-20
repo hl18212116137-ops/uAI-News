@@ -49,6 +49,8 @@ export type LongformArticle = {
   digestPoints?: string[];
   translatedTitle?: string;
   translatedContent: string;
+  /** AI 重排后的阅读版正文：可重新分段、加入小标题；原始译文仍保留在 translatedContent。 */
+  readingContent?: string;
   originalWordCount: number;
   fetchedAt: string;
   discoveryMethod?: 'url' | 'image-search' | 'text-search' | 'x-article';

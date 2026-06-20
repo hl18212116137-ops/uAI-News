@@ -30,7 +30,8 @@ export async function POST(request: Request) {
       const enriched = await enrichLongformArticle(existing.longform, aiService)
       if (
         enriched.digestSummary !== existing.longform.digestSummary ||
-        JSON.stringify(enriched.digestPoints ?? []) !== JSON.stringify(existing.longform.digestPoints ?? [])
+        JSON.stringify(enriched.digestPoints ?? []) !== JSON.stringify(existing.longform.digestPoints ?? []) ||
+        enriched.readingContent !== existing.longform.readingContent
       ) {
         const saved = await updateNewsItemLongform(existing.id, enriched)
         if (!saved.ok) {
