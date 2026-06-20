@@ -13,6 +13,7 @@ import { cleanNewsTitle } from "@/lib/news-title-cleanup";
 import { formatTypography } from "@/lib/utils";
 import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
 import { MathBlockText, MathInlineText } from "@/components/MathText";
+import { SourcesChevronRightGlyph } from "@/components/sources-sidebar-icons";
 import Tooltip from "@/components/Tooltip";
 
 type LongformPost = NewsItem & { longform: NonNullable<NewsItem["longform"]> };
@@ -1467,21 +1468,15 @@ function LongformDigestPreview({
                 </ol>
               ) : null}
             </div>
-            <span className="ml-auto mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center text-[#99a1af] transition-colors group-hover:text-[#101828]">
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
+            <span className="ml-auto mt-1 inline-flex h-4 w-4 shrink-0 items-center justify-center text-[#8A8A93]" aria-hidden>
+              <span
+                className={[
+                  "motion-layout-ease relative h-[7.223px] w-[4.54px] text-[#8A8A93] transition-transform",
+                  isOpen ? "rotate-90" : "rotate-0",
+                ].join(" ")}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d={isOpen ? "m6 9 6 6 6-6" : "m9 6 6 6-6 6"}
-                />
-              </svg>
+                <SourcesChevronRightGlyph className="absolute inset-0 block size-full max-w-none" />
+              </span>
             </span>
           </div>
         </div>
