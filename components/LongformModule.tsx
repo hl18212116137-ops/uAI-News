@@ -12,7 +12,8 @@ import { isLongformPreviewPost } from "@/lib/longform-post-utils";
 import { cleanNewsTitle } from "@/lib/news-title-cleanup";
 import { formatTypography } from "@/lib/utils";
 import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
-import { MathBlockText, MathInlineText } from "@/components/MathText";
+import { MathInlineText } from "@/components/MathText";
+import ReadingContent, { type ReadingContentBlock } from "@/components/ReadingContent";
 import { SourcesChevronRightGlyph } from "@/components/sources-sidebar-icons";
 import Tooltip from "@/components/Tooltip";
 
@@ -76,11 +77,6 @@ function clampLongformTocPosition(
     top: Math.min(Math.max(LONGFORM_TOC_MIN_TOP, position.top), maxTop),
   };
 }
-
-type LongformBodyBlock =
-  | { kind: "heading"; text: string }
-  | { kind: "paragraph"; text: string }
-  | { kind: "list"; ordered: boolean; items: string[] };
 
 type BodyListItem = {
   ordered: boolean;
@@ -399,7 +395,7 @@ function selectEmphasisTerms(
   return selected;
 }
 
-function getLongformEmphasisTerms(title: string, blocks: LongformBodyBlock[]): string[] {
+function getLongformEmphasisTerms(title: string, blocks: ReadingContentBlock[]): string[] {
   const candidates = new Map<string, EmphasisTermCandidate>();
   const bodyText = blocks
     .map((block) => (block.kind === "list" ? block.items.join(" ") : block.text))
@@ -1054,9 +1050,9 @@ function getBodyListItem(paragraph: string): BodyListItem | null {
   return null;
 }
 
-function buildDefaultBodyBlocks(paragraphs: string[], title: string): LongformBodyBlock[] {
-  const blocks: LongformBodyBlock[] = [];
-  let pendingList: Extract<LongformBodyBlock, { kind: "list" }> | null = null;
+function buildDefaultBodyBlocks(paragraphs: string[], title: string): ReadingContentBlock[] {
+  const blocks: ReadingContentBlock[] = [];
+  let pendingList: Extract<ReadingContentBlock, { kind: "list" }> | null = null;
 
   const flushList = () => {
     if (!pendingList || pendingList.items.length === 0) return;
@@ -1360,79 +1356,6 @@ function LongformCollapse({
     >
       <div className="min-h-0 overflow-hidden">
         {children}
-      </div>
-    </div>
-  );
-}
-
-function LongformBodyReader({
-  articleKey,
-  bodyBlocks,
-}: {
-  articleKey: string;
-  bodyBlocks: LongformBodyBlock[];
-}) {
-  return (
-    <div className="flex w-full flex-col">
-      <div className="flex w-full flex-col">
-        {bodyBlocks.map((block, blockIndex) => {
-          if (block.kind === "heading") {
-            return (
-              <h4
-                key={`${articleKey}-body-${blockIndex}`}
-                className={[
-                  "m-0 break-words text-[15px] font-semibold leading-7 text-[#101828]",
-                  blockIndex > 0 ? "mt-6" : "",
-                ].join(" ")}
-              >
-                <MathInlineText text={block.text} />
-              </h4>
-            );
-          }
-
-          if (block.kind === "list") {
-            return (
-              <div
-                key={`${articleKey}-body-${blockIndex}`}
-                className={[
-                  "m-0 flex w-full flex-col gap-2 text-[15px] font-normal leading-7 text-[#101828] sm:leading-[30px]",
-                  blockIndex > 0 ? "mt-4" : "",
-                ].join(" ")}
-                role="list"
-              >
-                {block.items.map((item, itemIndex) => (
-                  <div
-                    key={`${articleKey}-body-${blockIndex}-${itemIndex}`}
-                    className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-2.5"
-                    role="listitem"
-                  >
-                    <span className="pt-[1px] text-[11px] font-semibold leading-7 text-[#99a1af] tabular-nums sm:leading-[30px]">
-                      {block.ordered ? itemIndex + 1 : "•"}
-                    </span>
-                    <span className="min-w-0 break-words">
-                      <MathInlineText text={item} />
-                    </span>
-                  </div>
-                ))}
-              </div>
-            );
-          }
-
-          return (
-            <div
-              key={`${articleKey}-body-${blockIndex}`}
-              className={[
-                "w-full",
-                blockIndex > 0 ? "mt-4" : "",
-              ].join(" ")}
-            >
-              <MathBlockText
-                text={block.text}
-                textClassName="m-0 break-words text-[15px] font-normal leading-7 text-[#101828] [text-wrap:pretty] sm:leading-[30px]"
-              />
-            </div>
-          );
-        })}
       </div>
     </div>
   );
@@ -1979,9 +1902,10 @@ export default function LongformModule({
                             ) : null}
                           </div>
                         ) : (
-                          <LongformBodyReader
-                            articleKey={articleKey}
-                            bodyBlocks={bodyBlocks}
+                          <ReadingContent
+                            blocks={bodyBlocks}
+                            idPrefix={`${articleKey}-body`}
+                            title={title}
                           />
                         )}
                       </div>

@@ -26,6 +26,7 @@ type MathBlockTextProps = {
   text: string;
   textClassName: string;
   displayClassName?: string;
+  prefix?: ReactNode;
   renderTextSegment?: TextSegmentRenderer;
 };
 
@@ -324,6 +325,7 @@ export function MathBlockText({
   text,
   textClassName,
   displayClassName = DEFAULT_DISPLAY_CLASS,
+  prefix,
   renderTextSegment,
 }: MathBlockTextProps) {
   if (!text) return null;
@@ -334,10 +336,13 @@ export function MathBlockText({
   if (!hasDisplayMath) {
     return (
       <p className={textClassName}>
+        {prefix}
         {renderInlineSegments(text, true, renderTextSegment)}
       </p>
     );
   }
+
+  let prefixRendered = false;
 
   return (
     <>
@@ -345,8 +350,11 @@ export function MathBlockText({
         if (segment.kind === "text") {
           const formatted = segment.value.trim();
           if (!formatted) return null;
+          const prefixNode = !prefixRendered ? prefix : null;
+          prefixRendered = true;
           return (
             <p key={index} className={textClassName}>
+              {prefixNode}
               {renderInlineSegments(formatted, true, renderTextSegment)}
             </p>
           );
