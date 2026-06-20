@@ -20,17 +20,13 @@ const CHINESE_CONCEPT_RE =
   /[\u4e00-\u9fffA-Za-z0-9-]{2,24}(?:语言模型|世界模型|状态空间模型|通用人工智能|人工智能|强化学习|监督微调|自蒸馏|可验证推理|推理模型|模型|框架|方法|系统|算法|架构|数据集|基准|任务|推理|训练|微调|知识|能力|假说|机制|风险|限制|成本|效率|参数|结论|发现)/g;
 
 const PROBLEM_RE =
-  /(问题|矛盾|挑战|难题|瓶颈|限制|成本|昂贵|误差|缺口|痛点|难以|当前|传统|现有|要解决|需要解决|面临|problem|challenge|trade-off|bottleneck|limitation|cost|expensive|error|gap)/i;
-const METHOD_RE =
-  /(方法|提出|引入|采用|构建|设计|训练|微调|评测|测试|架构|框架|系统|实验|通过|用来|解决|we (propose|present|introduce|design|train|evaluate)|method|model|framework|architecture|experiment|benchmark|dataset)/i;
-const EXPLICIT_METHOD_RE =
-  /(方法|方法上|提出|引入|采用|构建|设计|架构|框架|系统|实验|通过|用来|解决|we (propose|present|introduce|design|evaluate)|method|framework|architecture|experiment|benchmark|dataset)/i;
+  /(问题|矛盾|挑战|难题|瓶颈|局限|不足|痛点|缺口|难以|很难|无法|不能|没有|缺少|不稳定|误差|偏差|错觉|低估|高估|危险|威胁|面临|困境|成本高昂|部署成本高|problem|challenge|trade-off|bottleneck|limitation|error|gap)/i;
 const FINDING_RE =
-  /(发现|结果|表明|显示|证明|说明|达到|超过|优于|提升|提高|降低|减少|增加|显著|实现|发现是|结果是|found|results?|show|suggest|indicate|demonstrate|outperform|achieve|improve|significant)/i;
+  /(发现|结果(表明|显示|说明|是)|表明|显示|证明|相比|优于|超过|达到|提升|提高|降低|减少|增加|显著|实现了|found|results? (show|suggest|indicate)|show|suggest|indicate|demonstrate|outperform|achieve|improve|significant)/i;
 const RISK_RE =
-  /(风险|限制|局限|不足|失败|误差|偏差|依赖|仍然|不能|不应|难以|瓶颈|问题在于|limitation|risk|bias|fail|error|depend|still|cannot|should not)/i;
+  /(风险|限制|局限|不足|失败|误差|偏差|依赖|仍然|不能|不应|瓶颈|问题在于|但[^。！？!?；;]{0,64}(仍然|不能|难以|无法|风险|限制|依赖)|limitation|risk|bias|fail|error|depend|still|cannot|should not)/i;
 const IMPACT_RE =
-  /(意味着|说明|启示|影响|价值|机会|会让|将使|因此|所以|由此|换句话说|this means|therefore|impact|implication|value|opportunity|suggests that)/i;
+  /(意味着|启示|影响|价值|机会|会让|将使|换句话说|这背后真正有价值|因此[^。！？!?；;]{0,48}(意味着|带来|需要|可以|应该)|由此[^。！？!?；;]{0,48}(可见|带来|需要|可以|应该)|this means|therefore|impact|implication|value|opportunity|suggests that)/i;
 const LOW_VALUE_RE =
   /(欢迎|点赞|收藏|转发|关注|订阅|评论区|分享给|如果你觉得|谢谢|感谢|参考文献|致谢|copyright|all rights reserved|references|acknowledg(e)?ments)/i;
 
@@ -174,8 +170,32 @@ function hasMetric(text: string): boolean {
   return METRIC_RE.test(text);
 }
 
+function isDefinitionBlock(text: string): boolean {
+  const clean = normalizeText(text);
+  if (clean.length > 180) return false;
+
+  return /^[\u4e00-\u9fffA-Za-z0-9@_.+-]{1,32}\s*[：:]/.test(clean);
+}
+
+function isInventoryBlock(text: string): boolean {
+  const clean = normalizeText(text);
+  if (clean.length > 220) return false;
+
+  const separators = (clean.match(/[、，,]/g) ?? []).length;
+  const sentences = getSentences(clean).length;
+  return separators >= 4 && sentences <= 1;
+}
+
+function isMetaQuestionBlock(text: string): boolean {
+  const clean = normalizeText(text);
+  if (clean.length > 120) return false;
+
+  return /解决什么问题/.test(clean) && /(产出什么结果|怎么使用|别人用得怎么样)/.test(clean);
+}
+
 function scoreClaimSentence(sentence: string, sentenceIndex: number, sentenceCount: number): number {
   const clean = normalizeText(sentence);
+  if (isDefinitionBlock(clean) || isInventoryBlock(clean) || isMetaQuestionBlock(clean)) return -4;
   if (clean.length < 18 || clean.length > 160) return -1;
   if (LOW_VALUE_RE.test(clean)) return -4;
 
@@ -207,21 +227,49 @@ function selectClaim(text: string): string | undefined {
   return ranked[0]?.score >= 3.4 ? ranked[0].sentence : undefined;
 }
 
+function hasMethodSignal(text: string): boolean {
+  const sentences = getSentences(text);
+
+  return sentences.some((sentence) => {
+    const clean = normalizeText(sentence);
+    if (!clean) return false;
+    if (/^(方法|方法上|实验|评测|测试|流程|步骤)[:：，,]/.test(clean)) return true;
+    if (/系统性地/.test(clean) && /(增强|评估|验证|测试|训练|研究)/.test(clean)) return true;
+    if (/(我们|本文|作者|报告)[^。！？!?；;]{0,48}(提出|引入|采用|构建|设计|评测|测试|解决|验证|评估|研究)/.test(clean)) {
+      return true;
+    }
+    if (/(提出|引入|采用|构建)[^。！？!?；;]{0,24}(方法|模型|框架|系统|流程|架构)/.test(clean)) {
+      return /(我们|本文|作者|报告|方法|实验|评测|测试)/.test(clean);
+    }
+    if (/通过[^。！？!?；;]{0,48}(解决|实现|验证|评估)/.test(clean)) {
+      return /(我们|本文|方法|模型|系统|流程|实验|评测|测试)/.test(clean);
+    }
+    return /we (propose|present|introduce|design|evaluate)|method|framework|architecture|experiment|benchmark|dataset/i.test(clean);
+  });
+}
+
 function chooseFacet(text: string): ReadingFacet | undefined {
   const clean = normalizeText(text);
-  const explicitRisk = /^(限制|风险|局限|不足|问题在于|但|不过|然而|值得注意)/.test(clean);
-  const methodScore = EXPLICIT_METHOD_RE.test(clean) ? 3.1 : METHOD_RE.test(clean) ? 2 : 0;
-  const scores: Array<{ facet: ReadingFacet; score: number }> = [
-    { facet: "problem", score: PROBLEM_RE.test(clean) ? 2.6 : 0 },
-    { facet: "method", score: methodScore },
-    { facet: "finding", score: FINDING_RE.test(clean) ? 3 : hasMetric(clean) ? 1.2 : 0 },
-    { facet: "risk", score: RISK_RE.test(clean) ? (explicitRisk ? 3.2 : 2.4) : 0 },
-    { facet: "impact", score: IMPACT_RE.test(clean) ? 2.3 : 0 },
-  ];
+  if (isDefinitionBlock(clean) || isInventoryBlock(clean) || isMetaQuestionBlock(clean)) return undefined;
 
-  scores.sort((a, b) => b.score - a.score);
+  const sentences = getSentences(clean).slice(0, 4);
+  const scored = (sentences.length > 0 ? sentences : [clean]).flatMap((sentence, index) => {
+    const part = normalizeText(sentence);
+    const positionScore = index === 0 ? 0.7 : -index * 0.55;
+    const explicitRisk = /^(限制|风险|局限|不足|问题在于|但|不过|然而|值得注意)/.test(part);
 
-  return scores[0] && scores[0].score >= 2.3 ? scores[0].facet : undefined;
+    return [
+      { facet: "problem" as const, score: PROBLEM_RE.test(part) ? 2.7 + positionScore : 0 },
+      { facet: "method" as const, score: hasMethodSignal(part) ? 3.1 + positionScore : 0 },
+      { facet: "finding" as const, score: FINDING_RE.test(part) ? 3 + positionScore : 0 },
+      { facet: "risk" as const, score: RISK_RE.test(part) ? (explicitRisk ? 3.2 : 2.5) + positionScore : 0 },
+      { facet: "impact" as const, score: IMPACT_RE.test(part) ? 2.6 + positionScore : 0 },
+    ];
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored[0] && scored[0].score >= 2.45 ? scored[0].facet : undefined;
 }
 
 function textIncludesTerm(text: string, term: string): boolean {
