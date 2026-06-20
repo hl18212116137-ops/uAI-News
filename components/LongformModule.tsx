@@ -103,13 +103,7 @@ type TextAnnotationLimits = {
   perTerm: number;
 };
 
-type AcronymExpansionState = {
-  expandedAcronyms: Set<string>;
-  expansionTotal: number;
-};
-
 type ArticleDigestRole = "problem" | "method" | "result";
-type LongformBodyTone = "narrative" | "detail";
 
 type ArticleDigestRoleCandidate = {
   role: ArticleDigestRole;
@@ -125,16 +119,12 @@ const SUMMARY_MAX_LENGTH = 150;
 const POINT_MAX_LENGTH = 112;
 const PLAIN_SUMMARY_MAX_LENGTH = 76;
 const PLAIN_POINT_MAX_LENGTH = 72;
-const BODY_PARAGRAPH_TARGET_LENGTH = 360;
-const BODY_PARAGRAPH_MAX_LENGTH = 520;
 const BODY_EMPHASIS_TERM_LIMIT = 5;
 const BODY_EMPHASIS_TOTAL_LIMIT = 8;
 const BODY_EMPHASIS_PER_TERM_LIMIT = 2;
 const DIGEST_EMPHASIS_TERM_LIMIT = 7;
 const DIGEST_EMPHASIS_TOTAL_LIMIT = 4;
 const DIGEST_EMPHASIS_PER_TERM_LIMIT = 1;
-const BODY_ACRONYM_EXPANSION_LIMIT = 4;
-const BODY_FOCUS_SCORE = 3.5;
 const SENTENCE_RE = /[^。！？!?；;.\n]+[。！？!?；;.]?/g;
 const STRONG_CONCLUSION_RE =
   /(研究发现|结果表明|结果显示|实验表明|数据显示|这意味着|这表明|由此可见|关键在于|核心是|结论是|因此|所以|因而|最终|总体来看|总的来说|换句话说|不应|不能|必须|需要|应该|建议|值得注意|最重要|显著|高于|低于|提升|提高|降低|减少|增加|导致|带来|影响|风险|瓶颈|限制|机会|价值|证明|found that|results? (show|suggest|indicate)|this means|therefore|overall|in conclusion|we conclude|key takeaway|should|must|need to|significant|increase|decrease|risk|impact)/i;
@@ -148,10 +138,6 @@ const EXAMPLE_RE =
   /(例如|比如|举例|以.+为例|被公认为|代表了|包括|for example|for instance|such as)/i;
 const METHOD_RE =
   /(被试|参与者|样本|问卷|实验设计|预先注册|我们采用|为了测试|为了避免|方法|研究\s*\d|考察|评估|测量|探究|校准|自我报告|完成模式|study\s*\d|participants?|sample|methodology|measure|evaluate|examine|calibration)/i;
-const BODY_DETAIL_RE =
-  /(具体|方法|方案|步骤|流程|实验|评测|测试|训练|微调|采样|参数|数据集|样本|基准|模型|框架|架构|算法|系统|模块|实现|部署|计算|公式|代码|输入|输出|权重|损失函数|pipeline|method|approach|experiment|benchmark|dataset|sample|training|fine-tun|architecture|algorithm|implementation|parameter|compute|module|system)/i;
-const BODY_NARRATIVE_RE =
-  /(背景|问题|矛盾|挑战|瓶颈|目的|首先|然而|但是|相比之下|换句话说|也就是说|这意味着|这说明|因此|所以|由此|总体来看|总的来说|核心是|关键在于|结论|总结|启示|影响|风险|机会|价值|background|problem|challenge|however|therefore|overall|in conclusion|this means|key takeaway|impact|risk|opportunity)/i;
 const FIGURE_RE =
   /(图\s*\d+|表\s*\d+|Figure\s*\d+|Table\s*\d+|青色|橙色|蓝色|绿色|红色|紫色|灰色|柱状|曲线|坐标轴|图中)/i;
 const FINDING_RE =
@@ -481,67 +467,6 @@ function recordEmphasis(term: string, state: TextAnnotationState) {
   const key = normalizeEmphasisKey(term);
   state.emphasisTotal += 1;
   state.emphasisByTerm.set(key, (state.emphasisByTerm.get(key) ?? 0) + 1);
-}
-
-function getAcronymExpansion(term: string, state: AcronymExpansionState): string | null {
-  if (state.expansionTotal >= BODY_ACRONYM_EXPANSION_LIMIT) return null;
-  const key = normalizeEmphasisKey(term);
-  const full = BODY_ACRONYM_EXPANSIONS.find(
-    (item) => normalizeEmphasisKey(item.short) === key,
-  )?.full;
-  if (!full || state.expandedAcronyms.has(key)) return null;
-  state.expandedAcronyms.add(key);
-  state.expansionTotal += 1;
-  return full;
-}
-
-function expandKnownAcronymsInText(text: string, state: AcronymExpansionState): string {
-  if (!text || state.expansionTotal >= BODY_ACRONYM_EXPANSION_LIMIT) return text;
-
-  const terms = BODY_ACRONYM_EXPANSIONS.map((item) => item.short).sort((a, b) => b.length - a.length);
-  let cursor = 0;
-  let out = "";
-
-  while (cursor < text.length) {
-    const match = findNextAnnotationTerm(text, cursor, terms);
-    if (!match) break;
-
-    const end = match.index + match.term.length;
-    out += text.slice(cursor, match.index);
-
-    const visibleTerm = text.slice(match.index, end);
-    const expansion = getAcronymExpansion(match.term, state);
-    const insideParentheses = /[（(]$/.test(text.slice(0, match.index)) && /^[）)]/.test(text.slice(end));
-    out += expansion
-      ? insideParentheses
-        ? `${visibleTerm}, ${expansion}`
-        : `${visibleTerm}（${expansion}）`
-      : visibleTerm;
-    cursor = end;
-  }
-
-  return `${out}${text.slice(cursor)}`;
-}
-
-function expandKnownAcronymsInBlocks(blocks: LongformBodyBlock[]): LongformBodyBlock[] {
-  const state: AcronymExpansionState = {
-    expandedAcronyms: new Set(),
-    expansionTotal: 0,
-  };
-
-  return blocks.map((block) => {
-    if (block.kind === "heading") return block;
-    if (block.kind === "list") {
-      return {
-        ...block,
-        items: block.items.map((item) => expandKnownAcronymsInText(item, state)),
-      };
-    }
-    return {
-      ...block,
-      text: expandKnownAcronymsInText(block.text, state),
-    };
-  });
 }
 
 function findNextAnnotationTerm(
@@ -1129,31 +1054,7 @@ function getBodyListItem(paragraph: string): BodyListItem | null {
   return null;
 }
 
-function splitBodyParagraph(paragraph: string): string[] {
-  const clean = normalizeText(paragraph);
-  if (clean.length <= BODY_PARAGRAPH_MAX_LENGTH) return [clean];
-
-  const sentences = clean.match(SENTENCE_RE);
-  if (!sentences || sentences.length <= 1) return [clean];
-
-  const chunks: string[] = [];
-  let current = "";
-
-  for (const sentence of sentences) {
-    const next = current ? `${current} ${sentence.trim()}` : sentence.trim();
-    if (current && next.length > BODY_PARAGRAPH_TARGET_LENGTH) {
-      chunks.push(current);
-      current = sentence.trim();
-      continue;
-    }
-    current = next;
-  }
-
-  if (current) chunks.push(current);
-  return chunks.length > 0 ? chunks : [clean];
-}
-
-function buildOptimizedBodyBlocks(paragraphs: string[], title: string): LongformBodyBlock[] {
+function buildDefaultBodyBlocks(paragraphs: string[], title: string): LongformBodyBlock[] {
   const blocks: LongformBodyBlock[] = [];
   let pendingList: Extract<LongformBodyBlock, { kind: "list" }> | null = null;
 
@@ -1163,13 +1064,7 @@ function buildOptimizedBodyBlocks(paragraphs: string[], title: string): Longform
     pendingList = null;
   };
 
-  getCleanBodyParagraphs(paragraphs, title).forEach((paragraph, paragraphIndex) => {
-    if (isLikelySectionHeading(paragraph, paragraphIndex)) {
-      flushList();
-      blocks.push({ kind: "heading", text: normalizeLongformBodyDisplayText(paragraph) });
-      return;
-    }
-
+  getCleanBodyParagraphs(paragraphs, title).forEach((paragraph) => {
     const listItem = getBodyListItem(paragraph);
     if (listItem?.text) {
       if (!pendingList || pendingList.ordered !== listItem.ordered) {
@@ -1181,67 +1076,11 @@ function buildOptimizedBodyBlocks(paragraphs: string[], title: string): Longform
     }
 
     flushList();
-    for (const chunk of splitBodyParagraph(paragraph)) {
-      blocks.push({ kind: "paragraph", text: normalizeLongformBodyDisplayText(chunk) });
-    }
+    blocks.push({ kind: "paragraph", text: normalizeLongformBodyDisplayText(paragraph) });
   });
 
   flushList();
   return blocks;
-}
-
-function getLongformBodyBlockText(block: LongformBodyBlock): string {
-  return block.kind === "list" ? block.items.join(" ") : block.text;
-}
-
-function scoreBodyReadingBlock(block: LongformBodyBlock, blockIndex: number, blockCount: number): number {
-  if (block.kind === "heading") return -2;
-
-  const text = getLongformBodyBlockText(block);
-  if (!text || text.length < 28) return -2;
-
-  const position = blockCount > 1 ? blockIndex / (blockCount - 1) : 0;
-  const hasFindingSignal = FINDING_RE.test(text);
-  let score = 0;
-
-  if (STRONG_CONCLUSION_RE.test(text)) score += 4;
-  else if (hasFindingSignal) score += 2.4;
-  else if (WEAK_CONCLUSION_RE.test(text)) score += 1.4;
-
-  if (hasQuantitativeSignal(text)) score += 1.3;
-  if (/不是.+而是|并非.+而是|rather than|not .+ but/i.test(text)) score += 1.2;
-  if (block.kind === "list") score += 0.9;
-  if (position >= 0.45) score += 0.7;
-  if (position <= 0.12) score -= 0.6;
-  if (INTRO_RE.test(text)) score -= blockIndex <= 2 ? 0.75 : 1.5;
-  if ((METHOD_RE.test(text) || FIGURE_RE.test(text)) && !hasFindingSignal) score -= 2.5;
-  if (LOW_VALUE_RE.test(text)) score -= 4;
-  if (text.length > 180 && text.length <= BODY_PARAGRAPH_TARGET_LENGTH) score += 0.35;
-
-  return score;
-}
-
-function getLongformBodyTone(
-  block: LongformBodyBlock,
-  blockIndex: number,
-  blockCount: number,
-): LongformBodyTone {
-  if (block.kind === "heading") return "narrative";
-
-  const text = getLongformBodyBlockText(block);
-  const score = scoreBodyReadingBlock(block, blockIndex, blockCount);
-  const hasFindingSignal = FINDING_RE.test(text);
-  const isOpeningContext = blockIndex <= 1 && text.length > 70;
-
-  if (score >= BODY_FOCUS_SCORE || isOpeningContext || BODY_NARRATIVE_RE.test(text)) {
-    return "narrative";
-  }
-
-  if ((BODY_DETAIL_RE.test(text) || METHOD_RE.test(text) || FIGURE_RE.test(text) || EXAMPLE_RE.test(text)) && !hasFindingSignal) {
-    return "detail";
-  }
-
-  return "detail";
 }
 
 function shouldStopLongformBody(paragraph: string, index: number): boolean {
@@ -1529,23 +1368,21 @@ function LongformCollapse({
 function LongformBodyReader({
   articleKey,
   bodyBlocks,
-  renderTextSegment,
 }: {
   articleKey: string;
   bodyBlocks: LongformBodyBlock[];
-  renderTextSegment?: (text: string, keyPrefix: string) => ReactNode;
 }) {
   return (
-    <div className="mx-auto flex max-w-[76ch] flex-col">
-      <div className="flex flex-col">
+    <div className="flex w-full flex-col">
+      <div className="flex w-full flex-col">
         {bodyBlocks.map((block, blockIndex) => {
           if (block.kind === "heading") {
             return (
               <h4
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 max-w-[68ch] break-words text-[15px] font-semibold leading-7 text-[#101828]",
-                  blockIndex > 0 ? "mt-9" : "",
+                  "m-0 break-words text-[15px] font-semibold leading-7 text-[#101828]",
+                  blockIndex > 0 ? "mt-6" : "",
                 ].join(" ")}
               >
                 <MathInlineText text={block.text} />
@@ -1554,16 +1391,12 @@ function LongformBodyReader({
           }
 
           if (block.kind === "list") {
-            const tone = getLongformBodyTone(block, blockIndex, bodyBlocks.length);
-            const isNarrative = tone === "narrative";
-
             return (
               <div
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 flex max-w-[70ch] flex-col gap-1.5 text-[15px] leading-7 sm:leading-[30px]",
-                  isNarrative ? "font-medium text-[#101828]" : "font-normal text-[#6a7282]",
-                  blockIndex > 0 ? (isNarrative ? "mt-5" : "mt-3.5") : "",
+                  "m-0 flex w-full flex-col gap-2 text-[15px] font-normal leading-7 text-[#101828] sm:leading-[30px]",
+                  blockIndex > 0 ? "mt-4" : "",
                 ].join(" ")}
                 role="list"
               >
@@ -1577,7 +1410,7 @@ function LongformBodyReader({
                       {block.ordered ? itemIndex + 1 : "•"}
                     </span>
                     <span className="min-w-0 break-words">
-                      <MathInlineText text={item} renderTextSegment={renderTextSegment} />
+                      <MathInlineText text={item} />
                     </span>
                   </div>
                 ))}
@@ -1585,26 +1418,17 @@ function LongformBodyReader({
             );
           }
 
-          const tone = getLongformBodyTone(block, blockIndex, bodyBlocks.length);
-          const isNarrative = tone === "narrative";
-
           return (
             <div
               key={`${articleKey}-body-${blockIndex}`}
               className={[
-                "max-w-[70ch]",
-                blockIndex > 0 ? (isNarrative ? "mt-5" : "mt-3.5") : "",
+                "w-full",
+                blockIndex > 0 ? "mt-4" : "",
               ].join(" ")}
             >
               <MathBlockText
                 text={block.text}
-                textClassName={[
-                  "m-0 break-words [text-wrap:pretty]",
-                  isNarrative
-                    ? "text-[15px] font-medium leading-7 text-[#101828] sm:leading-[30px]"
-                    : "text-[15px] font-normal leading-7 text-[#6a7282] sm:leading-[30px]",
-                ].join(" ")}
-                renderTextSegment={renderTextSegment}
+                textClassName="m-0 break-words text-[15px] font-normal leading-7 text-[#101828] [text-wrap:pretty] sm:leading-[30px]"
               />
             </div>
           );
@@ -2008,14 +1832,9 @@ export default function LongformModule({
           const articleKey = getArticleKey(post);
           const articleId = getLongformArticleDomId(post.id);
           const isOpen = openKey === articleKey;
-          const rawBodyBlocks = buildOptimizedBodyBlocks(paragraphs, title);
-          const emphasisTerms = getLongformEmphasisTerms(title, rawBodyBlocks);
-          const digestEmphasisTerms = getLongformDigestEmphasisTerms(title, digest, emphasisTerms);
-          const bodyBlocks = expandKnownAcronymsInBlocks(rawBodyBlocks);
-          const textAnnotationState: TextAnnotationState = {
-            emphasisTotal: 0,
-            emphasisByTerm: new Map(),
-          };
+          const bodyBlocks = buildDefaultBodyBlocks(paragraphs, title);
+          const bodyEmphasisTerms = getLongformEmphasisTerms(title, bodyBlocks);
+          const digestEmphasisTerms = getLongformDigestEmphasisTerms(title, digest, bodyEmphasisTerms);
           const digestTextAnnotationState: TextAnnotationState = {
             emphasisTotal: 0,
             emphasisByTerm: new Map(),
@@ -2030,13 +1849,6 @@ export default function LongformModule({
                 total: DIGEST_EMPHASIS_TOTAL_LIMIT,
                 perTerm: DIGEST_EMPHASIS_PER_TERM_LIMIT,
               },
-            );
-          const renderBodyTextSegment = (text: string, keyPrefix: string) =>
-            renderTextWithLongformAnnotations(
-              text,
-              `${articleKey}-${keyPrefix}`,
-              emphasisTerms,
-              textAnnotationState,
             );
           const isPreview = previewPostIds?.has(post.id) ?? false;
           const isFullLoading = fullLoadingPostIds?.has(post.id) ?? false;
@@ -2170,7 +1982,6 @@ export default function LongformModule({
                           <LongformBodyReader
                             articleKey={articleKey}
                             bodyBlocks={bodyBlocks}
-                            renderTextSegment={renderBodyTextSegment}
                           />
                         )}
                       </div>
