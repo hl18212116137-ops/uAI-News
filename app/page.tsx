@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
+import { unstable_cache } from "next/cache";
 import HomePageShell from "@/components/HomePageShell";
 import HomeBodySkeleton from "@/components/HomeBodySkeleton";
 import HomeMainContentBlock from "./HomeMainContentBlock";
@@ -12,13 +13,19 @@ import {
   ensureDefaultSubscriptions,
 } from "@/lib/subscriptions";
 
+const getCachedDefaultSubscribedHandles = unstable_cache(
+  () => getDefaultSubscribedHandles(3),
+  ["home-default-subscribed-handles"],
+  { revalidate: 60 }
+);
+
 export default async function Home() {
   const perf = createHomePerf("shell");
 
   const user = await getCurrentUser();
   perf.segment("session");
 
-  const guestHandles = user ? [] : await getDefaultSubscribedHandles(3);
+  const guestHandles = user ? [] : await getCachedDefaultSubscribedHandles();
   let subscribedHandles = user ? await getUserSubscribedHandles(user.id) : guestHandles;
 
   if (user && subscribedHandles.length === 0) {

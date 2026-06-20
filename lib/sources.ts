@@ -3,6 +3,7 @@ import { db } from '@/lib/db/drizzle'
 import { sources } from '@/lib/db/schema'
 import { eq, desc, and } from 'drizzle-orm'
 import { resolveSourceProfile } from '@/lib/source-profile'
+import { persistableSourceAvatarUrl } from '@/lib/source-avatar'
 
 export type PlatformType = 'X' | 'YouTube' | 'Reddit' | 'RSS' | 'Blog'
 export type FetchMethod = 'api' | 'rss' | 'scraper' | 'webhook'
@@ -56,7 +57,7 @@ export async function getSourcesForStats(): Promise<Pick<Source, 'sourceType' | 
       enabled: row.enabled,
     }))
   } catch (error) {
-    console.error('Failed to fetch sources for stats:', error)
+    console.warn('Failed to fetch sources for stats:', error)
     return []
   }
 }
@@ -194,14 +195,18 @@ export async function addSource(source: Source): Promise<Source> {
     })
 
     if (existing) {
+      const persistedAvatar = persistableSourceAvatarUrl(profile.avatar)
       const next: Source = {
         ...existing,
         ...source,
         id: existing.id,
-        avatar: profile.avatar,
+        avatar: persistedAvatar ?? undefined,
         description: profile.description,
       }
-      await updateSource(existing.id, next)
+      await updateSource(existing.id, {
+        ...next,
+        avatar: persistedAvatar ?? '',
+      })
       return next
     }
 
@@ -213,7 +218,7 @@ export async function addSource(source: Source): Promise<Source> {
         handle: source.handle,
         name: source.name,
         url: source.url,
-        avatar: profile.avatar || null,
+        avatar: persistableSourceAvatarUrl(profile.avatar),
         description: profile.description,
         enabled: source.enabled,
         addedAt: new Date(source.addedAt),
@@ -280,7 +285,7 @@ export async function updateSource(id: string, updates: Partial<Source>): Promis
         avatar: avatarForProfile,
         description: descriptionForProfile,
       })
-      if (updates.avatar !== undefined) updateData.avatar = profile.avatar || null
+      if (updates.avatar !== undefined) updateData.avatar = persistableSourceAvatarUrl(profile.avatar)
       if (updates.description !== undefined) updateData.description = profile.description
     }
     if (updates.enabled !== undefined) updateData.enabled = updates.enabled

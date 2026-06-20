@@ -10,6 +10,7 @@ import {
   socialEngagementFromDbJson,
   withCanonicalPostSourceUrl,
 } from '@/lib/db/news'
+import { cleanNewsTitle } from '@/lib/news-title-cleanup'
 import type { NewsItem } from '@/lib/types'
 
 const BOOKMARK_NEWS_COLUMNS = {
@@ -79,7 +80,7 @@ export async function listBookmarkedNewsForUser(userId: string): Promise<NewsIte
     .map((item): NewsItem =>
       withCanonicalPostSourceUrl({
         id: item.id,
-        title: item.title,
+        title: cleanNewsTitle(item.title),
         summary: item.summary,
         content: item.content,
         source: {

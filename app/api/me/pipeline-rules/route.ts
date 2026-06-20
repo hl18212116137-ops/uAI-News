@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { requireAuth } from '@/lib/auth'
+import { revalidateHomeFeedCaches } from '@/lib/home-cache-invalidation'
 import {
   clampRecommendationVisibleDays,
   createRule,
@@ -141,6 +142,7 @@ export async function POST(request: Request) {
 
   try {
     const rule = await createRule(user.id, module, ruleType, payloadOut)
+    revalidateHomeFeedCaches()
     return Response.json({ success: true, rule })
   } catch (e) {
     const message = e instanceof Error ? e.message : '创建失败'
@@ -161,6 +163,7 @@ export async function DELETE(request: Request) {
   try {
     const ok = await deleteRule(user.id, id.trim())
     if (!ok) return Response.json({ error: '规则不存在或无权删除' }, { status: 404 })
+    revalidateHomeFeedCaches()
     return Response.json({ success: true })
   } catch (e) {
     const message = e instanceof Error ? e.message : '删除失败'

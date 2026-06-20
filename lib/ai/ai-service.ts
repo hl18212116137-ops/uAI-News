@@ -16,6 +16,8 @@ export interface AIProcessedContent {
   title: string;
   summary: string;
   category: NewsCategory;
+  /** important=false 时的简短 PASS 原因；不额外发起模型请求 */
+  passReason?: string;
 }
 
 /**
@@ -33,7 +35,8 @@ export interface AIService {
   processNews(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    filterLearningContext?: string
   ): Promise<AIProcessedContent>;
 
   /**

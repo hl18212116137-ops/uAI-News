@@ -38,7 +38,7 @@ export async function fetchSourceProfilesByHandles(
       .from(sources)
       .where(inArray(sources.handle, variants))
   } catch (err: any) {
-    console.error('fetchSourceProfilesByHandles:', err.message)
+    console.warn('fetchSourceProfilesByHandles:', err.message)
     return new Map()
   }
 
@@ -86,7 +86,7 @@ export function mergeSourceProfilesIntoPosts(
       ...p,
       source: {
         ...p.source,
-        name: name || p.source.name,
+        name: p.source.name || name || p.source.handle,
         avatar: profile.avatar || p.source.avatar,
         description: profile.description || p.source.description,
       },

@@ -60,14 +60,19 @@ export class ClaudeService implements AIService {
   async processNews(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    filterLearningContext?: string
   ): Promise<AIProcessedContent> {
+    const learningSection = filterLearningContext?.trim()
+      ? `\n用户纠正反馈（用于校准 important 判断，不是推文正文）：\n${filterLearningContext.trim()}\n`
+      : '';
     const prompt = `你是一个AI新闻筛选和分析专家。请分析以下英文推文，判断是否值得展示给关注AI行业的用户。
 
 推文内容：
 ${text}
 
 作者：${authorName} (@${authorHandle})
+${learningSection}
 
 请严格按照以下JSON格式返回（不要包含任何其他文字）：
 
@@ -75,7 +80,8 @@ ${text}
   "important": true/false,
   "title": "中文标题",
   "summary": "中文摘要",
-  "category": "分类"
+  "category": "分类",
+  "passReason": "如果 important=false，用一句简体中文说明 PASS 原因；important=true 时填空字符串"
 }
 
 判断标准（important字段）：
@@ -113,7 +119,7 @@ ${text}
 - "政策" - 政策法规、监管动态、AI 安全治理
 
 硬性要求：title 与 summary 的正文必须以简体中文为主（汉字占比高）；禁止整句只输出英文。若原文为英文，必须先在心里译成中文再写入 JSON。
-注意：即使判断为不重要（important: false），也要填写title、summary、category字段（可以简单填写）。`;
+注意：即使判断为不重要（important: false），也要填写title、summary、category字段（可以简单填写），并在 passReason 中写明原因。`;
 
     try {
       const responseText = await this.callAPI(prompt);
@@ -137,6 +143,7 @@ ${text}
         title: parsed.title || '未命名新闻',
         summary: parsed.summary || '暂无摘要',
         category: parsed.category,
+        passReason: typeof parsed.passReason === 'string' ? parsed.passReason.trim() : undefined,
       };
     } catch (error) {
       console.error('Claude processNews error:', error);
@@ -555,4 +562,3 @@ ${ref ? '  "translatedTextReferenced": "...",\n' : ''}  "highlights": ["要点�
     }
   }
 }
-

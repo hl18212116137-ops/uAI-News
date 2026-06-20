@@ -15,6 +15,7 @@ type BookmarkSnapshot = {
 
 type UseBookmarkOptions = {
   initialItems?: NewsItem[]
+  /** Only use a route refresh for callers that truly need fresh RSC props after sync. */
   refreshOnSync?: boolean
 }
 
@@ -142,7 +143,7 @@ export function useBookmark(
   const router = useRouter()
   const userId = user?.id ?? null
   const initialItems = options.initialItems ?? EMPTY_ITEMS
-  const refreshOnSync = options.refreshOnSync ?? true
+  const refreshOnSync = options.refreshOnSync ?? false
   const initialIdsKey = useMemo(() => Array.from(initialIds).sort().join('\0'), [initialIds])
   const initialItemsKey = useMemo(
     () => initialItems.map((item) => item.id).sort().join('\0'),

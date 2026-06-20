@@ -39,7 +39,7 @@ export async function GET() {
           "SELECT count(*)::text AS count FROM news_items WHERE id LIKE 'x-%'"
         ),
         pool.query<{ count: string }>(
-          "SELECT count(*)::text AS count FROM raw_posts WHERE status = 'pending'"
+          "SELECT count(*)::text AS count FROM raw_posts WHERE status IN ('new', 'pending')"
         ),
       ])
       const sourceCount = sourcesRes.rows[0]?.count ?? '0'

@@ -49,7 +49,7 @@ export type LongformArticle = {
   translatedContent: string;
   originalWordCount: number;
   fetchedAt: string;
-  discoveryMethod?: 'url' | 'image-search' | 'text-search';
+  discoveryMethod?: 'url' | 'image-search' | 'text-search' | 'x-article';
   confidence?: number;
   discoverySourceImageUrl?: string;
 };
@@ -64,6 +64,8 @@ export type NewsItem = {
   publishedAt: string;
   originalText: string;
   createdAt: string;
+  /** 手动从 PASS 恢复的时间；排序用，展示仍以原推文 publishedAt 为准。 */
+  promotedAt?: string;
   importanceScore?: number; // 0-100，AI评估的重要性评分
   /** X 等媒体 URL（仅 https），INSIGHT 内展示用 */
   mediaUrls?: string[];

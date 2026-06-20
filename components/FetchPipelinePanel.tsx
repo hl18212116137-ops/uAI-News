@@ -30,6 +30,21 @@ type SubscribedSourceRow = {
   postCount?: number;
 };
 
+type PassedPostLogRow = {
+  id: string;
+  url: string | null;
+  sourceName: string | null;
+  sourceHandle: string | null;
+  content: string | null;
+  title: string | null;
+  summary: string | null;
+  category: string | null;
+  passType: "low_signal" | "ai_unimportant" | "user_pass";
+  passReason: string;
+  publishedAt: string | null;
+  updatedAt: string;
+};
+
 type FetchPipelinePanelProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -96,6 +111,23 @@ function formatRulePayload(ruleType: string, payload: Record<string, unknown>): 
   } catch {
     return String(payload);
   }
+}
+
+function passTypeLabel(passType: PassedPostLogRow["passType"]): string {
+  if (passType === "user_pass") return "用户 PASS";
+  return passType === "low_signal" ? "低信号" : "AI PASS";
+}
+
+function formatPassLogTime(value: string | null | undefined): string {
+  if (!value) return "时间未知";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function SettingSourceTag({ source }: { source: SettingValueSource }) {
@@ -490,6 +522,7 @@ export default function FetchPipelinePanel({
   const [config, setConfig] = useState<FetchPipelinePublicConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [draftOuter, setDraftOuter] = useState("");
   const [draftNested, setDraftNested] = useState("");
   const [draftRssUrl, setDraftRssUrl] = useState(false);
@@ -499,6 +532,7 @@ export default function FetchPipelinePanel({
 
   const [subscribedSources, setSubscribedSources] = useState<SubscribedSourceRow[]>([]);
   const [subsLoading, setSubsLoading] = useState(false);
+  const [subsLoaded, setSubsLoaded] = useState(false);
   const [subsError, setSubsError] = useState<string | null>(null);
   const [sourceBusyId, setSourceBusyId] = useState<string | null>(null);
   const [bulkSourceBusy, setBulkSourceBusy] = useState(false);
@@ -506,6 +540,7 @@ export default function FetchPipelinePanel({
 
   const [rulesAll, setRulesAll] = useState<UserPipelineRuleRow[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
+  const [rulesLoaded, setRulesLoaded] = useState(false);
   const [rulesErr, setRulesErr] = useState<string | null>(null);
   const [ruleBusy, setRuleBusy] = useState(false);
   const [ruleMsg, setRuleMsg] = useState<string | null>(null);
@@ -514,6 +549,27 @@ export default function FetchPipelinePanel({
   const [hideDraft, setHideDraft] = useState("");
   const [preferDraft, setPreferDraft] = useState("");
   const [recDays, setRecDays] = useState("7");
+  const [passLogsOpen, setPassLogsOpen] = useState(false);
+  const [passLogs, setPassLogs] = useState<PassedPostLogRow[]>([]);
+  const [passLogsLoading, setPassLogsLoading] = useState(false);
+  const [passLogsLoaded, setPassLogsLoaded] = useState(false);
+  const [passLogsError, setPassLogsError] = useState<string | null>(null);
+  const userCacheKey = user?.id ?? "guest";
+
+  useEffect(() => {
+    setConfig(null);
+    setConfigError(null);
+    setConfigLoaded(false);
+    setSubscribedSources([]);
+    setSubsError(null);
+    setSubsLoaded(false);
+    setRulesAll([]);
+    setRulesErr(null);
+    setRulesLoaded(false);
+    setPassLogs([]);
+    setPassLogsError(null);
+    setPassLogsLoaded(false);
+  }, [userCacheKey]);
 
   const loadPipelineSnapshot = useCallback(async () => {
     setConfigLoading(true);
@@ -533,6 +589,7 @@ export default function FetchPipelinePanel({
         throw new Error(data.error || "加载失败");
       }
       setConfig(data.config);
+      setConfigLoaded(true);
     } catch (e) {
       setConfig(null);
       setConfigError(e instanceof Error ? e.message : "加载失败");
@@ -557,6 +614,7 @@ export default function FetchPipelinePanel({
       };
       if (!res.ok || !data.success || !data.sources) throw new Error(data.error || "加载订阅失败");
       setSubscribedSources(data.sources);
+      setSubsLoaded(true);
     } catch (e) {
       setSubscribedSources([]);
       setSubsError(e instanceof Error ? e.message : "加载订阅失败");
@@ -582,6 +640,7 @@ export default function FetchPipelinePanel({
       if (!res.ok || !data.success) throw new Error(data.error || "规则加载失败");
       const list = data.rules || [];
       setRulesAll(list);
+      setRulesLoaded(true);
       const visibleDaysRule = list.find(
         (r) => getRuleModule(r) === "recommendation" && getRuleType(r) === "recommendation_visible_days"
       );
@@ -595,16 +654,71 @@ export default function FetchPipelinePanel({
     }
   }, [user]);
 
+  const loadPassLogs = useCallback(async () => {
+    if (!user) {
+      setPassLogs([]);
+      setPassLogsLoaded(true);
+      setPassLogsError("登录后可以查看订阅源的 PASS 明细。");
+      return;
+    }
+
+    setPassLogsLoading(true);
+    setPassLogsError(null);
+    try {
+      const res = await fetch("/api/me/pass-logs?limit=60", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const data = (await res.json()) as {
+        success?: boolean;
+        logs?: PassedPostLogRow[];
+        error?: string;
+      };
+      if (!res.ok || !data.success) throw new Error(data.error || "加载 PASS 明细失败");
+      setPassLogs(data.logs ?? []);
+      setPassLogsLoaded(true);
+    } catch (e) {
+      setPassLogs([]);
+      setPassLogsError(e instanceof Error ? e.message : "加载 PASS 明细失败");
+    } finally {
+      setPassLogsLoading(false);
+    }
+  }, [user]);
+
+  const togglePassLogs = useCallback(() => {
+    if (passLogsOpen) {
+      setPassLogsOpen(false);
+      return;
+    }
+    setPassLogsOpen(true);
+    if (!passLogsLoaded && !passLogsLoading) {
+      void loadPassLogs();
+    }
+  }, [passLogsOpen, passLogsLoaded, passLogsLoading, loadPassLogs]);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || configLoaded || configLoading) return;
     void loadPipelineSnapshot();
-  }, [isOpen, loadPipelineSnapshot]);
+  }, [isOpen, configLoaded, configLoading, loadPipelineSnapshot]);
 
   useEffect(() => {
     if (!isOpen || !user) return;
-    void loadSubscriptions();
-    void loadUserRules();
-  }, [isOpen, user, loadSubscriptions, loadUserRules]);
+    if (!subsLoaded && !subsLoading) {
+      void loadSubscriptions();
+    }
+    if (!rulesLoaded && !rulesLoading) {
+      void loadUserRules();
+    }
+  }, [
+    isOpen,
+    user,
+    subsLoaded,
+    subsLoading,
+    rulesLoaded,
+    rulesLoading,
+    loadSubscriptions,
+    loadUserRules,
+  ]);
 
   useEffect(() => {
     if (!config) return;
@@ -1519,7 +1633,17 @@ export default function FetchPipelinePanel({
           </section>
 
           <section className="mb-4 rounded-md border border-[#f3f4f6] bg-white p-3 shadow-xs">
-            <h3 className="mb-2 text-sm font-semibold text-[#101828]">当前 / 最近一次刷新</h3>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-[#101828]">当前 / 最近一次刷新</h3>
+              <button
+                type="button"
+                className="btn-primary btn-press rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                disabled={passLogsLoading}
+                onClick={togglePassLogs}
+              >
+                {passLogsOpen ? "收起 PASS 明细" : "查看 PASS 明细"}
+              </button>
+            </div>
             {!showTaskSection ? (
               <p className="text-sm text-[#6a7282]">暂无进行中的任务。</p>
             ) : (
@@ -1547,6 +1671,83 @@ export default function FetchPipelinePanel({
                 ) : null}
               </div>
             )}
+            {passLogsOpen ? (
+              <div className="mt-3 overflow-hidden rounded-md border border-[#f3f4f6] bg-[#fafafa]">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#f3f4f6] bg-white px-3 py-2">
+                  <div>
+                    <p className="text-xs font-semibold text-[#101828]">最近 PASS 记录</p>
+                    <p className="mt-0.5 text-[11px] text-[#99a1af]">只展示已记录的订阅源条目。</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary btn-press rounded-md px-2.5 py-1 text-[11px] font-medium disabled:opacity-50"
+                    disabled={passLogsLoading}
+                    onClick={() => void loadPassLogs()}
+                  >
+                    刷新
+                  </button>
+                </div>
+
+                {passLogsLoading ? (
+                  <p className="px-3 py-4 text-sm text-[#6a7282]" role="status">
+                    正在加载 PASS 明细…
+                  </p>
+                ) : passLogsError ? (
+                  <p className="px-3 py-4 text-sm text-primary-600">{passLogsError}</p>
+                ) : passLogs.length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-[#6a7282]">
+                    暂无 PASS 记录。新的刷新完成后会开始累积。
+                  </p>
+                ) : (
+                  <ul className="max-h-[360px] divide-y divide-[#f3f4f6] overflow-y-auto">
+                    {passLogs.map((log) => (
+                      <li key={log.id} className="px-3 py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={[
+                              "rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                              log.passType === "low_signal"
+                                ? "bg-[#f5f5f5] text-[#6a7282]"
+                                : "bg-primary-50 text-primary-700",
+                            ].join(" ")}
+                          >
+                            {passTypeLabel(log.passType)}
+                          </span>
+                          <span className="min-w-0 truncate text-xs font-medium text-[#101828]">
+                            {log.sourceName || (log.sourceHandle ? `@${log.sourceHandle}` : "未知来源")}
+                          </span>
+                          <span className="text-[11px] text-[#99a1af]">
+                            {formatPassLogTime(log.publishedAt || log.updatedAt)}
+                          </span>
+                          {log.url ? (
+                            <a
+                              className="ml-auto text-[11px] font-medium text-primary-600 hover:text-primary-700"
+                              href={log.url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              原推文
+                            </a>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-[#101828]">{log.passReason}</p>
+                        {log.content ? (
+                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#6a7282]">
+                            {log.content}
+                          </p>
+                        ) : null}
+                        {log.summary ? (
+                          <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-[#99a1af]">
+                            {log.title ? `${log.title}：` : ""}
+                            {log.summary}
+                          </p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
           </section>
 
         </div>

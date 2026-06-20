@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { AuthUser } from "@/lib/auth";
 import type { NewsItem } from "@/lib/types";
 import { useOpenLogin } from "@/hooks/useOpenLogin";
@@ -14,7 +15,10 @@ type BookmarksContentProps = {
   user: AuthUser;
 };
 
+const BOOKMARKS_RETURN_HOME_KEY = "uai:bookmarks-return-home";
+
 export default function BookmarksContent({ initialPosts, user }: BookmarksContentProps) {
+  const router = useRouter();
   const openLogin = useOpenLogin();
   const initialBookmarkedIds = useMemo(
     () => new Set(initialPosts.map((post) => post.id)),
@@ -40,19 +44,44 @@ export default function BookmarksContent({ initialPosts, user }: BookmarksConten
   const countLabel =
     visiblePosts.length > 0 ? `共 ${visiblePosts.length} 篇文章` : "还没有收藏任何内容";
 
+  useEffect(() => {
+    router.prefetch("/");
+  }, [router]);
+
+  const returnHome = useCallback(() => {
+    let shouldUseHistory = false;
+
+    try {
+      shouldUseHistory =
+        window.sessionStorage.getItem(BOOKMARKS_RETURN_HOME_KEY) === "1" &&
+        window.history.length > 1;
+      window.sessionStorage.removeItem(BOOKMARKS_RETURN_HOME_KEY);
+    } catch {
+      shouldUseHistory = false;
+    }
+
+    if (shouldUseHistory) {
+      router.back();
+      return;
+    }
+
+    router.push("/");
+  }, [router]);
+
   return (
     <>
       <div className="app-divider-border-b mt-[56px]">
         <div className="mx-auto flex max-w-[900px] items-center gap-3 px-6 py-6">
-          <Link
-            href="/"
+          <button
+            type="button"
+            onClick={returnHome}
             className="text-[#99a1af] transition-colors hover:text-[#6a7282]"
             aria-label="返回首页"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
-          </Link>
+          </button>
           <div>
             <div className="flex items-center gap-2">
               <BookmarkGlyph className="h-5 w-5 text-[#101828]" />

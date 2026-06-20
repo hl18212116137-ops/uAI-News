@@ -5,6 +5,7 @@ import type { AuthUser } from "@/lib/auth";
 type User = AuthUser;
 import type { NewsItem } from "@/lib/types";
 import { RECOMMENDED_SIDEBAR_LIMIT } from "@/lib/feed-quality";
+import { HOME_FEED_PAGE_SIZE, type FeedPage } from "@/lib/feed-pagination";
 import type { SubscriptionMutateSuccessPayload } from "@/hooks/useSubscription";
 
 /** 与 MainContent / SourcesList 侧栏行一致 */
@@ -42,14 +43,20 @@ export function useSubscribedFeedSync(
   setRecommendedState: SetRecommended,
   setPosts: SetPosts,
   setFetchingSourceIds: SetFetchingIds,
-  onSourceFetchEvent?: (event: SourceFetchEvent) => void
+  onSourceFetchEvent?: (event: SourceFetchEvent) => void,
+  onFeedPageSynced?: (page: Pick<FeedPage, "nextOffset" | "total" | "hasMore">) => void
 ) {
   const fetchPollsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   const onSourceFetchEventRef = useRef(onSourceFetchEvent);
+  const onFeedPageSyncedRef = useRef(onFeedPageSynced);
 
   useEffect(() => {
     onSourceFetchEventRef.current = onSourceFetchEvent;
   }, [onSourceFetchEvent]);
+
+  useEffect(() => {
+    onFeedPageSyncedRef.current = onFeedPageSynced;
+  }, [onFeedPageSynced]);
 
   useEffect(
     () => () => {
@@ -68,12 +75,23 @@ export function useSubscribedFeedSync(
           cache: "no-store",
           credentials: "same-origin",
         }),
-        fetch("/api/me/subscribed-feed", { cache: "no-store", credentials: "same-origin" }),
+        fetch(`/api/feed?offset=0&limit=${HOME_FEED_PAGE_SIZE}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+        }),
       ]);
       const [meta, rec, feed] = await Promise.all([metaRes.json(), recRes.json(), feedRes.json()]);
       if (meta.success && Array.isArray(meta.sources)) setSourcesState(meta.sources);
       if (rec.success && Array.isArray(rec.sources)) setRecommendedState(rec.sources);
-      if (feed.success && Array.isArray(feed.posts)) setPosts(feed.posts);
+      if (feed.success && Array.isArray(feed.posts)) {
+        setPosts(feed.posts);
+        onFeedPageSyncedRef.current?.({
+          nextOffset:
+            typeof feed.nextOffset === "number" ? feed.nextOffset : feed.posts.length,
+          total: typeof feed.total === "number" ? feed.total : feed.posts.length,
+          hasMore: Boolean(feed.hasMore),
+        });
+      }
     } catch (e) {
       console.error("[useSubscribedFeedSync] refreshSubscribedClientState", e);
     }

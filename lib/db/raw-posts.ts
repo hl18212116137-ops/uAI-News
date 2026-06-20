@@ -4,16 +4,38 @@ import { db } from '@/lib/db/drizzle'
 import { rawPosts, newsItems } from '@/lib/db/schema'
 import { eq, inArray, sql } from 'drizzle-orm'
 import { fetchRawPostIdsWithActiveJobs } from '@/lib/db/processing-jobs'
-import { parseXStatusUrl } from '@/lib/news-post-url'
+import { canonicalizeExternalUrlForDedupe, parseXStatusUrl } from '@/lib/news-post-url'
+import {
+  canonicalNewsIdForRawPost,
+  rawPostContentFingerprint,
+  rawPostDedupeKeys,
+} from '@/lib/news-dedupe'
 
 /** ingest / import 旧字段 → drizzle schema；process 读取时再还原为 legacy 形态 */
 export function normalizeRawPostRowForWrite(row: Record<string, unknown>): typeof rawPosts.$inferInsert {
-  const id = String(row.id ?? '').trim()
-  const url = typeof row.url === 'string' ? row.url : undefined
+  const rawId = String(row.id ?? '').trim()
+  const rawUrl = typeof row.url === 'string' ? row.url : undefined
+  const url = rawUrl ? canonicalizeExternalUrlForDedupe(rawUrl) : undefined
   const text = (row.text ?? row.content) as string | undefined
   const authorName = (row.author_name ?? row.author) as string | undefined
   const publishedAt = (row.published_at ?? row.publishedAt) as string | Date | undefined
   const parsed = url ? parseXStatusUrl(url) : null
+  const id =
+    canonicalNewsIdForRawPost({
+      ...row,
+      id: rawId,
+      url,
+      text,
+    }) || rawId
+  const contentHash =
+    typeof row.content_hash === 'string' && row.content_hash.trim()
+      ? row.content_hash.trim()
+      : rawPostContentFingerprint({
+          ...row,
+          id,
+          url,
+          text,
+        })
 
   return {
     id,
@@ -23,7 +45,7 @@ export function normalizeRawPostRowForWrite(row: Record<string, unknown>): typeo
     title: typeof row.title === 'string' ? row.title : undefined,
     publishedAt: publishedAt ? new Date(publishedAt) : undefined,
     sourceId: typeof row.source_id === 'string' ? row.source_id : typeof row.sourceId === 'string' ? row.sourceId : undefined,
-    contentHash: typeof row.content_hash === 'string' ? row.content_hash : undefined,
+    contentHash: contentHash || undefined,
     status: typeof row.status === 'string' ? row.status : 'new',
     errorMessage: typeof row.error_message === 'string' ? row.error_message : undefined,
     mediaUrls: row.media_urls ?? row.mediaUrls,
@@ -62,7 +84,60 @@ export async function fetchExistingRawPostIds(): Promise<string[]> {
 
 export async function fetchExistingNewsSourceUrls(): Promise<string[]> {
   const rows = await db.select({ sourceUrl: newsItems.sourceUrl }).from(newsItems)
-  return rows.map(r => r.sourceUrl).filter((u): u is string => u !== null)
+  return rows
+    .map(r => (r.sourceUrl ? canonicalizeExternalUrlForDedupe(r.sourceUrl) : ''))
+    .filter(Boolean)
+}
+
+export async function fetchExistingRawPostDedupeKeys(): Promise<Set<string>> {
+  const rows = await db
+    .select({
+      id: rawPosts.id,
+      url: rawPosts.url,
+      contentHash: rawPosts.contentHash,
+      content: rawPosts.content,
+      title: rawPosts.title,
+      referencedPost: rawPosts.referencedPost,
+    })
+    .from(rawPosts)
+
+  const keys = new Set<string>()
+  for (const row of rows) {
+    for (const key of rawPostDedupeKeys({
+      id: row.id,
+      url: row.url,
+      content_hash: row.contentHash,
+      content: row.content,
+      title: row.title,
+      referenced_post: row.referencedPost,
+    })) {
+      keys.add(key)
+    }
+  }
+  return keys
+}
+
+export async function fetchExistingNewsDedupeKeys(): Promise<Set<string>> {
+  const rows = await db
+    .select({
+      id: newsItems.id,
+      sourceUrl: newsItems.sourceUrl,
+      sourcePlatform: newsItems.sourcePlatform,
+    })
+    .from(newsItems)
+
+  const keys = new Set<string>()
+  for (const row of rows) {
+    const id = canonicalNewsIdForRawPost({
+      id: row.id,
+      platform: row.sourcePlatform ?? undefined,
+      url: row.sourceUrl ?? undefined,
+    })
+    if (id) keys.add(`id:${id}`)
+    const url = row.sourceUrl ? canonicalizeExternalUrlForDedupe(row.sourceUrl) : ''
+    if (url) keys.add(`url:${url}`)
+  }
+  return keys
 }
 
 export async function upsertRawPosts(rows: Record<string, unknown>[]): Promise<void> {

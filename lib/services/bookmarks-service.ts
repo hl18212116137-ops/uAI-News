@@ -9,7 +9,12 @@ import {
 import type { NewsItem } from '@/lib/types'
 
 export async function getBookmarkedIdsForUser(userId: string): Promise<string[]> {
-  return listUserBookmarkNewsItemIds(userId)
+  try {
+    return await listUserBookmarkNewsItemIds(userId)
+  } catch (error) {
+    console.warn('Failed to get bookmarked ids:', error)
+    return []
+  }
 }
 
 export async function addBookmarkForUser(userId: string, newsItemId: string): Promise<void> {

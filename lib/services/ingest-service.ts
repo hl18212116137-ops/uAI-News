@@ -6,10 +6,11 @@ import { fetchPostsFromX } from '@/lib/x'
 import { fetchMediaNews } from '@/lib/media-fetcher'
 import { enqueueFullPipelineJobsForRawIds } from '@/lib/db/processing-jobs'
 import {
-  fetchExistingNewsSourceUrls,
-  fetchExistingRawPostIds,
+  fetchExistingNewsDedupeKeys,
+  fetchExistingRawPostDedupeKeys,
   upsertRawPosts,
 } from '@/lib/db/raw-posts'
+import { canonicalNewsIdForPlatform, rawPostDedupeKeys } from '@/lib/news-dedupe'
 import { isProcessingJobsPipelineEnabled } from '@/lib/processing-jobs-pipeline'
 import { getEffectivePipelineRuntimeValues } from '@/lib/pipeline-settings'
 import { getUserSubscribedHandles, getUserSubscribedSourceIds } from '@/lib/subscriptions'
@@ -98,13 +99,28 @@ export async function runRefreshFetchFromEnabledSources(body: {
   }
 
   const [existingRawIds, existingNewsUrls, pipelineRt] = await Promise.all([
-    fetchExistingRawPostIds(),
-    fetchExistingNewsSourceUrls(),
+    fetchExistingRawPostDedupeKeys(),
+    fetchExistingNewsDedupeKeys(),
     getEffectivePipelineRuntimeValues(),
   ])
-  const seenIds = new Set(existingRawIds)
-  const seenUrls = new Set(existingNewsUrls)
+  const seenDedupeKeys = new Set<string>([
+    ...Array.from(existingRawIds),
+    ...Array.from(existingNewsUrls),
+  ])
   const ingestDedupeRssBlogMatchNewsUrl = pipelineRt.ingestDedupeRssBlogMatchNewsUrl
+
+  const rememberIfNew = (candidate: Record<string, unknown>): boolean => {
+    const keys = rawPostDedupeKeys(candidate)
+    const effectiveKeys =
+      ingestDedupeRssBlogMatchNewsUrl
+        ? keys
+        : keys.filter((key) => !key.startsWith('url:') || candidate.platform === 'X')
+    if (effectiveKeys.some((key) => seenDedupeKeys.has(key))) {
+      return false
+    }
+    for (const key of effectiveKeys) seenDedupeKeys.add(key)
+    return true
+  }
 
   const newRawPosts: Record<string, unknown>[] = []
   let processed = 0
@@ -132,9 +148,8 @@ export async function runRefreshFetchFromEnabledSources(body: {
         const posts = await fetchPostsFromX(source.handle)
         for (const post of posts) {
           rawFetchedTotal++
-          const normalizedId = post.post_id.replace(/^x_/, 'x-')
-          if (!seenIds.has(normalizedId) && !seenUrls.has(post.post_url)) {
-            newRawPosts.push({
+          const normalizedId = canonicalNewsIdForPlatform('X', post.post_id)
+          const candidate = {
               id: normalizedId,
               platform: 'X',
               handle: source.handle,
@@ -150,9 +165,9 @@ export async function runRefreshFetchFromEnabledSources(body: {
                 ? { social_engagement: post.social_engagement }
                 : {}),
               ...(post.referencedPost ? { referenced_post: post.referencedPost } : {}),
-            })
-            seenIds.add(normalizedId)
-            seenUrls.add(post.post_url)
+            }
+          if (rememberIfNew(candidate)) {
+            newRawPosts.push(candidate)
           } else {
             rawSkippedDuplicate++
           }
@@ -167,15 +182,8 @@ export async function runRefreshFetchFromEnabledSources(body: {
         for (const article of articles) {
           rawFetchedTotal++
           const articleUrl = article.source.url
-          const dupById = seenIds.has(article.id)
-          const dupByUrl =
-            ingestDedupeRssBlogMatchNewsUrl && seenUrls.has(articleUrl)
-          if (dupById || dupByUrl) {
-            rawSkippedDuplicate++
-            continue
-          }
           const rssText = article.originalText || article.content || ''
-          newRawPosts.push({
+          const candidate = {
             id: article.id,
             platform: source.platform,
             handle: source.handle,
@@ -184,9 +192,12 @@ export async function runRefreshFetchFromEnabledSources(body: {
             url: articleUrl,
             published_at: article.publishedAt,
             fetched_at: new Date().toISOString(),
-          })
-          seenIds.add(article.id)
-          seenUrls.add(articleUrl)
+          }
+          if (!rememberIfNew(candidate)) {
+            rawSkippedDuplicate++
+            continue
+          }
+          newRawPosts.push(candidate)
         }
       }
     } catch (error) {

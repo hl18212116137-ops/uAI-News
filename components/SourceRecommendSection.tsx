@@ -3,10 +3,11 @@
 import { useMemo, useState } from "react";
 import SourceAvatarImg from "@/components/SourceAvatarImg";
 import Tooltip from "@/components/Tooltip";
-import { sourceBioTagsLine } from "@/lib/source-bio-fallback";
-import { defaultAvatarUrlForHandle } from "@/lib/source-avatar";
 import { resolveSourceHomeUrl } from "@/lib/source-home-url";
-import { resolveSourceProfile } from "@/lib/source-profile";
+import {
+  resolveClientSourceProfile,
+  sourceBioTagsLine,
+} from "@/lib/source-client-profile";
 import { RECOMMENDED_SIDEBAR_LIMIT } from "@/lib/feed-quality";
 import {
   SourcesActionRefreshGlyph,
@@ -40,7 +41,7 @@ function RecommendSourceCard({
   onSubscribe?: (source: RecommendSourceRow) => void | Promise<void>;
 }) {
   const [isSubscribing, setIsSubscribing] = useState(false);
-  const profile = resolveSourceProfile({
+  const profile = resolveClientSourceProfile({
     handle: source.handle,
     platform: "X",
     avatar: source.avatar,
@@ -73,11 +74,12 @@ function RecommendSourceCard({
         >
           <SourceAvatarImg
             src={profile.avatar}
-            fallbackSrc={defaultAvatarUrlForHandle(source.handle)}
+            fallbackSrc={profile.fallbackAvatar}
             alt={source.name}
             letter={source.name}
             imgClassName="h-8 w-8 shrink-0 rounded-[2px] border border-[#F0F0F2] object-cover shadow-xs box-border"
             placeholderClassName="flex h-8 w-8 shrink-0 items-center justify-center rounded-[2px] border border-[#F0F0F2] bg-gray-200 text-[12px] font-semibold text-[#6a7282] shadow-xs"
+            instantFallback
           />
         </a>
       </Tooltip>

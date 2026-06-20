@@ -59,7 +59,7 @@ export async function addSourceFromUrlWithBackgroundFetch(params: {
     remainingTime: 120,
   })
 
-  fetchAndProcessPostsInBackground(source, taskId).catch(error => {
+  fetchAndProcessPostsInBackground(source, taskId, user?.id).catch(error => {
     console.error(`[后台任务] 抓取 @${source.handle} 失败:`, error)
     taskManager.updateTask(taskId, {
       status: 'failed',
@@ -135,7 +135,7 @@ export async function startFetchForSubscribedSource(
     remainingTime: 120,
   })
 
-  fetchAndProcessPostsInBackground(source, taskId).catch((error) => {
+  fetchAndProcessPostsInBackground(source, taskId, userId).catch((error) => {
     console.error(`[sources/fetch] 抓取 @${source.handle} 失败:`, error)
     taskManager.updateTask(taskId, {
       status: 'failed',

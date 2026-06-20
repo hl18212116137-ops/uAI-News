@@ -129,3 +129,38 @@ export const processingJobs = pgTable('processing_jobs', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+// ─── passed_posts ────────────────────────────────────────────────────────────
+export const passedPosts = pgTable('passed_posts', {
+  id: text('id').primaryKey(),
+  url: text('url'),
+  sourcePlatform: text('source_platform'),
+  sourceName: text('source_name'),
+  sourceHandle: text('source_handle'),
+  content: text('content'),
+  title: text('title'),
+  summary: text('summary'),
+  category: text('category'),
+  passType: text('pass_type').notNull(),
+  passReason: text('pass_reason').notNull().default(''),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  mediaUrls: jsonb('media_urls'),
+  socialEngagement: jsonb('social_engagement'),
+  referencedPost: jsonb('referenced_post'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+// ─── pass_feedback ───────────────────────────────────────────────────────────
+export const passFeedback = pgTable('pass_feedback', {
+  id: text('id').primaryKey(),
+  userId: uuid('user_id').notNull(),
+  passedPostId: text('passed_post_id').notNull(),
+  action: text('action').notNull(),
+  sourceHandle: text('source_handle'),
+  passType: text('pass_type'),
+  passReason: text('pass_reason'),
+  content: text('content'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})

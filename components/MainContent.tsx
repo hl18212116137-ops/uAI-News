@@ -17,10 +17,8 @@ import {
 import { useOpenLogin } from "@/hooks/useOpenLogin";
 import SiteHeader from "./SiteHeader";
 import TopBar from "./TopBar";
-import FetchPipelinePanel from "./FetchPipelinePanel";
 import RefreshProgress from "./RefreshButton";
 import CategoryFilter from "./CategoryFilter";
-import LongformModule from "./LongformModule";
 import NewsList from "./NewsList";
 import SourcesList from "./SourcesList";
 import SourceActivityNotice, {
@@ -30,8 +28,12 @@ import SourceActivityNotice, {
 import type { RecommendSourceRow } from "./SourceRecommendSection";
 
 const AddSourceModal = dynamic(() => import("./AddSourceModal"), { ssr: false });
+const AddLongformModal = dynamic(() => import("./AddLongformModal"), { ssr: false });
 const AuthPromptModal = dynamic(() => import("./AuthPromptModal"), { ssr: false });
 const AnalysisPanel = dynamic(() => import("./AnalysisPanel"), { ssr: false });
+const PassedPostsReviewPanel = dynamic(() => import("./PassedPostsReviewPanel"), { ssr: false });
+const FetchPipelinePanel = dynamic(() => import("./FetchPipelinePanel"), { ssr: false });
+const LongformModule = dynamic(() => import("./LongformModule"), { ssr: false });
 import {
   MAIN_FRAME_GRID_SHELL_CLASS,
   MAIN_GRID_COLS_NO_ANALYSIS,
@@ -43,6 +45,8 @@ import {
 import { OPTIMISTIC_REFRESH_TASK_ID } from "@/lib/fetch-refresh-ui";
 import { useOptionalHomeLayout } from "@/components/HomeLayoutContext";
 import { hasRawInsightPayload } from "@/lib/insight-echo-guard";
+import { dedupeNewsItemsForDisplay } from "@/lib/news-dedupe";
+import { HOME_FEED_PAGE_SIZE, type FeedPage } from "@/lib/feed-pagination";
 
 /** Figma 侧栏宽 — 与画板列宽一致 */
 const SOURCES_PANEL_WIDTH_PX = 256;
@@ -65,6 +69,54 @@ function scheduleIdleTask(fn: () => void) {
 /** 停滚 200ms 后移除亮态；随后滑块在 300ms 内从可见淡至完全透明（见 globals.css） */
 const MAIN_SCROLL_THUMB_IDLE_MS = 200;
 const LONGFORM_CATEGORY = "优质长文";
+const INSIGHT_PREFETCH_LIMIT = 12;
+
+function normalizeHandleForFilter(handle: unknown): string {
+  return String(handle ?? "").trim().replace(/^@+/, "").toLowerCase();
+}
+
+function textMatchesQuery(value: unknown, lowerQuery: string): boolean {
+  return String(value ?? "").toLowerCase().includes(lowerQuery);
+}
+
+function displaySortTime(post: NewsItem): number {
+  const promotedAt = post.promotedAt ? new Date(post.promotedAt).getTime() : NaN;
+  if (Number.isFinite(promotedAt)) return promotedAt;
+  return new Date(post.publishedAt).getTime();
+}
+
+function LongformStatusSection({
+  title,
+  detail,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  detail: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <section
+      aria-label="优质长文"
+      className="w-full min-w-0 border-y border-[#f3f4f6] py-16 text-center"
+    >
+      <h2 className="m-0 text-[16px] font-semibold leading-6 text-[#101828]">{title}</h2>
+      <p className="m-0 mt-2 text-[13px] leading-5 text-[#6a7282]">{detail}</p>
+      {actionLabel && onAction ? (
+        <div className="mt-5 flex justify-center">
+          <button
+            type="button"
+            className="btn-primary btn-press rounded-md px-4 py-2 text-sm font-medium"
+            onClick={onAction}
+          >
+            {actionLabel}
+          </button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 type Source = {
   id: string;
@@ -102,6 +154,11 @@ type MainContentProps = {
   user: User | null;
   initialBookmarkedIds: string[];
   initialSubscribedSourceIds: string[];
+  initialFeedOffset?: number;
+  initialFeedTotal?: number;
+  initialFeedHasMore?: boolean;
+  feedPageSize?: number;
+  canLoadMoreFeed?: boolean;
   isPersonalFeed: boolean;              // true = 个性化 feed；false = 推荐 feed
   /** 为 true 时顶栏由 HomePageShell 提供，侧栏折叠态走 HomeLayoutContext */
   useShellLayout?: boolean;
@@ -113,48 +170,84 @@ export default function MainContent({
   initialPosts,
   sources,
   recommendedSources = [],
+  totalCount,
   stats,
   user,
   initialBookmarkedIds,
   initialSubscribedSourceIds,
   isPersonalFeed,
+  initialFeedOffset = initialPosts.length,
+  initialFeedTotal = totalCount,
+  initialFeedHasMore = initialPosts.length < totalCount,
+  feedPageSize = HOME_FEED_PAGE_SIZE,
+  canLoadMoreFeed = true,
   useShellLayout = false,
   deferRecommendedSources = false,
 }: MainContentProps) {
   const optionalShell = useOptionalHomeLayout();
   const openLogin = useOpenLogin();
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [localFetchPipelinePanelOpen, setLocalFetchPipelinePanelOpen] = useState(false);
-  const isShell = Boolean(useShellLayout && optionalShell);
-  const fetchPipelinePanelOpen = isShell
+  const [hasOpenedFetchPipelinePanel, setHasOpenedFetchPipelinePanel] = useState(false);
+  const [showPassReviewPanel, setShowPassReviewPanel] = useState(false);
+  const [hasOpenedPassReviewPanel, setHasOpenedPassReviewPanel] = useState(false);
+  const hasShellLayout = Boolean(useShellLayout && optionalShell);
+  const shellLayoutReady = hasHydrated && hasShellLayout;
+
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
+
+  const fetchPipelinePanelOpen = shellLayoutReady
     ? optionalShell!.fetchPipelinePanelOpen
     : localFetchPipelinePanelOpen;
   const openFetchPipelinePanel = useCallback(() => {
-    if (isShell && optionalShell) {
+    if (shellLayoutReady && optionalShell) {
       optionalShell.setFetchPipelinePanelOpen(true);
     } else {
       setLocalFetchPipelinePanelOpen(true);
     }
-  }, [isShell, optionalShell]);
+  }, [shellLayoutReady, optionalShell]);
   const closeFetchPipelinePanel = useCallback(() => {
-    if (isShell && optionalShell) {
+    if (shellLayoutReady && optionalShell) {
       optionalShell.setFetchPipelinePanelOpen(false);
     } else {
       setLocalFetchPipelinePanelOpen(false);
     }
-  }, [isShell, optionalShell]);
+  }, [shellLayoutReady, optionalShell]);
 
   useEffect(() => {
     const openFromTopBar = () => openFetchPipelinePanel();
     window.addEventListener("uai:open-fetch-pipeline-panel", openFromTopBar);
     return () => window.removeEventListener("uai:open-fetch-pipeline-panel", openFromTopBar);
   }, [openFetchPipelinePanel]);
+  useEffect(() => {
+    if (fetchPipelinePanelOpen) {
+      setHasOpenedFetchPipelinePanel(true);
+    }
+  }, [fetchPipelinePanelOpen]);
+  useEffect(() => {
+    const openFromTopBar = () => setShowPassReviewPanel(true);
+    window.addEventListener("uai:open-pass-review", openFromTopBar);
+    return () => window.removeEventListener("uai:open-pass-review", openFromTopBar);
+  }, []);
+  useEffect(() => {
+    if (showPassReviewPanel) {
+      setHasOpenedPassReviewPanel(true);
+    }
+  }, [showPassReviewPanel]);
   const [localCollapsed, setLocalCollapsed] = useState(true);
-  const isSourcesListCollapsed = isShell ? optionalShell!.isSourcesListCollapsed : localCollapsed;
-  const setIsSourcesListCollapsed = isShell
+  // Keep the first client render identical to the server HTML. The shell top bar
+  // can update context while this Suspense-loaded feed is still hydrating.
+  const isSourcesListCollapsed = shellLayoutReady
+    ? optionalShell!.isSourcesListCollapsed
+    : localCollapsed;
+  const setIsSourcesListCollapsed = shellLayoutReady
     ? optionalShell!.setIsSourcesListCollapsed
     : setLocalCollapsed;
 
   const [showAddSourceModal, setShowAddSourceModal] = useState(false);
+  const [showAddLongformModal, setShowAddLongformModal] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [task, setTask] = useState<Task | null>(null);
   /** 与 taskId 同步；用户点「暂停」时先手动置空，避免轮询 await 返回后把 task 写回 running */
@@ -166,6 +259,21 @@ export default function MainContent({
   const [activeSource, setActiveSource] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [posts, setPosts] = useState<NewsItem[]>(initialPosts);
+  const [feedOffset, setFeedOffset] = useState(initialFeedOffset);
+  const [feedTotal, setFeedTotal] = useState(initialFeedTotal);
+  const [feedHasMore, setFeedHasMore] = useState(initialFeedHasMore);
+  const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
+  const [loadMoreFeedError, setLoadMoreFeedError] = useState("");
+  const [longformLoaded, setLongformLoaded] = useState(() =>
+    initialPosts.some((post) => Boolean(post.longform?.translatedContent))
+  );
+  const [longformLoading, setLongformLoading] = useState(false);
+  const [longformError, setLongformError] = useState("");
+  const [longformPreviewIds, setLongformPreviewIds] = useState<Set<string>>(() => new Set());
+  const [longformFullLoadingIds, setLongformFullLoadingIds] = useState<Set<string>>(() => new Set());
+  const [longformFullErrorById, setLongformFullErrorById] = useState<Record<string, string>>({});
+  const [longformActionPendingIds, setLongformActionPendingIds] = useState<Set<string>>(() => new Set());
+  const [passPendingIds, setPassPendingIds] = useState<Set<string>>(() => new Set());
   const [sourcesState, setSourcesState] = useState<Source[]>(sources);
   const [recommendedState, setRecommendedState] = useState<Source[]>(recommendedSources);
   const [fetchingSourceIds, setFetchingSourceIds] = useState<Set<string>>(() => new Set());
@@ -201,7 +309,11 @@ export default function MainContent({
 
   /** 前 N 条预取 INSIGHT：抓取入库后服务端已写入 insight_json 时，点开侧栏几乎无等待 */
   const insightPrefetchIds = useMemo(
-    () => posts.slice(0, 48).map((p: NewsItem) => p.id),
+    () =>
+      posts
+        .filter((post: NewsItem) => !post.longform?.translatedContent)
+        .slice(0, INSIGHT_PREFETCH_LIMIT)
+        .map((post: NewsItem) => post.id),
     [posts],
   );
   const insightPrefetchKey = insightPrefetchIds.join("\0");
@@ -209,6 +321,8 @@ export default function MainContent({
   const closeAnalysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainScrollThumbIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const passPendingIdsRef = useRef<Set<string>>(new Set());
+  const longformActionPendingIdsRef = useRef<Set<string>>(new Set());
   const sourceActivityExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceActivityRemoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sourceActivityIdRef = useRef(0);
@@ -324,7 +438,14 @@ export default function MainContent({
   /** FETCH 完成后 router.refresh() 会更新 RSC props；useState 初值不会跟 props 变，需同步 */
   useEffect(() => {
     setPosts(initialPosts);
-  }, [initialPosts]);
+    setFeedOffset(initialFeedOffset);
+    setFeedTotal(initialFeedTotal);
+    setFeedHasMore(initialFeedHasMore);
+    setLoadMoreFeedError("");
+    if (initialPosts.some((post) => Boolean(post.longform?.translatedContent))) {
+      setLongformLoaded(true);
+    }
+  }, [initialFeedHasMore, initialFeedOffset, initialFeedTotal, initialPosts]);
 
   useEffect(() => {
     setSourcesState(sources);
@@ -335,6 +456,16 @@ export default function MainContent({
     setRecommendedState(recommendedSources);
   }, [recommendedSources, deferRecommendedSources]);
 
+  const handleFeedPageSynced = useCallback(
+    (page: Pick<FeedPage, "nextOffset" | "total" | "hasMore">) => {
+      setFeedOffset(page.nextOffset);
+      setFeedTotal(page.total);
+      setFeedHasMore(page.hasMore);
+      setLoadMoreFeedError("");
+    },
+    []
+  );
+
   const { refreshSubscribedClientState, startSourceFetchPolling, handleSubscriptionSynced } =
     useSubscribedFeedSync(
       user,
@@ -342,7 +473,8 @@ export default function MainContent({
       setRecommendedState,
       setPosts,
       setFetchingSourceIds,
-      handleSourceFetchEvent
+      handleSourceFetchEvent,
+      handleFeedPageSynced
     );
 
   const initialBookmarkedIdSet = useMemo(
@@ -443,23 +575,80 @@ export default function MainContent({
     );
   }, []);
 
-  useEffect(() => {
-    if (!deferRecommendedSources) return;
-    let cancelled = false;
-    scheduleIdleTask(() => {
-      if (cancelled) return;
-      void fetch(`/api/recommended-sources?limit=${RECOMMENDED_SIDEBAR_LIMIT}`, { cache: "no-store", credentials: "same-origin" })
-        .then((res) => res.json())
-        .then((data: { success?: boolean; sources?: Source[] }) => {
-          if (cancelled || !data.success || !Array.isArray(data.sources)) return;
-          setRecommendedState(data.sources);
-        })
-        .catch(() => {});
+  const loadLongformPosts = useCallback(async () => {
+    if (longformLoading) return;
+    setLongformLoading(true);
+    setLongformError("");
+    try {
+      const res = await fetch("/api/longform/posts", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        posts?: NewsItem[];
+        error?: string;
+      };
+      if (!res.ok || !data.success || !Array.isArray(data.posts)) {
+        throw new Error(data.error || "长文加载失败");
+      }
+      const nextPosts = data.posts ?? [];
+      setPosts((current) => {
+        const byId = new Map(current.map((post) => [post.id, post]));
+        for (const post of nextPosts) {
+          byId.set(post.id, post);
+        }
+        return dedupeNewsItemsForDisplay(Array.from(byId.values()));
+      });
+      setLongformPreviewIds(new Set(nextPosts.map((post) => post.id)));
+      setLongformLoaded(true);
+    } catch (error) {
+      setLongformError(error instanceof Error ? error.message : "长文加载失败");
+    } finally {
+      setLongformLoading(false);
+    }
+  }, [longformLoading]);
+
+  const loadFullLongformPost = useCallback(async (postId: string) => {
+    if (!longformPreviewIds.has(postId) || longformFullLoadingIds.has(postId)) return;
+    setLongformFullLoadingIds((current) => new Set(current).add(postId));
+    setLongformFullErrorById((current) => {
+      const next = { ...current };
+      delete next[postId];
+      return next;
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [deferRecommendedSources]);
+    try {
+      const res = await fetch(`/api/longform/posts/${encodeURIComponent(postId)}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        post?: NewsItem;
+        error?: string;
+      };
+      if (!res.ok || !data.success || !data.post?.longform?.translatedContent) {
+        throw new Error(data.error || "长文正文加载失败");
+      }
+      setPosts((current) => current.map((post) => (post.id === postId ? data.post! : post)));
+      setLongformPreviewIds((current) => {
+        const next = new Set(current);
+        next.delete(postId);
+        return next;
+      });
+    } catch (error) {
+      setLongformFullErrorById((current) => ({
+        ...current,
+        [postId]: error instanceof Error ? error.message : "长文正文加载失败",
+      }));
+    } finally {
+      setLongformFullLoadingIds((current) => {
+        const next = new Set(current);
+        next.delete(postId);
+        return next;
+      });
+    }
+  }, [longformFullLoadingIds, longformPreviewIds]);
 
   const isRunning = !!(task && (task.status === 'pending' || task.status === 'running'));
   /** 含「启动中」乐观态：按钮 FETCHING 与可点「暂停」同步 */
@@ -573,18 +762,108 @@ export default function MainContent({
     activeFetchTaskIdRef.current = null;
     setTaskId(null);
     setTask(null);
-  }, []);
+    void refreshSubscribedClientState();
+  }, [refreshSubscribedClientState]);
 
   const handleAddSource = useCallback((_type: 'blogger' | 'media' | 'academic') => {
     setShowAddSourceModal(true);
     setIsSourcesListCollapsed(false);
   }, [setIsSourcesListCollapsed]);
   const handleAddBloggerSource = useCallback(() => handleAddSource("blogger"), [handleAddSource]);
+  const handleLongformImported = useCallback((post: NewsItem) => {
+    setPosts((current) => [post, ...current.filter((item) => item.id !== post.id)]);
+    setLongformPreviewIds((current) => {
+      const next = new Set(current);
+      next.delete(post.id);
+      return next;
+    });
+    setLongformLoaded(true);
+    setActiveCategory(LONGFORM_CATEGORY);
+    setShowRecommendedPosts(true);
+  }, []);
+  const handleLongformExtractFromPost = useCallback(
+    async (post: NewsItem) => {
+      if (longformActionPendingIdsRef.current.has(post.id)) return;
+
+      longformActionPendingIdsRef.current.add(post.id);
+      setLongformActionPendingIds(new Set(longformActionPendingIdsRef.current));
+
+      try {
+        const res = await fetch("/api/longform/from-post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          cache: "no-store",
+          body: JSON.stringify({ postId: post.id }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          code?: string;
+          error?: string;
+          post?: NewsItem;
+          alreadyExists?: boolean;
+        };
+
+        if (!res.ok || !data.success || !data.post?.longform?.translatedContent) {
+          const isNoLongform = data.code === "NO_LONGFORM" || res.status === 404;
+          showSourceActivity(
+            {
+              title: isNoLongform ? "没有长文存在" : "长文抓取失败",
+              detail:
+                data.error ||
+                (isNoLongform
+                  ? "这条推文里没有识别到可抓取的文章链接或论文截图。"
+                  : "请稍后重试。"),
+              tone: "error",
+            },
+            isNoLongform ? 4200 : 5600,
+          );
+          return;
+        }
+
+        setPosts((current) =>
+          current.map((item) => (item.id === data.post!.id ? data.post! : item))
+        );
+        setLongformPreviewIds((current) => {
+          const next = new Set(current);
+          next.delete(data.post!.id);
+          return next;
+        });
+        setLongformLoaded(true);
+        setActiveCategory(LONGFORM_CATEGORY);
+        setShowRecommendedPosts(true);
+        showSourceActivity(
+          {
+            title: data.alreadyExists ? "这条推文已有长文" : "长文已添加",
+            detail: "已放入「优质长文」，可以继续阅读或展开原文。",
+            tone: "success",
+          },
+          3600,
+        );
+      } catch (error) {
+        showSourceActivity(
+          {
+            title: "长文抓取失败",
+            detail: error instanceof Error ? error.message : "请稍后重试。",
+            tone: "error",
+          },
+          5600,
+        );
+      } finally {
+        longformActionPendingIdsRef.current.delete(post.id);
+        setLongformActionPendingIds(new Set(longformActionPendingIdsRef.current));
+      }
+    },
+    [showSourceActivity],
+  );
   const handleSourceSelect = useCallback((handle?: string) => {
     setActiveSource(handle || "");
   }, []);
   const toggleSourcesListCollapsed = useCallback(() => {
     setIsSourcesListCollapsed((v) => !v);
+  }, [setIsSourcesListCollapsed]);
+  const collapseSourcesList = useCallback(() => {
+    setIsSourcesListCollapsed(true);
   }, [setIsSourcesListCollapsed]);
 
   /** 选中且未手动折叠右栏时显示 ANALYSIS */
@@ -686,17 +965,17 @@ export default function MainContent({
   ]);
 
   useEffect(() => {
-    if (!isShell || !optionalShell) return;
+    if (!hasShellLayout || !optionalShell) return;
     optionalShell.setAnalysisPanelOpen(showAnalysisPanel);
-  }, [isShell, optionalShell, showAnalysisPanel]);
+  }, [hasShellLayout, optionalShell, showAnalysisPanel]);
 
   useEffect(() => {
-    if (!isShell || !optionalShell) return;
+    if (!hasShellLayout || !optionalShell) return;
     optionalShell.onCollapseAnalysisRef.current = closeAnalysisSession;
     return () => {
       optionalShell.onCollapseAnalysisRef.current = null;
     };
-  }, [isShell, optionalShell, closeAnalysisSession]);
+  }, [hasShellLayout, optionalShell, closeAnalysisSession]);
 
   useEffect(
     () => () => {
@@ -731,6 +1010,63 @@ export default function MainContent({
       clearCloseAnalysisTimer,
       closeAnalysisSession,
     ]
+  );
+
+  const handlePassPost = useCallback(
+    async (post: NewsItem) => {
+      if (!user) {
+        setShowAuthPrompt(true);
+        return;
+      }
+      if (passPendingIdsRef.current.has(post.id)) return;
+
+      const previousPosts = posts;
+      passPendingIdsRef.current.add(post.id);
+      setPassPendingIds(new Set(passPendingIdsRef.current));
+      setPosts((current) => current.filter((item) => item.id !== post.id));
+      if (analysisPostId === post.id) {
+        closeAnalysisSession();
+      }
+
+      try {
+        const res = await fetch("/api/me/pass-post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          cache: "no-store",
+          body: JSON.stringify({ post }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+        };
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "PASS 推文失败");
+        }
+        showSourceActivity(
+          {
+            title: "已 PASS 这条推文",
+            detail: "后续抓取和推荐会少展示类似内容。",
+            tone: "success",
+          },
+          3200
+        );
+      } catch (error) {
+        setPosts(previousPosts);
+        showSourceActivity(
+          {
+            title: "PASS 失败",
+            detail: error instanceof Error ? error.message : "请检查网络后重试。",
+            tone: "error",
+          },
+          5200
+        );
+      } finally {
+        passPendingIdsRef.current.delete(post.id);
+        setPassPendingIds(new Set(passPendingIdsRef.current));
+      }
+    },
+    [analysisPostId, closeAnalysisSession, posts, showSourceActivity, user]
   );
 
   useEffect(() => {
@@ -799,11 +1135,14 @@ export default function MainContent({
     type InsightPayload = (typeof analysisCache)[string];
     scheduleIdleTask(() => {
       if (cancelled) return;
+      if (document.visibilityState !== "visible") return;
       void (async () => {
         try {
           const res = await fetch("/api/analysis/prefetch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            cache: "no-store",
             body: JSON.stringify({ postIds: needed }),
           });
           const data = await res.json();
@@ -844,9 +1183,9 @@ export default function MainContent({
   }, [analysisPostId]);
 
   const sortedPosts = useMemo(() => {
-    return [...posts].sort((a, b) => {
-      return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-    });
+    return dedupeNewsItemsForDisplay([...posts].sort((a, b) => {
+      return displaySortTime(b) - displaySortTime(a);
+    }));
   }, [posts]);
 
   const analysisPost = useMemo(
@@ -855,6 +1194,11 @@ export default function MainContent({
   );
 
   const isLongformCategory = activeCategory === LONGFORM_CATEGORY;
+
+  useEffect(() => {
+    if (!isLongformCategory || longformLoaded || longformLoading) return;
+    void loadLongformPosts();
+  }, [isLongformCategory, longformLoaded, longformLoading, loadLongformPosts]);
 
   // 在客户端进行筛选（纯内存操作，无服务端请求）
   const filteredPosts = useMemo(() => {
@@ -869,27 +1213,75 @@ export default function MainContent({
     }
 
     if (!isLongformCategory && activeSource && activeSource.trim() !== "") {
+      const activeSourceKey = normalizeHandleForFilter(activeSource);
       result = result.filter((post) => {
         const handle = typeof post.source === "string" ? post.source : post.source?.handle;
-        return handle && handle.toLowerCase() === activeSource.toLowerCase();
+        return normalizeHandleForFilter(handle) === activeSourceKey;
       });
     }
 
     if (searchQuery && searchQuery.trim() !== "") {
       const lowerQuery = searchQuery.toLowerCase().trim();
       result = result.filter((post) => {
-        return (
-          post.title.toLowerCase().includes(lowerQuery) ||
-          post.summary.toLowerCase().includes(lowerQuery) ||
-          post.content.toLowerCase().includes(lowerQuery) ||
-          post.longform?.translatedTitle?.toLowerCase().includes(lowerQuery) ||
-          post.longform?.translatedContent?.toLowerCase().includes(lowerQuery)
-        );
+        const source = typeof post.source === "string" ? post.source : post.source;
+        return [
+          post.title,
+          post.summary,
+          post.content,
+          post.originalText,
+          post.referencedPost?.text,
+          typeof source === "string" ? source : source?.name,
+          typeof source === "string" ? source : source?.handle,
+          post.longform?.title,
+          post.longform?.translatedTitle,
+          post.longform?.translatedContent,
+        ].some((value) => textMatchesQuery(value, lowerQuery));
       });
     }
 
     return result;
   }, [sortedPosts, activeCategory, activeSource, searchQuery, isLongformCategory]);
+
+  const canShowLoadMoreFeed =
+    canLoadMoreFeed && !isLongformCategory && feedHasMore && !emptyFeedAwaitingFetch;
+
+  const handleLoadMoreFeed = useCallback(async () => {
+    if (isLoadingMoreFeed || !feedHasMore) return;
+    setIsLoadingMoreFeed(true);
+    setLoadMoreFeedError("");
+
+    try {
+      const params = new URLSearchParams({
+        offset: String(feedOffset),
+        limit: String(feedPageSize),
+      });
+      const response = await fetch(`/api/feed?${params.toString()}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const data = (await response.json()) as Partial<FeedPage> & {
+        success?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !data.success || !Array.isArray(data.posts)) {
+        throw new Error(data.error || "加载更多失败");
+      }
+
+      setPosts((current) => dedupeNewsItemsForDisplay([...current, ...data.posts!]));
+      const nextOffset =
+        typeof data.nextOffset === "number"
+          ? data.nextOffset
+          : feedOffset + data.posts.length;
+      setFeedOffset(nextOffset);
+      setFeedTotal(typeof data.total === "number" ? data.total : nextOffset);
+      setFeedHasMore(Boolean(data.hasMore));
+    } catch (error) {
+      setLoadMoreFeedError(error instanceof Error ? error.message : "加载更多失败");
+    } finally {
+      setIsLoadingMoreFeed(false);
+    }
+  }, [feedHasMore, feedOffset, feedPageSize, isLoadingMoreFeed]);
 
   const isGuestDefaultFeed =
     !user &&
@@ -897,14 +1289,14 @@ export default function MainContent({
     initialPosts.length > 0 &&
     initialPosts.length <= 5;
 
-  const bodyShellClass = isShell
+  const bodyShellClass = hasShellLayout
     ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-hidden bg-white lg:overflow-x-auto"
     : "relative flex h-dvh min-h-0 w-full min-w-0 flex-col items-stretch overflow-x-hidden overflow-y-hidden bg-white lg:overflow-x-auto";
 
   return (
     <>
       <div data-name="Body" data-node-id="3:2330" className={bodyShellClass}>
-        {!isShell && (
+        {!hasShellLayout && (
           <>
             <TopBar
               user={user}
@@ -913,6 +1305,7 @@ export default function MainContent({
               analysisPanelOpen={showAnalysisPanel}
               onCollapseAnalysisSidebar={closeAnalysisSession}
               onOpenFetchPipelineSettings={openFetchPipelinePanel}
+              onOpenPassReview={() => setShowPassReviewPanel(true)}
             />
 
             <div className="w-full shrink-0 pt-14">
@@ -958,16 +1351,18 @@ export default function MainContent({
                   ].join(" ")}
                   aria-hidden={isSourcesListCollapsed}
                 >
-          <SourcesList
-                    sources={sourcesState}
-                    currentSource={activeSource}
-                    onSourceSelect={handleSourceSelect}
-                    onAddSource={handleAddBloggerSource}
-                    fetchingSourceIds={fetchingSourceIds}
-                    user={user}
-                    isCollapsed={false}
-                    onToggleCollapse={() => setIsSourcesListCollapsed(true)}
-                  />
+                  {!isSourcesListCollapsed ? (
+                    <SourcesList
+                      sources={sourcesState}
+                      currentSource={activeSource}
+                      onSourceSelect={handleSourceSelect}
+                      onAddSource={handleAddBloggerSource}
+                      fetchingSourceIds={fetchingSourceIds}
+                      user={user}
+                      isCollapsed={false}
+                      onToggleCollapse={collapseSourcesList}
+                    />
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1035,19 +1430,67 @@ export default function MainContent({
                     isGuestDefaultFeed ? "pb-80 sm:pb-96" : "pb-[128px]",
                   ].join(" ")}
                 >
-                  {isLongformCategory ? (
-                    <LongformModule posts={filteredPosts} />
+                  {isLongformCategory && longformLoading && filteredPosts.length === 0 ? (
+                    <LongformStatusSection
+                      title="正在加载长文"
+                      detail="正在读取近期整理的深度内容。"
+                    />
+                  ) : isLongformCategory && longformError && filteredPosts.length === 0 ? (
+                    <LongformStatusSection
+                      title="长文加载失败"
+                      detail={longformError}
+                      actionLabel="重试"
+                      onAction={loadLongformPosts}
+                    />
+                  ) : isLongformCategory ? (
+                    <LongformModule
+                      posts={filteredPosts}
+                      onAddArticle={() => setShowAddLongformModal(true)}
+                      analysisActivePostId={analysisPostId}
+                      onAnalysisToggle={handleAnalysisToggle}
+                      previewPostIds={longformPreviewIds}
+                      fullLoadingPostIds={longformFullLoadingIds}
+                      fullErrorByPostId={longformFullErrorById}
+                      onRequestFullArticle={loadFullLongformPost}
+                      showFloatingToc={isSourcesListCollapsed}
+                    />
                   ) : (
                     <NewsList
                       posts={filteredPosts}
                       bookmarkedIds={bookmarkedIds}
                       bookmarkPendingIds={bookmarkPendingIds}
                       onBookmarkToggle={toggleBookmark}
+                      passPendingIds={passPendingIds}
+                      onPassPost={handlePassPost}
+                      longformPendingIds={longformActionPendingIds}
+                      onLongformExtract={handleLongformExtractFromPost}
                       analysisActivePostId={analysisPostId}
                       onAnalysisToggle={handleAnalysisToggle}
                       emptyFeedAwaitingFetch={emptyFeedAwaitingFetch}
                     />
                   )}
+                  {!isLongformCategory && (canShowLoadMoreFeed || loadMoreFeedError) ? (
+                    <section className="flex w-full min-w-0 flex-col items-center gap-3 px-4 py-8">
+                      {canShowLoadMoreFeed ? (
+                        <button
+                          type="button"
+                          onClick={handleLoadMoreFeed}
+                          disabled={isLoadingMoreFeed}
+                          className="btn-primary btn-press inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {isLoadingMoreFeed ? "加载中..." : "加载更多"}
+                        </button>
+                      ) : null}
+                      <p className="m-0 text-[12px] leading-5 text-[#99a1af]">
+                        已加载 {Math.min(posts.length, feedTotal)} / {feedTotal}
+                      </p>
+                      {loadMoreFeedError ? (
+                        <p className="m-0 text-[12px] leading-5 text-primary-600">
+                          {loadMoreFeedError}
+                        </p>
+                      ) : null}
+                    </section>
+                  ) : null}
                   {isGuestDefaultFeed && !isLongformCategory && (
                     <section
                       className="mt-8 w-full min-w-0 pt-8"
@@ -1197,7 +1640,8 @@ export default function MainContent({
         />
       ) : null}
 
-      <AddSourceModal
+      {showAddSourceModal ? (
+        <AddSourceModal
         isOpen={showAddSourceModal}
         onClose={() => setShowAddSourceModal(false)}
         recommendedSources={recommendedState}
@@ -1265,21 +1709,43 @@ export default function MainContent({
             })
             .catch(() => {});
         }}
-      />
+        />
+      ) : null}
 
-      <AuthPromptModal isOpen={showAuthPrompt} onClose={() => setShowAuthPrompt(false)} />
+      {showAddLongformModal ? (
+        <AddLongformModal
+          isOpen={showAddLongformModal}
+          onClose={() => setShowAddLongformModal(false)}
+          onImported={handleLongformImported}
+        />
+      ) : null}
 
-      <FetchPipelinePanel
-        isOpen={fetchPipelinePanelOpen}
-        onClose={closeFetchPipelinePanel}
-        taskId={taskId}
-        task={task}
-        user={user}
-        onRequestAddSource={() => {
-          setShowAddSourceModal(true);
-          setIsSourcesListCollapsed(false);
-        }}
-      />
+      {showAuthPrompt ? (
+        <AuthPromptModal isOpen={showAuthPrompt} onClose={() => setShowAuthPrompt(false)} />
+      ) : null}
+
+      {hasOpenedPassReviewPanel ? (
+        <PassedPostsReviewPanel
+          isOpen={showPassReviewPanel}
+          onClose={() => setShowPassReviewPanel(false)}
+          user={user}
+          onPromoted={() => void refreshSubscribedClientState()}
+        />
+      ) : null}
+
+      {hasOpenedFetchPipelinePanel ? (
+        <FetchPipelinePanel
+          isOpen={fetchPipelinePanelOpen}
+          onClose={closeFetchPipelinePanel}
+          taskId={taskId}
+          task={task}
+          user={user}
+          onRequestAddSource={() => {
+            setShowAddSourceModal(true);
+            setIsSourcesListCollapsed(false);
+          }}
+        />
+      ) : null}
     </>
   );
 }

@@ -3,10 +3,11 @@
 import { memo, useEffect, useState } from "react";
 import { NewsItem } from "@/lib/types";
 import { resolveNewsPostUrl } from "@/lib/news-post-url";
+import { cleanNewsTitle } from "@/lib/news-title-cleanup";
 import { isNewPost, formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
 import BookmarkGlyph from "@/components/BookmarkGlyph";
-import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
+import { FeedInsightSparkleGlyph, FeedLongformGlyph } from "@/components/feed-inline-icons";
 
 function formatDateZH(dateString: string): string {
   const d = new Date(dateString);
@@ -34,6 +35,10 @@ type NewsCardProps = {
   isBookmarked?: boolean;
   bookmarkPending?: boolean;
   onBookmarkToggle?: (id: string, post: NewsItem) => void;
+  passPending?: boolean;
+  onPassPost?: (post: NewsItem) => void;
+  longformPending?: boolean;
+  onLongformExtract?: (post: NewsItem) => void;
   readonly?: boolean;
   analysisActive?: boolean;
   onAnalysisToggle?: (postId: string) => void;
@@ -47,12 +52,17 @@ function NewsCard({
   isBookmarked = false,
   bookmarkPending = false,
   onBookmarkToggle,
+  passPending = false,
+  onPassPost,
+  longformPending = false,
+  onLongformExtract,
   readonly = false,
   analysisActive = false,
   onAnalysisToggle,
 }: NewsCardProps) {
   const sourceName = post.source?.name || "未知来源";
   const sourceUrl = resolveNewsPostUrl(post);
+  const displayTitle = cleanNewsTitle(post.title);
   /** isNewPost 依赖 sessionStorage，SSR 与首帧客户端必须一致，故挂载后再算 */
   const [showNewBadge, setShowNewBadge] = useState(false);
   useEffect(() => {
@@ -63,6 +73,14 @@ function NewsCard({
     variant === "compact"
       ? "pt-10 pb-12"
       : "pt-8 pb-12 sm:pt-[40px] sm:pb-14 lg:pt-[48px] lg:pb-[64px]";
+  const showLongformAction = !readonly && Boolean(onLongformExtract);
+  const showAnalysisAction = !readonly && Boolean(onAnalysisToggle);
+  const actionRowJustify =
+    showLongformAction && showAnalysisAction
+      ? "justify-between"
+      : showAnalysisAction
+        ? "justify-end"
+        : "justify-start";
 
   return (
     <article
@@ -181,6 +199,32 @@ function NewsCard({
                 </span>
               </>
             ) : null}
+            {!readonly && onPassPost ? (
+              <span className="group inline-flex min-h-[18px] w-[64px] shrink-0 items-center gap-[4px]">
+                <span className="flex min-h-[18px] items-center font-mono text-[12px] uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                  /
+                </span>
+                <Tooltip content={passPending ? "正在记录 PASS" : "PASS 这条，后续少推荐类似内容"}>
+                  <button
+                    type="button"
+                    className="btn-press inline-flex min-h-[18px] shrink-0 items-center gap-1 rounded-[3px] bg-transparent px-1.5 font-mono text-[10px] font-bold uppercase leading-[14px] tracking-[0.06em] text-[#6a7282] opacity-0 transition-[background-color,color,opacity] hover:bg-primary-50 hover:text-primary-600 hover:opacity-100 focus-visible:bg-primary-50 focus-visible:text-primary-600 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 disabled:cursor-wait disabled:opacity-70"
+                    aria-label="PASS 这条推文，后续少推荐类似内容"
+                    aria-busy={passPending}
+                    disabled={passPending}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onPassPost(post);
+                    }}
+                  >
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                    PASS
+                  </button>
+                </Tooltip>
+              </span>
+            ) : null}
         </div>
 
         <div
@@ -200,10 +244,10 @@ function NewsCard({
                 rel="noopener noreferrer"
                 className="motion-layout-ease transition-colors hover:text-primary-600"
               >
-                {formatTypography(post.title)}
+                {formatTypography(displayTitle)}
               </a>
             ) : (
-              <span>{formatTypography(post.title)}</span>
+              <span>{formatTypography(displayTitle)}</span>
             )}
           </h2>
           <p
@@ -216,32 +260,66 @@ function NewsCard({
         </div>
       </div>
 
-      {!readonly && onAnalysisToggle ? (
+      {showLongformAction || showAnalysisAction ? (
         <div
-          className="z-[1] self-end sm:absolute sm:bottom-5 sm:right-5 lg:bottom-[24.5px] lg:right-[32px]"
-          data-name={analysisActive ? "Overlay+Border+Shadow" : "Background+Border"}
-          data-node-id={analysisActive ? "37:4759" : "37:4781"}
+          className={[
+            "z-[1] flex w-full items-center gap-3",
+            actionRowJustify,
+            "sm:absolute sm:bottom-5 sm:left-5 sm:right-5 sm:w-auto lg:bottom-[24.5px] lg:left-[32px] lg:right-[32px]",
+          ].join(" ")}
         >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onAnalysisToggle(post.id);
-            }}
-            aria-pressed={analysisActive}
-            className={[
-              "motion-layout-ease flex items-center gap-[8px] rounded-[2px] px-[15px] py-2 font-sans text-[12px] font-bold uppercase leading-none tracking-[0.06em] transition-opacity hover:opacity-90",
-              analysisActive
-                ? "border border-solid border-[#ffb224] bg-[rgba(255,178,36,0.1)] text-[#ffb224] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
-                : "border border-solid border-[#e5e7eb] bg-white text-[#8a8a93]",
-            ].join(" ")}
-          >
-            <span className="relative size-[14.667px] shrink-0" data-node-id="37:4760">
-              <FeedInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
-            </span>
-            解读
-          </button>
+          {showLongformAction ? (
+            <Tooltip content={longformPending ? "正在抓取长文" : "抓取这条推文里的长文"}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onLongformExtract?.(post);
+                }}
+                aria-label="抓取这条推文里的长文"
+                aria-busy={longformPending}
+                disabled={longformPending}
+                className={[
+                  "btn-press motion-layout-ease inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[2px] border border-solid border-[#e5e7eb] bg-white text-[#8a8a93] transition-colors",
+                  "hover:border-[#d7a220] hover:bg-[#fffaf0] hover:text-[#d7a220] focus-visible:border-[#d7a220] focus-visible:bg-[#fffaf0] focus-visible:text-[#d7a220] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7a220]/20",
+                  "disabled:cursor-wait disabled:opacity-70",
+                ].join(" ")}
+              >
+                <FeedLongformGlyph
+                  className={`h-[15px] w-[15px] ${longformPending ? "animate-pulse" : ""}`}
+                />
+              </button>
+            </Tooltip>
+          ) : null}
+
+          {showAnalysisAction ? (
+            <div
+              data-name={analysisActive ? "Overlay+Border+Shadow" : "Background+Border"}
+              data-node-id={analysisActive ? "37:4759" : "37:4781"}
+            >
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onAnalysisToggle?.(post.id);
+                }}
+                aria-pressed={analysisActive}
+                className={[
+                  "motion-layout-ease flex items-center gap-[8px] rounded-[2px] px-[15px] py-2 font-sans text-[12px] font-bold uppercase leading-none tracking-[0.06em] transition-opacity hover:opacity-90",
+                  analysisActive
+                    ? "border border-solid border-[#ffb224] bg-[rgba(255,178,36,0.1)] text-[#ffb224] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
+                    : "border border-solid border-[#e5e7eb] bg-white text-[#8a8a93]",
+                ].join(" ")}
+              >
+                <span className="relative size-[14.667px] shrink-0" data-node-id="37:4760">
+                  <FeedInsightSparkleGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
+                </span>
+                解读
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </article>

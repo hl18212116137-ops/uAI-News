@@ -14,7 +14,8 @@ import { ImportResult, ParsedContent } from './types';
 import { getDefaultAIService } from '../ai/ai-factory';
 import { composeTextForAiProcessing } from '@/lib/x';
 import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese';
-import { extractLongformForRawPost } from '@/lib/longform';
+import { canonicalNewsIdForPlatform } from '@/lib/news-dedupe';
+import { ensureChineseBody, ensureChineseTitleSummary } from '@/lib/translation-guard';
 
 /**
  * 统一导入服务
@@ -158,8 +159,7 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
 
 /** 与 convertToNewsItem / process 流水线中的 news id 对齐 */
 function newsIdFromPlatformAndExternal(platform: string, externalId: string): string {
-  const base = `${platform.toLowerCase()}-${externalId}`;
-  return base.replace(/^x_/, 'x-');
+  return canonicalNewsIdForPlatform(platform, externalId);
 }
 
 function newsIdFromParsed(parsed: ParsedContent): string {
@@ -212,14 +212,15 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
     const textForAi = composeTextForAiProcessing(parsed.content, parsed.referencedPost);
 
     // 使用 AI 处理：生成中文标题、摘要、分类
-    const aiResult = await aiService.processNews(
+    const aiDraft = await aiService.processNews(
       textForAi,
       parsed.author.name,
       parsed.author.handle || parsed.author.name
     );
+    const aiResult = await ensureChineseTitleSummary(aiService, aiDraft);
 
     // 翻译内容为中文
-    const [translatedContent, zhOriginal] = await Promise.all([
+    const [translatedRaw, zhOriginal] = await Promise.all([
       aiService.translateContent(textForAi),
       translateNewsOriginalToChinese(
         (s) => aiService.translateContent(s),
@@ -227,22 +228,7 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
         parsed.referencedPost,
       ),
     ])
-    const longform = await extractLongformForRawPost(
-      {
-        platform: parsed.platform,
-        text: parsed.content,
-        sourceUrl: parsed.url,
-        authorName: parsed.author.name,
-        authorHandle: parsed.author.handle || parsed.author.name,
-        mediaUrls: parsed.mediaUrls,
-        referencedPost: parsed.referencedPost,
-      },
-      (s) => aiService.translateContent(s),
-    ).catch((err) => {
-      console.warn(`[Import Service] longform extraction skipped for ${id}:`, err)
-      return undefined
-    })
-
+    const translatedContent = await ensureChineseBody(aiService, translatedRaw)
     return {
       id,
       title: aiResult.title,
@@ -260,7 +246,6 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       createdAt: now, // 导入时间
       ...(parsed.mediaUrls && parsed.mediaUrls.length > 0 ? { mediaUrls: parsed.mediaUrls } : {}),
       ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
-      ...(longform ? { longform } : {}),
     };
   } catch (error) {
     console.error('AI processing failed, using fallback:', error);

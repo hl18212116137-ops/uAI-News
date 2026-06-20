@@ -1,5 +1,7 @@
 node_modules
 .next
+.next-dev
+.next-standalone-runtime
 .env
 .env.local
 .env*.local

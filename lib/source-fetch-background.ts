@@ -7,13 +7,24 @@ import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese'
 import { getDefaultAIService } from '@/lib/ai/ai-factory'
 import { mergePipelineTelemetryToTask, taskManager } from '@/lib/task-manager'
 import { getEffectivePipelineRuntimeValues } from '@/lib/pipeline-settings'
-import { shouldSkipLowSignalRawPost } from '@/lib/raw-post-quality'
-import { extractLongformForRawPost } from '@/lib/longform'
+import { getLowSignalRawPostPassReason } from '@/lib/raw-post-quality'
+import { canonicalNewsIdForPlatform } from '@/lib/news-dedupe'
+import { ensureChineseBody, ensureChineseTitleSummary } from '@/lib/translation-guard'
+import {
+  getPersonalFilterLearningContextForUser as getFilterLearningContextForUser,
+  recordPassedPostSafely,
+} from '@/lib/db/pass-logs'
+import type { AIProcessedContent } from '@/lib/ai/ai-service'
+import { revalidateHomeFeedCaches } from '@/lib/home-cache-invalidation'
 
 /**
  * 后台抓取并处理单源推文（与 POST /api/sources 添加源后的任务共用）
  */
-export async function fetchAndProcessPostsInBackground(source: Source, taskId: string) {
+export async function fetchAndProcessPostsInBackground(
+  source: Source,
+  taskId: string,
+  userId?: string
+) {
   try {
     console.log(`[后台任务] 开始抓取 @${source.handle} 的推文...`)
 
@@ -49,8 +60,18 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
       minOuter: pipelineRt.rawMinOuterChars,
       minNestedRt: pipelineRt.rawMinNestedCharsRetweet,
     }
+    const filterLearningContext = await getFilterLearningContextForUser(userId, source.handle)
 
     const CONCURRENCY = 5
+
+    const getAiUnimportantPassReason = (draft: AIProcessedContent): string => {
+      const explicit = draft.passReason?.trim()
+      if (explicit) return explicit
+      const summary = draft.summary?.trim()
+      if (summary) return `AI 判定信息价值不足：${summary}`
+      const title = draft.title?.trim()
+      return title ? `AI 判定信息价值不足：${title}` : 'AI 判定为不值得入库的低价值内容。'
+    }
 
     for (let i = 0; i < posts.length; i += CONCURRENCY) {
       const batch = posts.slice(i, i + CONCURRENCY)
@@ -63,18 +84,56 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
               media_urls: post.media_urls,
               referenced_post: post.referencedPost,
             }
-            if (shouldSkipLowSignalRawPost(rawLike, lowSignalThresholds)) {
+            const lowSignalReason = getLowSignalRawPostPassReason(rawLike, lowSignalThresholds)
+            if (lowSignalReason) {
+              await recordPassedPostSafely({
+                id: canonicalNewsIdForPlatform('X', post.post_id),
+                url: post.post_url,
+                sourcePlatform: 'X',
+                sourceName: source.name,
+                sourceHandle: source.handle,
+                content: post.post_text,
+                passType: 'low_signal',
+                passReason: lowSignalReason,
+                publishedAt: post.posted_at,
+                mediaUrls: post.media_urls,
+                socialEngagement: post.social_engagement,
+                referencedPost: post.referencedPost,
+              })
               return { outcome: 'low_signal' as const, postId: post.post_id }
             }
 
             const textForAi = composeTextForAiProcessing(post.post_text, post.referencedPost)
-            const aiResult = await aiService.processNews(textForAi, source.name, source.handle)
+            const aiDraft = await aiService.processNews(
+              textForAi,
+              source.name,
+              source.handle,
+              filterLearningContext
+            )
+            const aiResult = await ensureChineseTitleSummary(aiService, aiDraft)
 
             if (!aiResult.important) {
+              await recordPassedPostSafely({
+                id: canonicalNewsIdForPlatform('X', post.post_id),
+                url: post.post_url,
+                sourcePlatform: 'X',
+                sourceName: source.name,
+                sourceHandle: source.handle,
+                content: post.post_text,
+                title: aiResult.title,
+                summary: aiResult.summary,
+                category: aiResult.category,
+                passType: 'ai_unimportant',
+                passReason: getAiUnimportantPassReason(aiResult),
+                publishedAt: post.posted_at,
+                mediaUrls: post.media_urls,
+                socialEngagement: post.social_engagement,
+                referencedPost: post.referencedPost,
+              })
               return { outcome: 'unimportant' as const, postId: post.post_id }
             }
 
-            const [translatedContent, zhOriginal] = await Promise.all([
+            const [translatedRaw, zhOriginal] = await Promise.all([
               aiService.translateContent(textForAi),
               translateNewsOriginalToChinese(
                 (s) => aiService.translateContent(s),
@@ -82,22 +141,7 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
                 post.referencedPost,
               ),
             ])
-            const longform = await extractLongformForRawPost(
-              {
-                platform: 'X',
-                text: post.post_text,
-                sourceUrl: post.post_url,
-                authorName: source.name,
-                authorHandle: source.handle,
-                mediaUrls: post.media_urls,
-                referencedPost: post.referencedPost,
-              },
-              (s) => aiService.translateContent(s),
-            ).catch((err) => {
-              console.warn(`[后台任务] longform extraction skipped for ${post.post_id}:`, err)
-              return undefined
-            })
-
+            const translatedContent = await ensureChineseBody(aiService, translatedRaw)
             let importanceScore = 50
             try {
               importanceScore = await aiService.scoreNewsImportance({
@@ -114,7 +158,7 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
             }
 
             await addPost({
-              id: `x-${post.post_id}`,
+              id: canonicalNewsIdForPlatform('X', post.post_id),
               title: aiResult.title,
               summary: aiResult.summary,
               content: translatedContent,
@@ -136,7 +180,6 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
                 ? { socialEngagement: post.social_engagement }
                 : {}),
               ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
-              ...(longform ? { longform } : {}),
             })
 
             return { outcome: 'success' as const, postId: post.post_id }
@@ -172,6 +215,10 @@ export async function fetchAndProcessPostsInBackground(source: Source, taskId: s
         progress,
         message: `正在处理推文 ${processedCount}/${posts.length}...`,
       })
+    }
+
+    if (successCount > 0) {
+      revalidateHomeFeedCaches()
     }
 
     taskManager.updateTask(taskId, {

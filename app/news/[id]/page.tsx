@@ -5,9 +5,10 @@ export const revalidate = 3600;
 export default async function NewsDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const post = await getPostById(params.id);
+  const { id } = await params;
+  const post = await getPostById(id);
 
   if (!post) {
     return (

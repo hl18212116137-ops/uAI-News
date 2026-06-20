@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import {
   type MouseEvent,
   type ReactNode,
@@ -25,6 +24,7 @@ import {
 import { BoldLinkifiedInline } from "@/components/LinkifiedParagraph";
 import BookmarkGlyph from "@/components/BookmarkGlyph";
 import SourceAvatarImg from "@/components/SourceAvatarImg";
+import { defaultAvatarUrlForHandle } from "@/lib/source-avatar";
 import {
   InsightKeyPointsGlyph,
   InsightOriginalGlyph,
@@ -48,8 +48,8 @@ type AnalysisData = {
   scores?: number | null;
   reliability?: number | null;
   review?: string | string[] | null;
-  originalTranslation?: string | null;
-  originalTranslationReferenced?: string | null;
+  originalTranslation?: unknown;
+  originalTranslationReferenced?: unknown;
 };
 
 type AnalysisPanelProps = {
@@ -69,6 +69,16 @@ type AnalysisPanelProps = {
 function normalizeScorePercent(n: number | null | undefined): number | null {
   if (n == null || Number.isNaN(n)) return null;
   return Math.round(Math.min(100, Math.max(0, n)));
+}
+
+function safeTrimmedText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value).trim();
+  return "";
+}
+
+function safeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((u): u is string => typeof u === "string") : [];
 }
 
 function scoreMetaLabel(pct: number | null): string {
@@ -318,13 +328,15 @@ function OriginalMediaGallery({
             key={u}
             className={`relative flex min-h-[120px] w-full max-w-full justify-center overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#fafafa] shadow-xs ${imageWrapClass}`}
           >
-            <Image
+            <img
               src={u}
               alt=""
               width={800}
               height={800}
               className="max-h-[280px] w-auto max-w-full object-contain"
-              sizes="(max-width: 400px) 85vw, 288px"
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
             />
           </div>
         )
@@ -381,7 +393,8 @@ function PostMetaRow({
     );
   }
 
-  const name = post.source.name || post.source.handle?.replace(/^@/, "") || "未知来源";
+  const sourceHandle = safeTrimmedText(post.source.handle);
+  const name = safeTrimmedText(post.source.name) || sourceHandle.replace(/^@/, "") || "未知来源";
   const scoreAria =
     scoreLabel.trim().length > 0
       ? `重要度 ${scoreDisplay} 分，满分 100。${scoreLabel}`
@@ -392,8 +405,9 @@ function PostMetaRow({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <SourceAvatarImg
           src={post.source.avatar}
+          fallbackSrc={defaultAvatarUrlForHandle(sourceHandle)}
           alt={name}
-          letter={post.source.name || post.source.handle || "?"}
+          letter={name}
           imgClassName="h-6 w-6 shrink-0 rounded-[3px] object-cover ring-1 ring-[color:var(--app-divider)]"
           placeholderClassName="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] bg-[#fafafa] text-[10px] font-semibold text-[#99a1af] ring-1 ring-[color:var(--app-divider)]"
         />
@@ -663,18 +677,21 @@ export default function AnalysisPanel({
 
   const keyPointsPending = isLoading;
 
-  const originalTranslation = analysis?.originalTranslation?.trim() ?? "";
-  const refTranslation = analysis?.originalTranslationReferenced?.trim() ?? "";
-  const originalBody = post?.originalText?.trim() ?? "";
+  const originalTranslation = safeTrimmedText(analysis?.originalTranslation);
+  const refTranslation = safeTrimmedText(analysis?.originalTranslationReferenced);
+  const originalBody = safeTrimmedText(post?.originalText);
   const refPost = post?.referencedPost;
-  const refBody = refPost?.text?.trim() ?? "";
+  const refBody = safeTrimmedText(refPost?.text);
+  const refUserName = safeTrimmedText(refPost?.userName);
+  const refName = safeTrimmedText(refPost?.name);
+  const refMediaUrls = safeStringArray(refPost?.mediaUrls);
   const sourceUrl = post ? resolveNewsPostUrl(post) : "";
   const referencedTweetHref =
-    refPost?.id && refPost.userName?.trim()
-      ? `https://x.com/${refPost.userName.replace(/^@/, "")}/status/${refPost.id}`
+    refPost?.id && refUserName
+      ? `https://x.com/${refUserName.replace(/^@/, "")}/status/${refPost.id}`
       : sourceUrl;
   const titleHref = sourceUrl || "#";
-  const mediaUrls = post?.mediaUrls?.filter((u) => typeof u === "string" && /^https:\/\//i.test(u)) ?? [];
+  const mediaUrls = safeStringArray(post?.mediaUrls).filter((u) => /^https:\/\//i.test(u));
 
   const originalContentRef = useRef<HTMLDivElement>(null);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
@@ -747,7 +764,7 @@ export default function AnalysisPanel({
     [keyPointsExpanded, toggleKeyPointsSection],
   );
 
-  const refMediaLen = refPost?.mediaUrls?.length ?? 0;
+  const refMediaLen = refMediaUrls.length;
   useLayoutEffect(() => {
     if (!post?.id) {
       setOriginalOverflows(false);
@@ -843,16 +860,16 @@ export default function AnalysisPanel({
               </>
             ) : refPost.kind === "retweet" ? (
               <>
-                {refPost.userName ? (
+                {refUserName ? (
                   <p className="mb-2 font-sans text-[13px] font-normal leading-[21px] text-[#99a1af]">
-                    转发自 @{refPost.userName.replace(/^@/, "")}
-                    {refPost.name ? ` · ${formatTypography(refPost.name)}` : ""}
+                    转发自 @{refUserName.replace(/^@/, "")}
+                    {refName ? ` · ${formatTypography(refName)}` : ""}
                   </p>
                 ) : null}
                 <div>
                   <OriginalPrimaryAndTranslation
-                    rawBody={refBody.trim() ? refBody : originalBody}
-                    translation={refBody.trim() ? refTranslation : originalTranslation}
+                    rawBody={refBody ? refBody : originalBody}
+                    translation={refBody ? refTranslation : originalTranslation}
                     isLoading={isLoading}
                     paragraphClassName={originalBodyPrimaryClass}
                     mutedClassName={originalBodyMutedClass}
@@ -861,7 +878,7 @@ export default function AnalysisPanel({
                   />
                 </div>
                 <OriginalMediaGallery
-                  urls={refPost.mediaUrls ?? []}
+                  urls={refMediaUrls}
                   tweetHref={referencedTweetHref}
                   videoLinkClassName={linkifiedOriginalClass}
                 />
@@ -895,10 +912,10 @@ export default function AnalysisPanel({
                   <p className="m-0 mb-2 font-mono text-[12px] font-medium uppercase leading-[18px] tracking-[0.08em] text-[#99a1af]">
                     引用原文
                   </p>
-                  {refPost.userName ? (
+                  {refUserName ? (
                     <p className="m-0 mb-2 font-sans text-[13px] font-medium leading-[21px] text-[#6a7282]">
-                      {refPost.name ? `${formatTypography(refPost.name)} ` : ""}@
-                      {refPost.userName.replace(/^@/, "")}
+                      {refName ? `${formatTypography(refName)} ` : ""}@
+                      {refUserName.replace(/^@/, "")}
                     </p>
                   ) : null}
                   <div>
@@ -913,7 +930,7 @@ export default function AnalysisPanel({
                     />
                   </div>
                   <OriginalMediaGallery
-                    urls={refPost.mediaUrls ?? []}
+                    urls={refMediaUrls}
                     tweetHref={referencedTweetHref}
                     videoLinkClassName={linkifiedOriginalClass}
                   />

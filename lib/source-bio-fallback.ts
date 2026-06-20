@@ -19,7 +19,7 @@ const POOL_BIO_BY_HANDLE: Record<string, string> = Object.fromEntries(
 );
 
 /** 与稿面一致的通用占位，保证第三行始终有可读简介 */
-const GENERIC_FALLBACK = "AI Research · Industry";
+export const GENERIC_SOURCE_DESCRIPTION_FALLBACK = "AI Research · Industry";
 
 function normalizeBioHandle(handle: string): string {
   return String(handle ?? "").trim().replace(/^@+/, "").toLowerCase();
@@ -40,7 +40,11 @@ export function resolveSourceDescription(
   if (key && POOL_BIO_BY_HANDLE[key]) return POOL_BIO_BY_HANDLE[key];
   if (key && LEGACY_BY_HANDLE[key]) return LEGACY_BY_HANDLE[key];
 
-  return GENERIC_FALLBACK;
+  return GENERIC_SOURCE_DESCRIPTION_FALLBACK;
+}
+
+export function isGenericSourceDescriptionFallback(description: unknown): boolean {
+  return String(description ?? "").trim() === GENERIC_SOURCE_DESCRIPTION_FALLBACK;
 }
 
 /** @deprecated 请使用 resolveSourceDescription */

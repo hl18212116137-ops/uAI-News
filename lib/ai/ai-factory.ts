@@ -73,11 +73,12 @@ class AIServiceWithFallback implements AIService {
   async processNews(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    filterLearningContext?: string
   ): Promise<AIProcessedContent> {
     try {
       return await this.retryWithExponentialBackoff(
-        () => this.primaryService.processNews(text, authorName, authorHandle),
+        () => this.primaryService.processNews(text, authorName, authorHandle, filterLearningContext),
         3 // 最多重试 3 次
       );
     } catch (primaryError) {
@@ -88,7 +89,7 @@ class AIServiceWithFallback implements AIService {
 
       try {
         return await this.retryWithExponentialBackoff(
-          () => this.fallbackService.processNews(text, authorName, authorHandle),
+          () => this.fallbackService.processNews(text, authorName, authorHandle, filterLearningContext),
           2 // 备用服务重试 2 次
         );
       } catch (fallbackError) {

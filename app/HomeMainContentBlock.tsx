@@ -1,39 +1,53 @@
 import type { AuthUser } from "@/lib/auth";
-import type { NewsItem } from "@/lib/types";
 import { unstable_cache } from "next/cache";
 import MainContent from "@/components/MainContent";
 import { getSourcesForStats } from "@/lib/sources";
-import { getNewsItemsPostCountSummary, getRecentLongformPosts } from "@/lib/db";
+import { getNewsItemsPostCountSummary } from "@/lib/db";
 import { getStatsFromSourceListAndPostCounts, getStatsFromSubscribedFeed } from "@/lib/stats";
-import { getBookmarkedIdsForUser } from "@/lib/services/bookmarks-service";
 import { createHomePerf } from "@/lib/home-perf";
 import {
-  getUserSubscribedSourceIds,
-  getSubscribedFeed,
-  getSubscribedSourcesMeta,
-  getTopRecommendedPosts,
+  HOME_RECOMMENDED_POSTS_CACHE_TAG,
+  HOME_USER_FEED_CACHE_TAG,
+  HOME_USER_SOURCES_CACHE_TAG,
+  getCachedHomeRecommendedPosts,
+  getCachedUserBookmarkedIds,
+  getCachedUserSubscribedFeed,
+  getCachedUserSubscribedSourceIds,
+  getCachedUserSubscribedSourcesMeta,
+} from "@/lib/home-data-cache";
+import {
+  HOME_FEED_PAGE_SIZE,
+  makeFeedPage,
+  stripLongformPosts,
+} from "@/lib/feed-pagination";
+import {
   getFeedByHandles,
   getSubscribedSourcesMetaByHandles,
-  getRecommendedSources,
-  RECOMMENDED_SIDEBAR_LIMIT,
 } from "@/lib/subscriptions";
-
-function mergeLongformPosts(posts: NewsItem[], longformPosts: NewsItem[]) {
-  const seen = new Set(posts.map((post) => post.id));
-  const merged = [...posts];
-  for (const post of longformPosts) {
-    if (seen.has(post.id)) continue;
-    merged.push(post);
-    seen.add(post.id);
-  }
-  return merged;
-}
 
 /** 匿名首页全库帖子数：短 TTL 缓存，减轻 Suspense 内双 COUNT 对冷启动的压力（可接受数十秒内略旧） */
 const getCachedNewsItemsPostCountSummary = unstable_cache(
   () => getNewsItemsPostCountSummary(),
   ["home-anon-news-items-post-count-summary"],
-  { revalidate: 45 }
+  { revalidate: 45, tags: [HOME_RECOMMENDED_POSTS_CACHE_TAG] }
+);
+
+const getCachedSourcesForStats = unstable_cache(
+  () => getSourcesForStats(),
+  ["home-sources-for-stats"],
+  { revalidate: 45, tags: [HOME_USER_SOURCES_CACHE_TAG] }
+);
+
+const getCachedGuestFeedByHandles = unstable_cache(
+  (handles: string[]) => getFeedByHandles(handles),
+  ["home-guest-feed-by-handles"],
+  { revalidate: 30, tags: [HOME_USER_FEED_CACHE_TAG] }
+);
+
+const getCachedGuestSourcesMetaByHandles = unstable_cache(
+  (handles: string[]) => getSubscribedSourcesMetaByHandles(handles),
+  ["home-guest-sources-meta-by-handles"],
+  { revalidate: 45, tags: [HOME_USER_SOURCES_CACHE_TAG] }
 );
 
 export type HomeMainContentBlockProps = {
@@ -55,12 +69,14 @@ export default async function HomeMainContentBlock({
   const perf = createHomePerf("feed");
 
   if (isPersonalFeed) {
-    const [subFeed, subMetaOrGuestList, bookmarkedIds, recommendedSources, longformPosts] = await Promise.all([
-      user ? getSubscribedFeed(user.id, subscribedHandles) : getFeedByHandles(subscribedHandles),
-      user ? getSubscribedSourcesMeta(user.id) : getSubscribedSourcesMetaByHandles(subscribedHandles),
-      user ? getBookmarkedIdsForUser(user.id) : Promise.resolve([]),
-      getRecommendedSources(user?.id ?? null, RECOMMENDED_SIDEBAR_LIMIT),
-      getRecentLongformPosts(),
+    const [subFeed, subMetaOrGuestList, bookmarkedIds] = await Promise.all([
+      user
+        ? getCachedUserSubscribedFeed(user.id, subscribedHandles)
+        : getCachedGuestFeedByHandles(subscribedHandles),
+      user
+        ? getCachedUserSubscribedSourcesMeta(user.id, subscribedHandles)
+        : getCachedGuestSourcesMetaByHandles(subscribedHandles),
+      user ? getCachedUserBookmarkedIds(user.id) : Promise.resolve([]),
     ]);
     perf.segment("promise_all_personal");
 
@@ -72,40 +88,39 @@ export default async function HomeMainContentBlock({
       : subMetaOrGuestList.subscribedSourceIds;
 
     const stats = getStatsFromSubscribedFeed(subFeed, subSourcesMeta);
-    const visibleFeedPosts = isGuestPersonalFeed
-      ? [
-          ...subFeed.filter((post) => !post.longform?.translatedContent).slice(0, 5),
-          ...subFeed.filter((post) => post.longform?.translatedContent),
-        ]
-      : subFeed;
-    const visiblePosts = mergeLongformPosts(visibleFeedPosts, longformPosts);
+    const feedPosts = stripLongformPosts(subFeed);
+    const initialPage = isGuestPersonalFeed
+      ? makeFeedPage(feedPosts, 0, 5)
+      : makeFeedPage(feedPosts, 0, HOME_FEED_PAGE_SIZE);
     perf.logTotal();
 
     return (
       <MainContent
         useShellLayout
-        initialPosts={visiblePosts}
+        initialPosts={initialPage.posts}
         sources={subSourcesMeta}
-        recommendedSources={recommendedSources}
-        totalCount={subFeed.length}
+        deferRecommendedSources
+        totalCount={feedPosts.length}
         stats={stats}
         user={user}
         initialBookmarkedIds={bookmarkedIds}
         initialSubscribedSourceIds={subscribedSourceIds}
         isPersonalFeed={true}
+        initialFeedOffset={initialPage.nextOffset}
+        initialFeedTotal={initialPage.total}
+        initialFeedHasMore={!isGuestPersonalFeed && initialPage.hasMore}
+        canLoadMoreFeed={!isGuestPersonalFeed}
       />
     );
   }
 
-  const [recommendedPosts, allSources, postCounts, bookmarkedIds, subscribedSourceIds, recommendedSources, longformPosts] =
+  const [recommendedPosts, allSources, postCounts, bookmarkedIds, subscribedSourceIds] =
     await Promise.all([
-      getTopRecommendedPosts(40),
-      getSourcesForStats(),
+      getCachedHomeRecommendedPosts(40, user?.id ?? null),
+      getCachedSourcesForStats(),
       getCachedNewsItemsPostCountSummary(),
-      user ? getBookmarkedIdsForUser(user.id) : Promise.resolve([]),
-      user ? getUserSubscribedSourceIds(user.id) : Promise.resolve([]),
-      getRecommendedSources(user?.id ?? null, RECOMMENDED_SIDEBAR_LIMIT),
-      getRecentLongformPosts(),
+      user ? getCachedUserBookmarkedIds(user.id) : Promise.resolve([]),
+      user ? getCachedUserSubscribedSourceIds(user.id) : Promise.resolve([]),
     ]);
   perf.segment("promise_all_guest");
 
@@ -114,20 +129,29 @@ export default async function HomeMainContentBlock({
     postCounts.totalPosts,
     postCounts.todayPosts
   );
+  const recommendedPage = makeFeedPage(
+    stripLongformPosts(recommendedPosts),
+    0,
+    HOME_FEED_PAGE_SIZE
+  );
   perf.logTotal();
 
   return (
     <MainContent
       useShellLayout
-      initialPosts={mergeLongformPosts(recommendedPosts, longformPosts)}
+      initialPosts={recommendedPage.posts}
       sources={[]}
-      recommendedSources={recommendedSources}
-      totalCount={recommendedPosts.length}
+      deferRecommendedSources
+      totalCount={recommendedPage.total}
       stats={stats}
       user={user}
       initialBookmarkedIds={bookmarkedIds}
       initialSubscribedSourceIds={subscribedSourceIds}
       isPersonalFeed={false}
+      initialFeedOffset={recommendedPage.nextOffset}
+      initialFeedTotal={recommendedPage.total}
+      initialFeedHasMore={recommendedPage.hasMore}
+      canLoadMoreFeed
     />
   );
 }

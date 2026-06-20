@@ -1,5 +1,8 @@
 import { catalogProfileForHandle } from '@/lib/source-catalog'
-import { resolveSourceAvatarUrl } from '@/lib/source-avatar'
+import {
+  isFallbackSourceAvatarUrl,
+  resolveSourceAvatarUrl,
+} from '@/lib/source-avatar'
 import { resolveSourceDescription } from '@/lib/source-bio-fallback'
 
 export type ResolvedSourceProfile = {
@@ -8,8 +11,8 @@ export type ResolvedSourceProfile = {
 }
 
 /**
- * 统一解析信息源头像 + 简介（展示与入库均应经此函数）
- * 优先级：DB/入参 → sources.json 缓存 → 推荐池 / unavatar / 通用占位
+ * 统一解析信息源头像 + 简介（展示层入口）
+ * 优先级：真实 DB/入参头像 → sources.json 缓存 → 本地生成占位
  */
 export function resolveSourceProfile(input: {
   handle: string
@@ -18,10 +21,16 @@ export function resolveSourceProfile(input: {
   description?: string | null
 }): ResolvedSourceProfile {
   const catalog = catalogProfileForHandle(input.handle)
+  const inputAvatar = input.avatar?.trim() || null
+  const catalogAvatar = catalog?.avatar?.trim() || null
+  const avatarCandidate =
+    inputAvatar && !isFallbackSourceAvatarUrl(inputAvatar)
+      ? inputAvatar
+      : catalogAvatar || inputAvatar
 
   const avatar = resolveSourceAvatarUrl(
     input.handle,
-    input.avatar?.trim() || catalog?.avatar || null,
+    avatarCandidate,
     input.platform ?? 'X'
   )
 

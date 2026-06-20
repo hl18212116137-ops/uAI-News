@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
+import "katex/dist/katex.min.css";
 import "./globals.css";
 import WebVitalsReporter from "@/components/WebVitalsReporter";
 import Providers from "@/components/Providers";
@@ -8,12 +9,6 @@ const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-inter",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-jetbrains-mono",
 });
 
 function metadataBaseUrl(): URL {
@@ -33,6 +28,8 @@ function metadataBaseUrl(): URL {
 const siteTitle = "uAI News | AI 资讯聚合";
 const siteDescription =
   "订阅 AI 领域信息源，中文摘要与 INSIGHT 解读，个性化信息流与书签。";
+
+const enableWebVitals = process.env.NEXT_PUBLIC_WEB_VITALS_LOG === "1";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -81,15 +78,10 @@ export default function RootLayout({
   modal: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN">
-      <head>
-        {/* X 源默认头像走 unavatar；提前建连，减轻侧栏/卡片头像晚到 */}
-        <link rel="dns-prefetch" href="https://unavatar.io" />
-        <link rel="preconnect" href="https://unavatar.io" crossOrigin="anonymous" />
-      </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body className={`${inter.variable} font-sans antialiased`}>
         <Providers>
-          <WebVitalsReporter />
+          {enableWebVitals ? <WebVitalsReporter /> : null}
           {children}
           {modal}
         </Providers>

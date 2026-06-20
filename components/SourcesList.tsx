@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { memo, useState, useMemo } from "react";
 import SourceAvatarImg from "./SourceAvatarImg";
 import type { AuthUser } from "@/lib/auth";
 type User = AuthUser;
 import Tooltip from "./Tooltip";
-import { sourceBioTagsLine } from "@/lib/source-bio-fallback";
-import { defaultAvatarUrlForHandle } from "@/lib/source-avatar";
 import { resolveSourceHomeUrl } from "@/lib/source-home-url";
-import { resolveSourceProfile } from "@/lib/source-profile";
+import {
+  resolveClientSourceProfile,
+  sourceBioTagsLine,
+} from "@/lib/source-client-profile";
 import {
   SourcesAcademiaGlyph,
   SourcesActionPlusGlyph,
@@ -81,13 +82,13 @@ type SourcesListSourceCardProps = {
   isFetching?: boolean;
 };
 
-function SourcesListSourceCard({
+const SourcesListSourceCard = memo(function SourcesListSourceCard({
   source,
   currentSource,
   onSourceSelect,
   isFetching = false,
 }: SourcesListSourceCardProps) {
-  const profile = resolveSourceProfile({
+  const profile = resolveClientSourceProfile({
     handle: source.handle,
     platform: "X",
     avatar: source.avatar,
@@ -124,11 +125,12 @@ function SourcesListSourceCard({
           >
             <SourceAvatarImg
               src={profile.avatar}
-              fallbackSrc={defaultAvatarUrlForHandle(source.handle)}
+              fallbackSrc={profile.fallbackAvatar}
               alt={source.name}
               letter={source.name}
               imgClassName="h-8 w-8 flex-shrink-0 rounded-[2px] object-cover"
               placeholderClassName="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[2px] bg-gray-200 text-[12px] font-semibold text-[#6a7282]"
+              instantFallback
             />
           </a>
         </Tooltip>
@@ -178,9 +180,11 @@ function SourcesListSourceCard({
       </div>
     </Tooltip>
   );
-}
+});
 
-export default function SourcesList({
+export default memo(SourcesList);
+
+function SourcesList({
   sources,
   currentSource,
   onSourceSelect,

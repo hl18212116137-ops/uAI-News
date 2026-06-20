@@ -263,6 +263,23 @@
     @apply rounded-lg border border-[#e5e7eb] bg-white shadow-md;
   }
 
+  .longform-math-inline .katex {
+    font-size: 1em;
+    line-height: 1;
+  }
+
+  .longform-math-display {
+    scrollbar-gutter: stable;
+  }
+
+  .longform-math-display .katex {
+    font-size: 1.02em;
+  }
+
+  .longform-math-display .katex-display {
+    margin: 0;
+  }
+
   /**
    * 分隔线：全站同一套「1px solid var(--app-divider)」。
    * 横线：h-px + border-top（与 Tab / 解读 的 border-t、b 同一套描边）。

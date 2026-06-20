@@ -1,4 +1,5 @@
 import type { XReferencedPost } from '@/lib/types';
+import type { XArticle } from '@/lib/x';
 
 export type PlatformType = 'X' | 'YouTube' | 'Reddit' | 'Blog' | 'WebPage' | 'Unknown';
 
@@ -25,6 +26,7 @@ export interface ParsedContent {
   rawData?: any;
   mediaUrls?: string[];
   referencedPost?: XReferencedPost;
+  xArticle?: XArticle;
 }
 
 export interface ImportResult {

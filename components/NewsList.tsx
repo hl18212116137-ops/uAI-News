@@ -16,6 +16,10 @@ type NewsListProps = {
   bookmarkedIds?: Set<string>;
   bookmarkPendingIds?: Set<string>;
   onBookmarkToggle?: (id: string, post: NewsItem) => void;
+  passPendingIds?: Set<string>;
+  onPassPost?: (post: NewsItem) => void;
+  longformPendingIds?: Set<string>;
+  onLongformExtract?: (post: NewsItem) => void;
   analysisActivePostId?: string | null;
   onAnalysisToggle?: (postId: string) => void;
   emptyFeedAwaitingFetch?: boolean;
@@ -28,6 +32,10 @@ function NewsList({
   bookmarkedIds,
   bookmarkPendingIds,
   onBookmarkToggle,
+  passPendingIds,
+  onPassPost,
+  longformPendingIds,
+  onLongformExtract,
   analysisActivePostId = null,
   onAnalysisToggle,
   emptyFeedAwaitingFetch = false,
@@ -140,6 +148,10 @@ function NewsList({
             isBookmarked={bookmarkedIds?.has(post.id) ?? false}
             bookmarkPending={bookmarkPendingIds?.has(post.id) ?? false}
             onBookmarkToggle={onBookmarkToggle}
+            passPending={passPendingIds?.has(post.id) ?? false}
+            onPassPost={onPassPost}
+            longformPending={longformPendingIds?.has(post.id) ?? false}
+            onLongformExtract={onLongformExtract}
             analysisActive={analysisActivePostId === post.id}
             onAnalysisToggle={onAnalysisToggle}
           />

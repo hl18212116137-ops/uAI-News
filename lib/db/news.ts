@@ -2,9 +2,12 @@ import 'server-only'
 
 import { db } from '@/lib/db/drizzle'
 import { newsItems } from '@/lib/db/schema'
-import { eq, desc, lt, gte, sql, inArray, isNotNull } from 'drizzle-orm'
+import { eq, desc, lt, gte, sql, inArray, isNotNull, or } from 'drizzle-orm'
 import { sanitizeInsightPayloadForPost } from '@/lib/insight-echo-guard'
-import { canonicalizeNewsSourceUrl } from '@/lib/news-post-url'
+import { canonicalizeExternalUrlForDedupe, canonicalizeNewsSourceUrl } from '@/lib/news-post-url'
+import { cleanNewsTitle } from '@/lib/news-title-cleanup'
+import { isLongformPreviewPost } from '@/lib/longform-post-utils'
+import { areNewsItemsNearDuplicate, canonicalNewsIdForRawPost, newsItemContentFingerprint } from '@/lib/news-dedupe'
 import type { InsightAnalysisPayload, LongformArticle, NewsItem, SocialEngagement, XReferencedPost } from '@/lib/types'
 
 /** 读取/返回前修正 X 推文 status 链接（避免 profile 或错误 url 导致无法跳转原文） */
@@ -17,7 +20,7 @@ export function withCanonicalPostSourceUrl(item: NewsItem): NewsItem {
 function mapNewsRowToItem(row: typeof newsItems.$inferSelect): NewsItem {
   return withCanonicalPostSourceUrl({
     id: row.id,
-    title: row.title,
+    title: cleanNewsTitle(row.title),
     summary: row.summary,
     content: row.content,
     source: {
@@ -127,7 +130,7 @@ export async function getNewsItemsPostCountSummary(): Promise<{
       todayPosts: Number(recentRes[0]?.count ?? 0),
     }
   } catch (error) {
-    console.error('Failed to get news item counts:', error)
+    console.warn('Failed to get news item counts:', error)
     return { totalPosts: 0, todayPosts: 0 }
   }
 }
@@ -137,10 +140,11 @@ export async function getNewsItemsPostCountSummary(): Promise<{
  */
 export async function getPostByUrl(url: string): Promise<NewsItem | null> {
   try {
+    const canonicalUrl = canonicalizeExternalUrlForDedupe(url)
     const rows = await db
       .select()
       .from(newsItems)
-      .where(eq(newsItems.sourceUrl, url))
+      .where(eq(newsItems.sourceUrl, canonicalUrl))
       .limit(1)
 
     const data = rows[0]
@@ -177,6 +181,10 @@ export async function getPostById(id: string): Promise<NewsItem | null> {
 export type AddPostOptions = {
   /** S2+：与 raw_posts.id 对齐，便于溯源 */
   rawPostId?: string | null
+  /** PASS 恢复等人工操作需要绕过内容近似去重，确保用户选择能回到 feed。 */
+  skipContentDedupe?: boolean
+  /** 若同 ID / URL 已存在，则刷新现有行，而不是静默跳过。 */
+  refreshExisting?: boolean
 }
 
 export async function getRecentLongformPosts(limit = 40): Promise<NewsItem[]> {
@@ -188,9 +196,147 @@ export async function getRecentLongformPosts(limit = 40): Promise<NewsItem[]> {
       .orderBy(desc(newsItems.publishedAt))
       .limit(limit)
 
-    return data.map(mapNewsRowToItem)
+    return data.map(mapNewsRowToItem).filter((post) => !isLongformPreviewPost(post))
   } catch (error) {
     console.error('Failed to fetch longform posts:', error)
+    return []
+  }
+}
+
+const LONGFORM_LIST_CONTENT_PREVIEW_CHARS = 1600
+
+type LongformPreviewRow = {
+  id: string
+  title: string
+  summary: string
+  contentPreview: string
+  sourcePlatform: string | null
+  sourceName: string | null
+  sourceHandle: string | null
+  sourceUrl: string | null
+  category: string | null
+  publishedAt: Date | string
+  createdAt: Date | string
+  importanceScore: number | null
+  url: string
+  resolvedUrl: string
+  longformTitle: string
+  sourceNameLongform: string
+  authorName: string
+  excerpt: string
+  translatedTitle: string
+  translatedContentPreview: string
+  originalWordCount: string
+  fetchedAt: string
+  discoveryMethod: string
+  confidence: string
+  discoverySourceImageUrl: string
+}
+
+function dateLikeToIso(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : String(value ?? '')
+}
+
+function numberFromText(value: string): number | undefined {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function mapLongformPreviewRowToItem(row: LongformPreviewRow): NewsItem | null {
+  const url = row.url.trim()
+  const resolvedUrl = row.resolvedUrl.trim() || url
+  const translatedContent = row.translatedContentPreview.trim() || row.excerpt.trim()
+  if (!url || !resolvedUrl || !translatedContent) return null
+
+  const confidence = numberFromText(row.confidence)
+  const discoveryMethod = row.discoveryMethod
+  const longform: LongformArticle = {
+    url,
+    resolvedUrl,
+    title: row.longformTitle.trim() || resolvedUrl,
+    sourceName: row.sourceNameLongform.trim(),
+    translatedContent,
+    originalWordCount: Math.max(0, Math.floor(numberFromText(row.originalWordCount) ?? 0)),
+    fetchedAt: row.fetchedAt,
+    excerpt: row.excerpt.trim() || translatedContent.slice(0, 260),
+  }
+  if (row.authorName.trim()) longform.authorName = row.authorName.trim()
+  if (row.translatedTitle.trim()) longform.translatedTitle = row.translatedTitle.trim()
+  if (
+    discoveryMethod === 'url' ||
+    discoveryMethod === 'image-search' ||
+    discoveryMethod === 'text-search' ||
+    discoveryMethod === 'x-article'
+  ) {
+    longform.discoveryMethod = discoveryMethod
+  }
+  if (confidence != null) longform.confidence = confidence
+  if (row.discoverySourceImageUrl.trim()) {
+    longform.discoverySourceImageUrl = row.discoverySourceImageUrl.trim()
+  }
+
+  return withCanonicalPostSourceUrl({
+    id: row.id,
+    title: cleanNewsTitle(row.title),
+    summary: row.summary,
+    content: row.contentPreview.trim() || row.summary || row.excerpt.trim(),
+    source: {
+      platform: row.sourcePlatform as NewsItem['source']['platform'],
+      name: row.sourceName ?? '',
+      handle: row.sourceHandle ?? '',
+      url: row.sourceUrl ?? '',
+    },
+    category: row.category as NewsItem['category'],
+    publishedAt: dateLikeToIso(row.publishedAt),
+    originalText: '',
+    createdAt: dateLikeToIso(row.createdAt),
+    importanceScore: row.importanceScore ?? undefined,
+    longform,
+  })
+}
+
+export async function getRecentLongformPostPreviews(limit = 40): Promise<NewsItem[]> {
+  try {
+    const previewLength = Math.max(400, Math.min(4000, Math.floor(LONGFORM_LIST_CONTENT_PREVIEW_CHARS)))
+    const data = await db
+      .select({
+        id: newsItems.id,
+        title: newsItems.title,
+        summary: newsItems.summary,
+        contentPreview: sql<string>`substring(coalesce(${newsItems.content}, '') from 1 for 360)`,
+        sourcePlatform: newsItems.sourcePlatform,
+        sourceName: newsItems.sourceName,
+        sourceHandle: newsItems.sourceHandle,
+        sourceUrl: newsItems.sourceUrl,
+        category: newsItems.category,
+        publishedAt: newsItems.publishedAt,
+        createdAt: newsItems.createdAt,
+        importanceScore: newsItems.importanceScore,
+        url: sql<string>`coalesce(${newsItems.longformJson}->>'url', '')`,
+        resolvedUrl: sql<string>`coalesce(${newsItems.longformJson}->>'resolvedUrl', ${newsItems.longformJson}->>'url', '')`,
+        longformTitle: sql<string>`coalesce(${newsItems.longformJson}->>'title', '')`,
+        sourceNameLongform: sql<string>`coalesce(${newsItems.longformJson}->>'sourceName', '')`,
+        authorName: sql<string>`coalesce(${newsItems.longformJson}->>'authorName', '')`,
+        excerpt: sql<string>`coalesce(${newsItems.longformJson}->>'excerpt', '')`,
+        translatedTitle: sql<string>`coalesce(${newsItems.longformJson}->>'translatedTitle', '')`,
+        translatedContentPreview: sql<string>`substring(coalesce(${newsItems.longformJson}->>'translatedContent', '') from 1 for ${previewLength})`,
+        originalWordCount: sql<string>`coalesce(${newsItems.longformJson}->>'originalWordCount', '')`,
+        fetchedAt: sql<string>`coalesce(${newsItems.longformJson}->>'fetchedAt', '')`,
+        discoveryMethod: sql<string>`coalesce(${newsItems.longformJson}->>'discoveryMethod', '')`,
+        confidence: sql<string>`coalesce(${newsItems.longformJson}->>'confidence', '')`,
+        discoverySourceImageUrl: sql<string>`coalesce(${newsItems.longformJson}->>'discoverySourceImageUrl', '')`,
+      })
+      .from(newsItems)
+      .where(isNotNull(newsItems.longformJson))
+      .orderBy(desc(newsItems.publishedAt))
+      .limit(limit)
+
+    return data
+      .map(mapLongformPreviewRowToItem)
+      .filter((post): post is NewsItem => Boolean(post))
+      .filter((post) => !isLongformPreviewPost(post))
+  } catch (error) {
+    console.error('Failed to fetch longform post previews:', error)
     return []
   }
 }
@@ -259,43 +405,122 @@ function toDatabaseDate(value: unknown, fallback: Date): Date {
  */
 export async function addPost(post: NewsItem, options?: AddPostOptions): Promise<void> {
   try {
-    const normalizedId = normalizeNewsItemId(post.id)
-    const canonicalUrl = canonicalizeNewsSourceUrl({ ...post, id: normalizedId })
+    const cleanedPost: NewsItem = { ...post, title: cleanNewsTitle(post.title) }
+    const rawInputId = normalizeNewsItemId(post.id)
+    const normalizedId =
+      canonicalNewsIdForRawPost({
+        id: rawInputId,
+        platform: post.source.platform,
+        url: post.source.url,
+      }) || rawInputId
+    const canonicalUrl = canonicalizeNewsSourceUrl({ ...cleanedPost, id: normalizedId })
     const now = new Date()
     const createdAt = toDatabaseDate(post.createdAt, now)
+    const publishedAt = toDatabaseDate(post.publishedAt, createdAt)
+
+    const exactConditions = [eq(newsItems.id, normalizedId)]
+    if (rawInputId !== normalizedId) exactConditions.push(eq(newsItems.id, rawInputId))
+    if (canonicalUrl) exactConditions.push(eq(newsItems.sourceUrl, canonicalUrl))
+    if (options?.rawPostId) exactConditions.push(eq(newsItems.rawPostId, options.rawPostId))
 
     const existing = await db
       .select({ id: newsItems.id })
       .from(newsItems)
-      .where(eq(newsItems.sourceUrl, canonicalUrl))
+      .where(or(...exactConditions))
       .limit(1)
 
     if (existing.length > 0) {
+      if (options?.refreshExisting) {
+        const patch: Partial<typeof newsItems.$inferInsert> = {
+          title: cleanedPost.title,
+          summary: cleanedPost.summary,
+          content: cleanedPost.content,
+          sourcePlatform: cleanedPost.source.platform,
+          sourceName: cleanedPost.source.name,
+          sourceHandle: cleanedPost.source.handle,
+          sourceUrl: canonicalUrl,
+          category: cleanedPost.category,
+          publishedAt,
+          originalText: cleanedPost.originalText,
+          createdAt,
+          importanceScore: cleanedPost.importanceScore ?? null,
+          mediaUrls: cleanedPost.mediaUrls && cleanedPost.mediaUrls.length > 0 ? cleanedPost.mediaUrls : null,
+          socialEngagement:
+            cleanedPost.socialEngagement && Object.keys(cleanedPost.socialEngagement).length > 0
+              ? cleanedPost.socialEngagement
+              : null,
+          referencedPost: cleanedPost.referencedPost ?? null,
+          longformJson: cleanedPost.longform ?? null,
+        }
+        if (options?.rawPostId) patch.rawPostId = options.rawPostId
+
+        await db
+          .update(newsItems)
+          .set(patch)
+          .where(eq(newsItems.id, existing[0].id))
+      }
       return
+    }
+
+    const candidatePost: NewsItem = {
+      ...cleanedPost,
+      id: normalizedId,
+      source: { ...cleanedPost.source, url: canonicalUrl },
+      publishedAt: publishedAt.toISOString(),
+      createdAt: createdAt.toISOString(),
+    }
+    if (!options?.skipContentDedupe) {
+      const candidateContentHash = newsItemContentFingerprint(candidatePost)
+
+      const lookbackDaysRaw = parseInt(process.env.NEWS_CONTENT_DEDUPE_LOOKBACK_DAYS || '30', 10)
+      const lookbackDays = Number.isFinite(lookbackDaysRaw)
+        ? Math.min(365, Math.max(1, lookbackDaysRaw))
+        : 30
+      const since = new Date(publishedAt.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
+      const recentRows = await db
+        .select()
+        .from(newsItems)
+        .where(gte(newsItems.publishedAt, since))
+        .orderBy(desc(newsItems.publishedAt))
+        .limit(500)
+
+      const hasContentDuplicate = recentRows.some((row) => {
+        const existingItem = mapNewsRowToItem(row)
+        if (existingItem.id === normalizedId) return true
+        return (
+          (candidateContentHash
+            ? newsItemContentFingerprint(existingItem) === candidateContentHash
+            : false) || areNewsItemsNearDuplicate(existingItem, candidatePost)
+        )
+      })
+
+      if (hasContentDuplicate) {
+        return
+      }
     }
 
     const row: typeof newsItems.$inferInsert = {
       id: normalizedId,
-      title: post.title,
-      summary: post.summary,
-      content: post.content,
-      sourcePlatform: post.source.platform,
-      sourceName: post.source.name,
-      sourceHandle: post.source.handle,
+      title: cleanedPost.title,
+      summary: cleanedPost.summary,
+      content: cleanedPost.content,
+      sourcePlatform: cleanedPost.source.platform,
+      sourceName: cleanedPost.source.name,
+      sourceHandle: cleanedPost.source.handle,
       sourceUrl: canonicalUrl,
-      category: post.category,
-      publishedAt: toDatabaseDate(post.publishedAt, createdAt),
-      originalText: post.originalText,
+      category: cleanedPost.category,
+      publishedAt,
+      originalText: cleanedPost.originalText,
       createdAt,
-      importanceScore: post.importanceScore ?? null,
-      ...(post.mediaUrls && post.mediaUrls.length > 0
-        ? { mediaUrls: post.mediaUrls }
+      importanceScore: cleanedPost.importanceScore ?? null,
+      ...(cleanedPost.mediaUrls && cleanedPost.mediaUrls.length > 0
+        ? { mediaUrls: cleanedPost.mediaUrls }
         : {}),
-      ...(post.socialEngagement && Object.keys(post.socialEngagement).length > 0
-        ? { socialEngagement: post.socialEngagement }
+      ...(cleanedPost.socialEngagement && Object.keys(cleanedPost.socialEngagement).length > 0
+        ? { socialEngagement: cleanedPost.socialEngagement }
         : {}),
-      ...(post.referencedPost ? { referencedPost: post.referencedPost } : {}),
-      ...(post.longform ? { longformJson: post.longform } : {}),
+      ...(cleanedPost.referencedPost ? { referencedPost: cleanedPost.referencedPost } : {}),
+      ...(cleanedPost.longform ? { longformJson: cleanedPost.longform } : {}),
       ...(options?.rawPostId ? { rawPostId: options.rawPostId } : {}),
     }
 
@@ -334,7 +559,7 @@ export async function updateNewsItemTextFields(
 
   const normalizedId = normalizeNewsItemId(id)
   const row: Partial<typeof newsItems.$inferInsert> = {}
-  if (patch.title !== undefined) row.title = patch.title
+  if (patch.title !== undefined) row.title = cleanNewsTitle(patch.title)
   if (patch.summary !== undefined) row.summary = patch.summary
   if (patch.content !== undefined) row.content = patch.content
   if (patch.originalText !== undefined) row.originalText = patch.originalText
@@ -344,6 +569,23 @@ export async function updateNewsItemTextFields(
 
   try {
     await db.update(newsItems).set(row).where(eq(newsItems.id, normalizedId))
+    return { ok: true }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: message }
+  }
+}
+
+export async function updateNewsItemLongform(
+  id: string,
+  longform: LongformArticle,
+): Promise<{ ok: boolean; error?: string }> {
+  const normalizedId = normalizeNewsItemId(id)
+  try {
+    await db
+      .update(newsItems)
+      .set({ longformJson: longform })
+      .where(eq(newsItems.id, normalizedId))
     return { ok: true }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)

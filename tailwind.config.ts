@@ -26,7 +26,6 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       spacing: {
         '70': '280px',

@@ -1,17 +1,17 @@
 /** @type {import('next').NextConfig} */
+const distDir = process.env.NEXT_DIST_DIR
+
 const nextConfig = {
+  ...(distDir ? { distDir } : {}),
   output: 'standalone',
   compress: true,
   poweredByHeader: false,
-  images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: 'pbs.twimg.com' },
-      { protocol: 'https', hostname: '**.twimg.com' },
-    ],
-    formats: ['image/avif', 'image/webp'],
-  },
   experimental: {
     optimizePackageImports: ['drizzle-orm', '@anthropic-ai/sdk'],
+    staleTimes: {
+      dynamic: 60,
+      static: 300,
+    },
   },
 }
 

@@ -10,7 +10,6 @@ AI 资讯聚合：订阅信息源、中文摘要与 INSIGHT 解读。生产数�
 - Tailwind CSS
 - Supabase (Auth + PostgreSQL)
 - Minimax / Anthropic Claude（可配置）
-- node-cron（脚本侧，可选）
 
 ## Setup
 
@@ -66,7 +65,7 @@ npm run fetch
 
 ### Schedule Automatic Fetching
 
-The project includes node-cron for scheduling. To enable hourly fetching, you can:
+Scheduled fetching should be handled outside the Next.js process. To enable hourly fetching, you can:
 
 1. Create a background service
 2. Use a cron job on your system

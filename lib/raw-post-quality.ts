@@ -20,6 +20,13 @@ export function shouldSkipLowSignalRawPost(
   rawPost: Record<string, unknown>,
   thresholds?: LowSignalThresholds
 ): boolean {
+  return getLowSignalRawPostPassReason(rawPost, thresholds) != null
+}
+
+export function getLowSignalRawPostPassReason(
+  rawPost: Record<string, unknown>,
+  thresholds?: LowSignalThresholds
+): string | null {
   const minOuter = thresholds?.minOuter ?? envInt('RAW_MIN_OUTER_CHARS', 12)
   const minNestedRt = thresholds?.minNestedRt ?? envInt('RAW_MIN_NESTED_CHARS_RETWEET', 35)
 
@@ -28,13 +35,13 @@ export function shouldSkipLowSignalRawPost(
   const hasMedia = (urls?.length ?? 0) > 0
 
   if (outer.length < minOuter && !hasMedia) {
-    return true
+    return `外层文字只有 ${outer.length} 字，少于 ${minOuter} 字，且没有图片或视频。`
   }
 
   const ref = referencedPostFromDbJson(rawPost.referenced_post)
   if (ref && ref.text.trim().length < minNestedRt && !hasMedia) {
-    return true
+    return `引用/转发原帖只有 ${ref.text.trim().length} 字，少于 ${minNestedRt} 字，且没有图片或视频。`
   }
 
-  return false
+  return null
 }

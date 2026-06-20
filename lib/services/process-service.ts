@@ -23,15 +23,23 @@ import {
   fetchRawPostsBatch,
   fetchRawPostsExcludingActiveJobs,
 } from '@/lib/db/raw-posts'
+import {
+  getPersonalFilterLearningContextForUser as getFilterLearningContextForUser,
+  recordPassedPostSafely,
+} from '@/lib/db/pass-logs'
 import { isProcessingJobsPipelineEnabled } from '@/lib/processing-jobs-pipeline'
 import { getEffectivePipelineRuntimeValues } from '@/lib/pipeline-settings'
 import { computeInsightAnalysis } from '@/lib/post-insight-compute'
-import { shouldSkipLowSignalRawPost, type LowSignalThresholds } from '@/lib/raw-post-quality'
+import { getLowSignalRawPostPassReason, type LowSignalThresholds } from '@/lib/raw-post-quality'
 import { NewsItem, NewsCategory } from '@/lib/types'
 import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese'
-import { extractLongformForRawPost } from '@/lib/longform'
 import { composeTextForAiProcessing } from '@/lib/x'
-import type { AIService, AIProcessedContent } from '@/lib/ai/ai-service'
+import { canonicalNewsIdForRawPost } from '@/lib/news-dedupe'
+import {
+  ensureChineseBody as ensureChineseBodyShared,
+  ensureChineseTitleSummary as ensureChineseTitleSummaryShared,
+} from '@/lib/translation-guard'
+import type { AIProcessedContent, AIService } from '@/lib/ai/ai-service'
 import { isMostlyChinese } from '@/lib/text-locale'
 
 export type RefreshProcessResult = {
@@ -45,6 +53,7 @@ const BATCH_SIZE = 5
 const RAW_LIMIT_DEFAULT = 100
 const RAW_LIMIT_MAX = 100
 const RAW_LIMIT_MIN = 1
+export const PROCESS_RAW_BATCH_LIMIT = RAW_LIMIT_DEFAULT
 
 const CRON_TASK_ID = 'cron'
 
@@ -70,6 +79,8 @@ type ProcessContext = {
   job?: ProcessingJobRow
   persistRawPostId: boolean
   lowSignalThresholds: LowSignalThresholds
+  userId?: string
+  learningContextCache?: Map<string, Promise<string>>
 }
 
 type ProcessOneResult = {
@@ -162,61 +173,106 @@ function pushProcessTelemetry(
   })
 }
 
+function getAiUnimportantPassReason(draft: AIProcessedContent): string {
+  const explicit = draft.passReason?.trim()
+  if (explicit) return explicit
+  const summary = draft.summary?.trim()
+  if (summary) return `AI 判定信息价值不足：${summary}`
+  const title = draft.title?.trim()
+  return title ? `AI 判定信息价值不足：${title}` : 'AI 判定为不值得入库的低价值内容。'
+}
+
+function learningCacheKey(handle: string): string {
+  return handle.trim().replace(/^@+/, '').toLowerCase() || 'all'
+}
+
+async function getLearningContext(ctx: ProcessContext, handle: string): Promise<string> {
+  if (!ctx.userId) return ''
+  const key = learningCacheKey(handle)
+  if (!ctx.learningContextCache) {
+    return getFilterLearningContextForUser(ctx.userId, handle)
+  }
+  let promise = ctx.learningContextCache.get(key)
+  if (!promise) {
+    promise = getFilterLearningContextForUser(ctx.userId, handle)
+    ctx.learningContextCache.set(key, promise)
+  }
+  return promise
+}
+
 async function processOneRawPost(
   rawPost: Record<string, unknown>,
   ctx: ProcessContext
 ): Promise<ProcessOneResult> {
   const aiService = getDefaultAIService()
-  const id = rawPost.id as string
-  const outerText = rawPost.text as string
+  const rawId = String(rawPost.id ?? '')
+  const id = canonicalNewsIdForRawPost(rawPost) || rawId
+  const outerText = String(rawPost.text ?? '')
   const referencedPost = referencedPostFromDbJson(rawPost.referenced_post)
   const text = composeTextForAiProcessing(outerText, referencedPost)
-  const authorName = rawPost.author_name as string
-  const handle = rawPost.handle as string
-  const platform = rawPost.platform as string
-  const url = rawPost.url as string
-  const publishedAt = rawPost.published_at as string
+  const authorName = String(rawPost.author_name ?? '')
+  const handle = String(rawPost.handle ?? '')
+  const platform = String(rawPost.platform ?? 'X')
+  const url = String(rawPost.url ?? '')
+  const publishedAt = String(rawPost.published_at ?? new Date().toISOString())
+  const mediaUrls = mediaUrlsFromDbJson(rawPost.media_urls)
+  const socialEngagement = socialEngagementFromDbJson(rawPost.social_engagement)
 
   try {
-    if (shouldSkipLowSignalRawPost(rawPost, ctx.lowSignalThresholds)) {
-      await deleteRawPostById(id)
+    const lowSignalReason = getLowSignalRawPostPassReason(rawPost, ctx.lowSignalThresholds)
+    if (lowSignalReason) {
+      await recordPassedPostSafely({
+        id,
+        url,
+        sourcePlatform: platform,
+        sourceName: authorName,
+        sourceHandle: handle,
+        content: outerText,
+        passType: 'low_signal',
+        passReason: lowSignalReason,
+        publishedAt,
+        mediaUrls,
+        socialEngagement,
+        referencedPost,
+      })
+      await deleteRawPostById(rawId)
       if (ctx.job) await markProcessingJobDone(ctx.job.id)
       return { outcome: 'low_signal' }
     }
 
-    const aiDraft = await aiService.processNews(text, authorName, handle)
+    const filterLearningContext = await getLearningContext(ctx, handle)
+    const aiDraft = await aiService.processNews(text, authorName, handle, filterLearningContext)
 
     if (!aiDraft.important) {
-      await deleteRawPostById(id)
+      await recordPassedPostSafely({
+        id,
+        url,
+        sourcePlatform: platform,
+        sourceName: authorName,
+        sourceHandle: handle,
+        content: outerText,
+        title: aiDraft.title,
+        summary: aiDraft.summary,
+        category: aiDraft.category,
+        passType: 'ai_unimportant',
+        passReason: getAiUnimportantPassReason(aiDraft),
+        publishedAt,
+        mediaUrls,
+        socialEngagement,
+        referencedPost,
+      })
+      await deleteRawPostById(rawId)
       if (ctx.job) await markProcessingJobDone(ctx.job.id)
       return { outcome: 'unimportant' }
     }
 
-    const aiResult = await ensureChineseTitleSummary(aiService, aiDraft)
+    const aiResult = await ensureChineseTitleSummaryShared(aiService, aiDraft)
 
     const [translatedRaw, zhOriginal] = await Promise.all([
       aiService.translateContent(text),
       translateNewsOriginalToChinese((s) => aiService.translateContent(s), outerText, referencedPost),
     ])
-    const translatedContent = await ensureChineseBody(aiService, translatedRaw)
-
-    const mediaUrls = mediaUrlsFromDbJson(rawPost.media_urls)
-    const socialEngagement = socialEngagementFromDbJson(rawPost.social_engagement)
-    const longform = await extractLongformForRawPost(
-      {
-        platform,
-        text: outerText,
-        sourceUrl: url,
-        authorName,
-        authorHandle: handle,
-        mediaUrls,
-        referencedPost,
-      },
-      (s) => aiService.translateContent(s),
-    ).catch((err) => {
-      console.warn(`[process] longform extraction skipped for ${id}:`, err)
-      return undefined
-    })
+    const translatedContent = await ensureChineseBodyShared(aiService, translatedRaw)
 
     const newsItem: NewsItem = {
       id,
@@ -236,7 +292,6 @@ async function processOneRawPost(
       ...(mediaUrls ? { mediaUrls } : {}),
       ...(socialEngagement ? { socialEngagement } : {}),
       ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
-      ...(longform ? { longform } : {}),
     }
 
     try {
@@ -254,7 +309,7 @@ async function processOneRawPost(
       // 评分失败不影响保存
     }
 
-    await addPost(newsItem, ctx.persistRawPostId ? { rawPostId: id } : undefined)
+    await addPost(newsItem, ctx.persistRawPostId ? { rawPostId: rawId } : undefined)
 
     const storedId = normalizeNewsItemId(String(id))
     try {
@@ -267,7 +322,7 @@ async function processOneRawPost(
       console.warn(`[process] insight precompute skipped for ${storedId}`, insightErr)
     }
 
-    await deleteRawPostById(id)
+    await deleteRawPostById(rawId)
     if (ctx.job) await markProcessingJobDone(ctx.job.id)
     return { outcome: 'success' }
   } catch (error) {
@@ -286,6 +341,8 @@ export type RunRefreshProcessBody = {
   silent?: boolean
   /** 本批最多处理条数（job 列队 + legacy raw 各受此上限约束），默认 100，范围 1–100 */
   rawLimit?: number
+  /** 当前登录用户；用于读取该用户手动恢复 PASS 的反馈样本 */
+  userId?: string
 }
 
 /**
@@ -298,6 +355,7 @@ export async function runRefreshProcessRawQueue(
   const silent = body.silent === true
   const taskId = silent ? CRON_TASK_ID : body.taskId || taskManager.createTask()
   const rawLimit = clampProcessRawLimit(body.rawLimit)
+  const userId = typeof body.userId === 'string' && body.userId.trim() ? body.userId.trim() : undefined
 
   if (!silent && body.taskId && isUserRefreshCancelled(body.taskId, silent)) {
     return { success: true, taskId: body.taskId, message: 'cancelled', count: 0 }
@@ -317,6 +375,7 @@ export async function runRefreshProcessRawQueue(
     minOuter: pipelineRt.rawMinOuterChars,
     minNestedRt: pipelineRt.rawMinNestedCharsRetweet,
   }
+  const learningContextCache = new Map<string, Promise<string>>()
 
   if (!useJobs) {
     const rawPosts = await fetchRawPostsBatch(rawLimit)
@@ -357,7 +416,7 @@ export async function runRefreshProcessRawQueue(
       const batch = rawPosts.slice(i, i + BATCH_SIZE)
       const results = await Promise.all(
         batch.map(raw =>
-          processOneRawPost(raw, { persistRawPostId: false, lowSignalThresholds })
+          processOneRawPost(raw, { persistRawPostId: false, lowSignalThresholds, userId, learningContextCache })
         )
       )
       for (const r of results) accumulateProcessOutcome(acc, r)
@@ -456,7 +515,7 @@ export async function runRefreshProcessRawQueue(
       continue
     }
 
-    const one = await processOneRawPost(raw, { job, persistRawPostId, lowSignalThresholds })
+    const one = await processOneRawPost(raw, { job, persistRawPostId, lowSignalThresholds, userId, learningContextCache })
     accumulateProcessOutcome(acc, one)
     bumpProgress()
   }
@@ -468,7 +527,7 @@ export async function runRefreshProcessRawQueue(
     }
     const batch = legacyRaw.slice(i, i + BATCH_SIZE)
     const results = await Promise.all(
-      batch.map(raw => processOneRawPost(raw, { persistRawPostId, lowSignalThresholds }))
+      batch.map(raw => processOneRawPost(raw, { persistRawPostId, lowSignalThresholds, userId, learningContextCache }))
     )
     for (const r of results) accumulateProcessOutcome(acc, r)
     for (let j = 0; j < batch.length; j++) bumpProgress()

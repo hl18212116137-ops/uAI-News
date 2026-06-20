@@ -6,6 +6,7 @@ import {
   deleteSourceByIdAndPosts,
   patchSourceById,
 } from '@/lib/services/sources-service'
+import { revalidateHomeSourceCaches } from '@/lib/home-cache-invalidation'
 
 /**
  * GET /api/sources
@@ -41,6 +42,7 @@ export async function POST(request: NextRequest) {
       url,
       user: user ? { id: user.id } : null,
     })
+    revalidateHomeSourceCaches()
 
     return NextResponse.json({
       success: true,
@@ -73,6 +75,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const { deletedPostsCount, message } = await deleteSourceByIdAndPosts(id)
+    revalidateHomeSourceCaches()
 
     return NextResponse.json({
       success: true,
@@ -106,6 +109,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     await patchSourceById(id, updates)
+    revalidateHomeSourceCaches()
 
     return NextResponse.json({
       success: true,

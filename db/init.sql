@@ -156,6 +156,49 @@ CREATE INDEX IF NOT EXISTS processing_jobs_status_pending_idx ON processing_jobs
 CREATE INDEX IF NOT EXISTS processing_jobs_raw_post_id_idx ON processing_jobs (raw_post_id) WHERE raw_post_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS processing_jobs_created_at_idx ON processing_jobs (created_at DESC);
 
+-- ─── passed_posts（PASS 审计记录）────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS passed_posts (
+  id text PRIMARY KEY,
+  url text,
+  source_platform text,
+  source_name text,
+  source_handle text,
+  content text,
+  title text,
+  summary text,
+  category text,
+  pass_type text NOT NULL
+    CHECK (pass_type IN ('low_signal', 'ai_unimportant', 'user_pass')),
+  pass_reason text NOT NULL DEFAULT '',
+  published_at timestamptz,
+  media_urls jsonb,
+  social_engagement jsonb,
+  referenced_post jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS passed_posts_updated_at_idx ON passed_posts (updated_at DESC);
+CREATE INDEX IF NOT EXISTS passed_posts_source_handle_idx ON passed_posts (source_handle);
+
+CREATE TABLE IF NOT EXISTS pass_feedback (
+  id text PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  passed_post_id text NOT NULL REFERENCES passed_posts (id) ON DELETE CASCADE,
+  action text NOT NULL CHECK (action IN ('promote_from_pass', 'pass_from_feed')),
+  source_handle text,
+  pass_type text,
+  pass_reason text,
+  content text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS pass_feedback_user_post_action_idx
+  ON pass_feedback (user_id, passed_post_id, action);
+CREATE INDEX IF NOT EXISTS pass_feedback_user_updated_at_idx
+  ON pass_feedback (user_id, updated_at DESC);
+
 -- ─── 触发器：自动更新 updated_at ────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION ainews_touch_updated_at()
 RETURNS trigger

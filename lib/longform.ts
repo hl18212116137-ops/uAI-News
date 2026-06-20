@@ -19,10 +19,20 @@ type CandidateArticle = {
   sourceName: string
   authorName?: string
   text: string
+  contentKind: 'paper' | 'article'
   originalWordCount: number
   discoveryMethod: NonNullable<LongformArticle['discoveryMethod']>
   confidence?: number
   discoverySourceImageUrl?: string
+}
+
+type TextArticleInput = {
+  requestedUrl: string
+  resolvedUrl: string
+  title: string
+  sourceName: string
+  authorName?: string
+  text: string
 }
 
 type ScreenshotArticleClues = {
@@ -49,7 +59,7 @@ const HTML_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 AI-News-Longform/1.0'
 const DEFAULT_MIN_CHARS = 1800
 const DEFAULT_IMAGE_MIN_CHARS = 1000
-const DEFAULT_MAX_TRANSLATE_CHARS = 12000
+const DEFAULT_MAX_TRANSLATE_CHARS = 36000
 const TRANSLATE_CHUNK_CHARS = 2800
 const VISION_API_URL_DEFAULT = 'https://api.openai.com/v1/chat/completions'
 const TEXT_DISCOVERY_INDICATOR_RE =
@@ -194,14 +204,65 @@ function arxivIdFromUrl(url: string): string | null {
   }
 }
 
+function isArxivAbstractUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.hostname.toLowerCase() === 'arxiv.org' && /^\/abs\//i.test(u.pathname)
+  } catch {
+    return false
+  }
+}
+
+function isScholarlyArticleUrl(url: string): boolean {
+  const host = hostOf(url)
+  if (!host) return false
+  return (
+    host === 'arxiv.org' ||
+    host.endsWith('.arxiv.org') ||
+    host === 'doi.org' ||
+    host.endsWith('.doi.org') ||
+    host === 'dl.acm.org' ||
+    host.endsWith('.acm.org') ||
+    host === 'openreview.net' ||
+    host.endsWith('.openreview.net') ||
+    host === 'biorxiv.org' ||
+    host.endsWith('.biorxiv.org') ||
+    host === 'medrxiv.org' ||
+    host.endsWith('.medrxiv.org') ||
+    host === 'nature.com' ||
+    host.endsWith('.nature.com') ||
+    host === 'science.org' ||
+    host.endsWith('.science.org') ||
+    host === 'proceedings.mlr.press' ||
+    host.endsWith('.proceedings.mlr.press') ||
+    host === 'neurips.cc' ||
+    host.endsWith('.neurips.cc') ||
+    host === 'openaccess.thecvf.com' ||
+    host.endsWith('.openaccess.thecvf.com') ||
+    host === 'aclanthology.org' ||
+    host.endsWith('.aclanthology.org') ||
+    host === 'semanticscholar.org' ||
+    host.endsWith('.semanticscholar.org')
+  )
+}
+
+function isLikelyScholarlyArticle(html: string, url: string): boolean {
+  if (isScholarlyArticleUrl(url)) return true
+  return (
+    /\bltx_document\b/i.test(html) ||
+    /name=["']citation_(?:title|author|journal_title|arxiv_id|doi)["']/i.test(html) ||
+    /property=["'](?:og:type|article:section)["'][^>]+content=["']article["']/i.test(html)
+  )
+}
+
 function expandCandidateUrlVariants(url: string): string[] {
   const normalized = normalizeCandidateUrl(url)
   if (!normalized) return []
   const arxivId = arxivIdFromUrl(normalized)
   if (!arxivId) return [normalized]
   return [
-    `https://ar5iv.labs.arxiv.org/html/${arxivId}`,
     `https://arxiv.org/html/${arxivId}`,
+    `https://ar5iv.labs.arxiv.org/html/${arxivId}`,
     `https://arxiv.org/abs/${arxivId}`,
   ]
 }
@@ -274,6 +335,11 @@ function extractAuthorName(html: string): string | undefined {
 
 function extractBestContentHtml(html: string): string {
   const blocks: string[] = []
+  const articleMatch = html.match(/<article\b(?=[^>]*\bltx_document\b)[^>]*>[\s\S]*?<\/article>/i)
+  if (articleMatch?.[0]) {
+    return articleMatch[0].replace(/<section\b(?=[^>]*\bltx_bibliography\b)[\s\S]*$/i, '')
+  }
+
   for (const tag of ['article', 'main']) {
     const re = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'gi')
     for (const m of html.matchAll(re)) {
@@ -288,6 +354,245 @@ function extractBestContentHtml(html: string): string {
   return blocks
     .map((block) => ({ block, length: stripHtmlToText(block).length }))
     .sort((a, b) => b.length - a.length)[0]?.block ?? html
+}
+
+const ARTICLE_STOP_HEADING_RE =
+  /^(references?|bibliography|citations?|acknowledg(e)?ments?|appendix|supplementary material|参考文献|参考资料|致谢|附录|补充材料)$/i
+
+const ARTICLE_CHROME_RE =
+  /(skip to main content|advanced search|quick links|login|help pages?|all fields|journal reference|ACM classification|MSC classification|report number|arXiv identifier|ORCID|author ID|view PDF|HTML \(experimental\)|donate|Simons Foundation|privacy policy|copyright|all rights reserved|跳至主内容|高级搜索|快速链接|登录|帮助页面|所有字段|期刊参考文献|ACM\s*分类|MSC\s*分类|报告编号|arXiv\s*标识符|作者\s*ID|查看\s*PDF|实验性|捐赠|隐私政策|版权所有)/i
+
+const ARTICLE_METADATA_RE =
+  /^(title|authors?|submitted|published|updated|doi|arxiv|keywords?|categories?|标题|作者|提交于|发布于|更新日期|关键词|分类)\s*[:：\[]/i
+
+const PAPER_ABSTRACT_HEADING_RE =
+  /^(abstract|summary|paper summary|author summary|synopsis|摘要|概要|概述)$/i
+
+const PAPER_INTRO_HEADING_RE =
+  /^(?:\d+(?:\.\d+)*\.?\s*)?(introduction|background|overview|motivation|引言|介绍|背景|概述)$/i
+
+const PAPER_CONCLUSION_HEADING_RE =
+  /^(?:\d+(?:\.\d+)*\.?\s*)?(conclusion|conclusions|discussion|concluding remarks|final remarks|summary and conclusions|limitations and future work|结论|总结|讨论|结语|局限与展望)$/i
+
+const PAPER_STOP_SECTION_RE =
+  /^(?:\d+(?:\.\d+)*\.?\s*)?(references?|bibliography|appendix|appendices|acknowledg(?:e)?ments?|supplementary(?: material| information)?|ethics statement|impact statement|参考文献|致谢|附录|补充材料)$/i
+
+const PAPER_ANY_SECTION_HEADING_RE =
+  /^(?:\d+(?:\.\d+)*\.?\s*)?[A-Z][A-Za-z0-9 ,:/()&-]{2,90}$|^(?:\d+(?:\.\d+)*\.?\s*)?[\u4e00-\u9fffA-Za-z0-9 ,:/()&-]{2,40}$/i
+
+type PaperSectionKind = 'abstract' | 'intro' | 'conclusion'
+
+type PaperSection = {
+  kind: PaperSectionKind
+  heading: string
+  paragraphs: string[]
+}
+
+function cleanArticleParagraph(raw: string): string {
+  return raw
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/\bdoi:\s*\S+/gi, '')
+    .replace(/\[[0-9,\s-]+\]/g, '')
+    .replace(/^(abstract|summary|摘要|概要)\s*[:：]\s*/i, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
+function articleParagraphKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\u4e00-\u9fffA-Za-z0-9]+/g, '')
+    .slice(0, 100)
+}
+
+function isLikelyArticleFrontMatter(text: string, title: string): boolean {
+  const clean = cleanArticleParagraph(text)
+  if (!clean) return true
+  if (articleParagraphKey(clean) === articleParagraphKey(title)) return true
+  if (/^(abstract|summary|摘要|概要)$/i.test(clean)) return true
+  if (clean.length <= 260 && /(@|\.edu\b|\.com\b|\.org\b|\.net\b|university|institute|department|school|college|laboratory|lab\b|research school|oxford|cambridge|stanford|mit\b|email|address|postcode|zip code|UK\b|USA\b|Australia\b|Canada\b|China\b|ACT\b|Canberra\b|Cincinnati\b|大学|学院|研究所|实验室|系|中心|邮箱|地址|邮编)/i.test(clean)) return true
+  if (clean.length <= 80 && /^&?\s*[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,4}$/.test(clean)) return true
+  if (clean.length <= 60 && !/[.!?。！？；;，,]/.test(clean) && /[\u4e00-\u9fffA-Za-z]/.test(clean)) return true
+  return false
+}
+
+function isArticleNoiseParagraph(text: string, title: string): boolean {
+  const clean = cleanArticleParagraph(text)
+  if (!clean) return true
+  if (/^[-=_]{3,}$/.test(clean)) return true
+  if (ARTICLE_METADATA_RE.test(clean)) return true
+  if (ARTICLE_CHROME_RE.test(clean) && clean.length < 320) return true
+  if (articleParagraphKey(clean) === articleParagraphKey(title)) return true
+  return false
+}
+
+function cleanCandidateArticleParagraphs(text: string, title: string): string[] {
+  const paragraphs = text.split(/\n+/).map(cleanArticleParagraph).filter(Boolean)
+  const out: string[] = []
+  const seen = new Set<string>()
+  let inFrontMatter = true
+
+  for (const paragraph of paragraphs) {
+    const heading = paragraph.replace(/[:：]+$/g, '').trim()
+    if (out.length > 0 && heading.length <= 48 && ARTICLE_STOP_HEADING_RE.test(heading)) break
+
+    if (inFrontMatter) {
+      if (isLikelyArticleFrontMatter(paragraph, title) || isArticleNoiseParagraph(paragraph, title)) {
+        continue
+      }
+      inFrontMatter = false
+    }
+
+    if (isArticleNoiseParagraph(paragraph, title)) continue
+
+    const key = articleParagraphKey(paragraph)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(paragraph)
+  }
+
+  return out.length > 0 ? out : paragraphs
+}
+
+function cleanCandidateArticleText(text: string, title: string): string {
+  return cleanCandidateArticleParagraphs(text, title).join('\n\n').trim() || text.trim()
+}
+
+function normalizePaperHeading(text: string): string {
+  return cleanArticleParagraph(text)
+    .replace(/^[#\s]+/, '')
+    .replace(/[.:：。]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isLikelyPaperSectionHeading(text: string): boolean {
+  const heading = normalizePaperHeading(text)
+  if (!heading || heading.length > 110) return false
+  if (
+    PAPER_ABSTRACT_HEADING_RE.test(heading) ||
+    PAPER_INTRO_HEADING_RE.test(heading) ||
+    PAPER_CONCLUSION_HEADING_RE.test(heading) ||
+    PAPER_STOP_SECTION_RE.test(heading)
+  ) {
+    return true
+  }
+  if (/[.!?。！？]$/.test(heading)) return false
+  return PAPER_ANY_SECTION_HEADING_RE.test(heading)
+}
+
+function paperSectionKindForHeading(text: string): PaperSectionKind | null {
+  const heading = normalizePaperHeading(text)
+  if (PAPER_ABSTRACT_HEADING_RE.test(heading)) return 'abstract'
+  if (PAPER_INTRO_HEADING_RE.test(heading)) return 'intro'
+  if (PAPER_CONCLUSION_HEADING_RE.test(heading)) return 'conclusion'
+  return null
+}
+
+function collectLimitedSectionParagraphs(
+  paragraphs: string[],
+  maxParagraphs: number,
+  maxChars: number,
+): string[] {
+  const out: string[] = []
+  let length = 0
+  for (const paragraph of paragraphs) {
+    const clean = cleanArticleParagraph(paragraph)
+    if (!clean || isLikelyPaperSectionHeading(clean)) continue
+    if (out.length >= maxParagraphs || length + clean.length > maxChars) break
+    out.push(clean)
+    length += clean.length
+  }
+  return out
+}
+
+function sectionizePaperParagraphs(paragraphs: string[]): PaperSection[] {
+  const sections: PaperSection[] = []
+  let current: PaperSection | null = null
+
+  for (const paragraph of paragraphs) {
+    const heading = normalizePaperHeading(paragraph)
+    if (heading && PAPER_STOP_SECTION_RE.test(heading)) break
+
+    const kind = paperSectionKindForHeading(heading)
+    if (kind) {
+      current = { kind, heading, paragraphs: [] }
+      sections.push(current)
+      continue
+    }
+
+    if (isLikelyPaperSectionHeading(heading)) {
+      current = null
+      continue
+    }
+
+    if (current) current.paragraphs.push(paragraph)
+  }
+
+  return sections
+}
+
+function findPaperSection(sections: PaperSection[], kind: PaperSectionKind): PaperSection | null {
+  return sections.find((section) => section.kind === kind && section.paragraphs.length > 0) ?? null
+}
+
+function uniquePaperParagraphs(paragraphs: string[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const paragraph of paragraphs) {
+    const clean = cleanArticleParagraph(paragraph)
+    const key = articleParagraphKey(clean)
+    if (!clean || !key || seen.has(key)) continue
+    seen.add(key)
+    out.push(clean)
+  }
+  return out
+}
+
+function selectPaperReadingText(text: string, title: string): string {
+  const paragraphs = cleanCandidateArticleParagraphs(text, title)
+  if (paragraphs.length === 0) return text.trim()
+
+  const sections = sectionizePaperParagraphs(paragraphs)
+  const abstractSection = findPaperSection(sections, 'abstract')
+  const introSection = findPaperSection(sections, 'intro')
+  const conclusionSection = findPaperSection(sections, 'conclusion')
+
+  const abstractParagraphs = abstractSection
+    ? collectLimitedSectionParagraphs(abstractSection.paragraphs, 4, 4500)
+    : collectLimitedSectionParagraphs(paragraphs.slice(0, 3), 2, 2600)
+
+  let introParagraphs = introSection
+    ? collectLimitedSectionParagraphs(introSection.paragraphs, 10, 9000)
+    : []
+
+  if (introParagraphs.length === 0) {
+    const start = Math.max(abstractParagraphs.length, 1)
+    introParagraphs = collectLimitedSectionParagraphs(paragraphs.slice(start, start + 10), 8, 7000)
+  }
+
+  let conclusionParagraphs = conclusionSection
+    ? collectLimitedSectionParagraphs(conclusionSection.paragraphs, 8, 7000)
+    : []
+
+  if (conclusionParagraphs.length === 0 && paragraphs.length > 6) {
+    conclusionParagraphs = collectLimitedSectionParagraphs(paragraphs.slice(-8), 5, 4200)
+  }
+
+  const parts: string[] = []
+  const addSection = (heading: string, sectionParagraphs: string[]) => {
+    const clean = uniquePaperParagraphs(sectionParagraphs)
+    if (clean.length === 0) return
+    parts.push(heading)
+    parts.push(...clean)
+  }
+
+  addSection('Abstract', abstractParagraphs)
+  addSection('Introduction', introParagraphs)
+  addSection('Conclusion', conclusionParagraphs)
+
+  const selected = parts.join('\n\n').trim()
+  return selected || paragraphs.join('\n\n').trim() || text.trim()
 }
 
 function countWords(text: string): number {
@@ -345,11 +650,16 @@ async function fetchCandidateArticle(
   if (!fetched) return null
   const resolvedUrl = normalizeCandidateUrl(fetched.resolvedUrl) ?? fetched.resolvedUrl
   if (isExcludedLongformHost(resolvedUrl) || looksLikeStaticAsset(resolvedUrl)) return null
+  if (isArxivAbstractUrl(resolvedUrl)) return null
 
   const title = extractTitle(fetched.html, resolvedUrl)
-  const text = stripHtmlToText(extractBestContentHtml(fetched.html))
+  const contentKind = isLikelyScholarlyArticle(fetched.html, resolvedUrl) ? 'paper' : 'article'
+  const cleanText = cleanCandidateArticleText(stripHtmlToText(extractBestContentHtml(fetched.html)), title)
+  const text = contentKind === 'paper' ? selectPaperReadingText(cleanText, title) : cleanText
   const minChars =
-    discoveryMethod === 'image-search'
+    contentKind === 'paper'
+      ? envInt('LONGFORM_PAPER_MIN_CHARS', 600)
+      : discoveryMethod === 'image-search'
       ? envInt('LONGFORM_IMAGE_MIN_CHARS', DEFAULT_IMAGE_MIN_CHARS)
       : envInt('LONGFORM_MIN_CHARS', DEFAULT_MIN_CHARS)
   if (text.length < minChars) return null
@@ -361,6 +671,7 @@ async function fetchCandidateArticle(
     sourceName: sourceNameFromUrl(resolvedUrl),
     authorName: extractAuthorName(fetched.html),
     text,
+    contentKind,
     originalWordCount: countWords(text),
     discoveryMethod,
     ...meta,
@@ -405,6 +716,29 @@ async function articleToLongform(
     ...(article.confidence != null ? { confidence: Number(article.confidence.toFixed(3)) } : {}),
     ...(article.discoverySourceImageUrl ? { discoverySourceImageUrl: article.discoverySourceImageUrl } : {}),
   }
+}
+
+export async function createLongformFromTextArticle(
+  input: TextArticleInput,
+  translate: (text: string) => Promise<string>,
+): Promise<LongformArticle> {
+  const text = input.text.trim()
+  const title = input.title.trim() || input.sourceName || '手动添加长文'
+
+  return articleToLongform(
+    {
+      requestedUrl: input.requestedUrl,
+      resolvedUrl: input.resolvedUrl,
+      title,
+      sourceName: input.sourceName || sourceNameFromUrl(input.resolvedUrl) || '手动添加',
+      ...(input.authorName ? { authorName: input.authorName } : {}),
+      text,
+      contentKind: 'article',
+      originalWordCount: countWords(text),
+      discoveryMethod: 'url',
+    },
+    translate,
+  )
 }
 
 function getVisionConfig(): VisionConfig | null {
@@ -906,6 +1240,14 @@ async function extractLongformFromUrlCandidates(
     }
   }
   return undefined
+}
+
+export async function extractLongformFromDirectUrl(
+  url: string,
+  translate: (text: string) => Promise<string>,
+): Promise<LongformArticle | undefined> {
+  if (!isEnabled()) return undefined
+  return extractLongformFromUrlCandidates([url], translate)
 }
 
 async function extractLongformFromImages(
