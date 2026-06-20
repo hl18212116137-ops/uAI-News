@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
@@ -923,10 +923,12 @@ function getParagraphs(text: string): string[] {
 function buildLongformDigest(post: LongformPost, paragraphs: string[]): LongformDigest {
   const article = post.longform;
   const storedSummary = normalizeText(article.digestSummary || "");
-  const storedPoints = (article.digestPoints ?? [])
-    .map((point) => normalizeText(point))
-    .filter(Boolean)
-    .slice(0, DIGEST_POINT_LIMIT);
+  const storedPoints = Array.isArray(article.digestPoints)
+    ? article.digestPoints
+        .map((point) => normalizeText(point))
+        .filter(Boolean)
+        .slice(0, DIGEST_POINT_LIMIT)
+    : [];
   if (storedSummary || storedPoints.length > 0) {
     return { summary: storedSummary, points: storedPoints };
   }
