@@ -724,6 +724,9 @@ export default function AnalysisPanel({
   const refMediaUrls = safeStringArray(refPost?.mediaUrls);
   const sourceUrl = post ? resolveNewsPostUrl(post) : "";
   const hasLongformArticle = Boolean(post?.longform?.translatedContent);
+  const bottomActionButtonClass =
+    "btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60";
+  const bottomActionIconClass = "relative flex size-3.5 shrink-0 items-center justify-center";
   const referencedTweetHref =
     refPost?.id && refUserName
       ? `https://x.com/${refUserName.replace(/^@/, "")}/status/${refPost.id}`
@@ -1199,7 +1202,7 @@ export default function AnalysisPanel({
       >
         <button
           type="button"
-          className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1 disabled:cursor-wait disabled:opacity-70"
+          className={bottomActionButtonClass}
           aria-label={isBookmarked ? "取消收藏" : "收藏"}
           aria-pressed={isBookmarked}
           aria-busy={bookmarkPending}
@@ -1209,7 +1212,7 @@ export default function AnalysisPanel({
             onBookmarkToggle(post.id, post);
           }}
         >
-          <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
+          <span className={bottomActionIconClass} aria-hidden>
             <BookmarkGlyph
               className={`block size-3.5 ${isBookmarked ? "text-[#d7a220]" : "text-current"}`}
               filled={isBookmarked}
@@ -1221,10 +1224,10 @@ export default function AnalysisPanel({
             href={sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
+            className={bottomActionButtonClass}
             aria-label="打开原文链接"
           >
-            <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
+            <span className={bottomActionIconClass} aria-hidden>
               <img
                 alt=""
                 src="/analysis-bottom-icons/open.svg"
@@ -1238,14 +1241,14 @@ export default function AnalysisPanel({
           <button
             type="button"
             disabled
-            className="flex h-8 w-8 shrink-0 cursor-not-allowed items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#99a1af] opacity-50 outline-none"
+            className={bottomActionButtonClass}
             aria-label="打开"
           >
-            <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
+            <span className={bottomActionIconClass} aria-hidden>
               <img
                 alt=""
                 src="/analysis-bottom-icons/open.svg"
-                className="block size-3.5 max-h-full max-w-full object-contain opacity-60"
+                className="block size-3.5 max-h-full max-w-full object-contain"
                 decoding="async"
                 draggable={false}
               />
@@ -1254,13 +1257,7 @@ export default function AnalysisPanel({
         )}
         <button
           type="button"
-          className={[
-            "btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1",
-            hasLongformArticle
-              ? "text-[#d7a220]"
-              : "text-[#6a7282] hover:bg-[#fff7e0] hover:text-[#d7a220]",
-            "disabled:cursor-wait disabled:opacity-70",
-          ].join(" ")}
+          className={bottomActionButtonClass}
           aria-label={hasLongformArticle ? "已加入长文" : "加入长文"}
           aria-pressed={hasLongformArticle}
           aria-busy={longformPending}
@@ -1270,9 +1267,9 @@ export default function AnalysisPanel({
             onLongformExtract(post);
           }}
         >
-          <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
+          <span className={bottomActionIconClass} aria-hidden>
             <AddToLongformModuleGlyph
-              className={`block size-4 max-h-full max-w-full ${longformPending ? "animate-pulse" : ""}`}
+              className={`block size-3.5 max-h-full max-w-full ${hasLongformArticle ? "text-[#d7a220]" : "text-current"} ${longformPending ? "animate-pulse" : ""}`}
             />
           </span>
         </button>
