@@ -108,6 +108,7 @@ type AcronymExpansionState = {
 };
 
 type ArticleDigestRole = "problem" | "method" | "result";
+type LongformBodyTone = "narrative" | "detail";
 
 type ArticleDigestRoleCandidate = {
   role: ArticleDigestRole;
@@ -146,6 +147,10 @@ const EXAMPLE_RE =
   /(例如|比如|举例|以.+为例|被公认为|代表了|包括|for example|for instance|such as)/i;
 const METHOD_RE =
   /(被试|参与者|样本|问卷|实验设计|预先注册|我们采用|为了测试|为了避免|方法|研究\s*\d|考察|评估|测量|探究|校准|自我报告|完成模式|study\s*\d|participants?|sample|methodology|measure|evaluate|examine|calibration)/i;
+const BODY_DETAIL_RE =
+  /(具体|方法|方案|步骤|流程|实验|评测|测试|训练|微调|采样|参数|数据集|样本|基准|模型|框架|架构|算法|系统|模块|实现|部署|计算|公式|代码|输入|输出|权重|损失函数|pipeline|method|approach|experiment|benchmark|dataset|sample|training|fine-tun|architecture|algorithm|implementation|parameter|compute|module|system)/i;
+const BODY_NARRATIVE_RE =
+  /(背景|问题|矛盾|挑战|瓶颈|目的|首先|然而|但是|相比之下|换句话说|也就是说|这意味着|这说明|因此|所以|由此|总体来看|总的来说|核心是|关键在于|结论|总结|启示|影响|风险|机会|价值|background|problem|challenge|however|therefore|overall|in conclusion|this means|key takeaway|impact|risk|opportunity)/i;
 const FIGURE_RE =
   /(图\s*\d+|表\s*\d+|Figure\s*\d+|Table\s*\d+|青色|橙色|蓝色|绿色|红色|紫色|灰色|柱状|曲线|坐标轴|图中)/i;
 const FINDING_RE =
@@ -1215,6 +1220,29 @@ function scoreBodyReadingBlock(block: LongformBodyBlock, blockIndex: number, blo
   return score;
 }
 
+function getLongformBodyTone(
+  block: LongformBodyBlock,
+  blockIndex: number,
+  blockCount: number,
+): LongformBodyTone {
+  if (block.kind === "heading") return "narrative";
+
+  const text = getLongformBodyBlockText(block);
+  const score = scoreBodyReadingBlock(block, blockIndex, blockCount);
+  const hasFindingSignal = FINDING_RE.test(text);
+  const isOpeningContext = blockIndex <= 1 && text.length > 70;
+
+  if (score >= BODY_FOCUS_SCORE || isOpeningContext || BODY_NARRATIVE_RE.test(text)) {
+    return "narrative";
+  }
+
+  if ((BODY_DETAIL_RE.test(text) || METHOD_RE.test(text) || FIGURE_RE.test(text) || EXAMPLE_RE.test(text)) && !hasFindingSignal) {
+    return "detail";
+  }
+
+  return "detail";
+}
+
 function shouldStopLongformBody(paragraph: string, index: number): boolean {
   const clean = cleanLongformBodyParagraph(paragraph).replace(/[：:]+$/g, "");
   return index > 0 && clean.length <= 48 && BODY_STOP_HEADING_RE.test(clean);
@@ -1531,22 +1559,26 @@ function LongformBodyReader({
           }
 
           if (block.kind === "list") {
+            const tone = getLongformBodyTone(block, blockIndex, bodyBlocks.length);
+            const isNarrative = tone === "narrative";
+
             return (
               <div
                 key={`${articleKey}-body-${blockIndex}`}
                 className={[
-                  "m-0 flex flex-col gap-2 rounded-md bg-[#f5f5f5] px-4 py-3 text-[13px] leading-6 text-[#374151] sm:text-[14px]",
-                  blockIndex > 0 ? "mt-5" : "",
+                  "m-0 flex max-w-[70ch] flex-col gap-2 text-[14px] leading-7 sm:text-[15px] sm:leading-[30px]",
+                  isNarrative ? "font-medium text-[#101828]" : "font-normal text-[#6a7282]",
+                  blockIndex > 0 ? "mt-4" : "",
                 ].join(" ")}
                 role="list"
               >
                 {block.items.map((item, itemIndex) => (
                   <div
                     key={`${articleKey}-body-${blockIndex}-${itemIndex}`}
-                    className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2.5"
+                    className="grid grid-cols-[1.35rem_minmax(0,1fr)] gap-2.5"
                     role="listitem"
                   >
-                    <span className="pt-[1px] text-[11px] font-semibold leading-6 text-[#99a1af] tabular-nums">
+                    <span className="pt-[2px] text-[11px] font-semibold leading-7 text-[#99a1af] tabular-nums sm:leading-[30px]">
                       {block.ordered ? itemIndex + 1 : "•"}
                     </span>
                     <span className="min-w-0 break-words">
@@ -1558,28 +1590,24 @@ function LongformBodyReader({
             );
           }
 
-          const score = scoreBodyReadingBlock(block, blockIndex, bodyBlocks.length);
-          const isFocus = score >= BODY_FOCUS_SCORE + 0.7;
-          const isLead = blockIndex <= 1 && block.text.length > 80 && !isFocus;
+          const tone = getLongformBodyTone(block, blockIndex, bodyBlocks.length);
+          const isNarrative = tone === "narrative";
 
           return (
             <div
               key={`${articleKey}-body-${blockIndex}`}
               className={[
                 "max-w-[70ch]",
-                blockIndex > 0 ? (isFocus ? "mt-6" : "mt-4") : "",
-                isFocus ? "border-l border-[#e5e7eb] py-2 pl-4 pr-3" : "",
+                blockIndex > 0 ? (isNarrative ? "mt-5" : "mt-4") : "",
               ].join(" ")}
             >
               <MathBlockText
                 text={block.text}
                 textClassName={[
                   "m-0 break-words [text-wrap:pretty]",
-                  isFocus
+                  isNarrative
                     ? "text-[14px] font-medium leading-7 text-[#101828] sm:text-[15px] sm:leading-[30px]"
-                    : isLead
-                      ? "text-[15px] font-medium leading-[30px] text-[#101828] sm:text-[16px] sm:leading-8"
-                      : "text-[14px] leading-7 text-[#374151] sm:text-[15px] sm:leading-[30px]",
+                    : "text-[14px] font-normal leading-7 text-[#6a7282] sm:text-[15px] sm:leading-[30px]",
                 ].join(" ")}
                 renderTextSegment={renderTextSegment}
               />
