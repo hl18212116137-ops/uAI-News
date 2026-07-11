@@ -16,7 +16,7 @@ const DEMO_BY_HANDLE: Record<string, NewsItem> = {
       handle: "karpathy",
       url: "https://twitter.com/karpathy/status/uai-demo-1",
     },
-    category: "Research",
+    category: "研究",
     publishedAt: "2026-03-29T15:30:00.000Z",
     originalText: "Demo sample post for default subscription preview.",
     createdAt: "2026-03-29T15:35:00.000Z",
@@ -35,7 +35,7 @@ const DEMO_BY_HANDLE: Record<string, NewsItem> = {
       handle: "sama",
       url: "https://twitter.com/sama/status/uai-demo-1",
     },
-    category: "Company News",
+    category: "行业",
     publishedAt: "2026-03-28T18:00:00.000Z",
     originalText: "Demo sample post for default subscription preview.",
     createdAt: "2026-03-28T18:05:00.000Z",
@@ -54,7 +54,7 @@ const DEMO_BY_HANDLE: Record<string, NewsItem> = {
       handle: "ylecun",
       url: "https://twitter.com/ylecun/status/uai-demo-1",
     },
-    category: "Research",
+    category: "研究",
     publishedAt: "2026-03-27T12:15:00.000Z",
     originalText: "Demo sample post for default subscription preview.",
     createdAt: "2026-03-27T12:20:00.000Z",
@@ -62,11 +62,28 @@ const DEMO_BY_HANDLE: Record<string, NewsItem> = {
   },
 };
 
+/** Demo post IDs 以此前缀开头 */
+export const DEMO_POST_ID_PREFIX = "uai-demo-";
+
+export function isDemoFeedFallbackEnabled(): boolean {
+  const raw = process.env.FEED_DEMO_FALLBACK?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+export function isDemoPostId(id: string): boolean {
+  return typeof id === "string" && id.startsWith(DEMO_POST_ID_PREFIX);
+}
+
+export function getDemoPostById(id: string): NewsItem | undefined {
+  return Object.values(DEMO_BY_HANDLE).find((p) => p.id === id);
+}
+
 /**
- * DB / 抓取无数据时，按当前订阅 handles 顺序插入对应示例帖（每个 handle 最多一条）。
+ * DB / 抓取无数据时的示例帖（仅 FEED_DEMO_FALLBACK=true 时启用，默认关闭以免误导用户）。
  */
 export function mergeDemoPostsIfFeedEmpty(feed: NewsItem[], handles: string[]): NewsItem[] {
   if (feed.length > 0) return feed;
+  if (!isDemoFeedFallbackEnabled()) return [];
 
   const normalized = handles.map((h) => h.trim().toLowerCase()).filter(Boolean);
   const out: NewsItem[] = [];

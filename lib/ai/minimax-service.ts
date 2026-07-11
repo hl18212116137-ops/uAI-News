@@ -1,4 +1,5 @@
-import { AIService, AIProcessedContent, PostInsightContext } from './ai-service';
+import { AIService, AIProcessedContent, LongformDigestDraft, LongformDigestInput, PostInsightContext } from './ai-service';
+import { buildLongformDigestPrompt, parseLongformDigestResponse } from './longform-digest';
 import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
@@ -6,16 +7,13 @@ import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
 // MiniMax API 配置
 const MINIMAX_API_URL = 'https://api.minimax.chat/v1/text/chatcompletion_v2';
 
-// 有效的分类列表
 const VALID_CATEGORIES: NewsCategory[] = [
-  'Model Update',
-  'Product Update',
-  'Research',
-  'Company News',
-  'Funding',
-  'Policy',
-  'Open Source',
-  'Other',
+  '模型',
+  '产品',
+  '研究',
+  '行业',
+  '政策',
+  '观点线索',
 ];
 
 /**
@@ -68,6 +66,7 @@ export class MinimaxService implements AIService {
     const data = await response.json();
 
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      console.error('[MiniMax] Unexpected response structure:', JSON.stringify(data).slice(0, 500));
       throw new Error('Invalid response format from MiniMax API');
     }
 
@@ -80,14 +79,19 @@ export class MinimaxService implements AIService {
   async processNews(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    filterLearningContext?: string
   ): Promise<AIProcessedContent> {
+    const learningSection = filterLearningContext?.trim()
+      ? `\n用户纠正反馈（用于校准 important 判断，不是推文正文）：\n${filterLearningContext.trim()}\n`
+      : '';
     const prompt = `你是一个AI新闻筛选和分析专家。请分析以下英文推文，判断是否值得展示给关注AI行业的用户。
 
 推文内容：
 ${text}
 
 作者：${authorName} (@${authorHandle})
+${learningSection}
 
 请严格按照以下JSON格式返回（不要包含任何其他文字）：
 
@@ -95,7 +99,8 @@ ${text}
   "important": true/false,
   "title": "中文标题",
   "summary": "中文摘要",
-  "category": "分类"
+  "category": "分类",
+  "passReason": "如果 important=false，用一句简体中文说明 PASS 原因；important=true 时填空字符串"
 }
 
 判断标准（important字段）：
@@ -105,10 +110,12 @@ ${text}
 - 重大的公司动态、融资、合作
 - 有影响力的政策法规
 - 有价值的开源项目发布
+- 高价值观点/线索：来自有相关经验或影响力的作者，指出具体行业变化、风险、机会、成本约束、市场信号或判断差异，能改变读者下一步判断；必须有具体对象和清楚后果，不只是情绪
 
 ❌ 不值得展示（important: false）：
 - 纯粹的感谢、祝贺、问候
-- 个人观点、鸡汤、励志语录、抽奖活动、泛泛闲聊
+- 泛泛个人观点、鸡汤、励志语录、抽奖活动、泛泛闲聊
+- 没有具体对象、没有事实线索、没有可理解后果的热评或情绪表达
 - 无实质内容的宣传
 - 纯转发、纯链接；或转发/引用但作者几乎无评论、未增加信息，且嵌套原文本身信息量很低
 - 模糊不清、信息量极少的内容
@@ -125,17 +132,16 @@ ${text}
 - 多用"说"、"觉得"、"挺好"、"很厉害"等口语词汇
 - 直接说重点，不要绕弯子
 
-分类规则（category必须精确匹配）：
-- "Model Update" - 模型更新、新模型发布、模型能力提升
-- "Product Update" - 产品功能更新、新产品发布
-- "Research" - 研究论文、实验结果、技术突破
-- "Company News" - 公司动态、合作伙伴关系、收购
-- "Funding" - 融资、投资消息
-- "Policy" - 政策法规、监管动态
-- "Open Source" - 开源项目、代码发布
-- "Other" - 其他类型
+分类规则（category必须精确匹配以下中文值）：
+- "模型" - 模型更新、新模型发布、模型能力提升、模型评测
+- "产品" - 产品功能更新、新产品发布、开源工具发布
+- "研究" - 研究论文、实验结果、技术突破
+- "行业" - 公司动态、融资、收购、合作、行业趋势
+- "政策" - 政策法规、监管动态、AI 安全治理
+- "观点线索" - 高价值观点、早期信号、值得跟踪的判断线索；必须有具体对象、机制或后果
 
-注意：即使判断为不重要（important: false），也要填写title、summary、category字段（可以简单填写）。`;
+硬性要求：title 与 summary 的正文必须以简体中文为主（汉字占比高）；禁止整句只输出英文。若原文为英文，必须先在心里译成中文再写入 JSON。
+注意：即使判断为不重要（important: false），也要填写title、summary、category字段（可以简单填写），并在 passReason 中写明原因。`;
 
     try {
       const responseText = await this.callAPI(prompt);
@@ -150,8 +156,8 @@ ${text}
 
       // 验证分类
       if (!VALID_CATEGORIES.includes(parsed.category)) {
-        console.warn(`Invalid category "${parsed.category}", defaulting to "Other"`);
-        parsed.category = 'Other';
+        console.warn(`Invalid category "${parsed.category}", defaulting to "行业"`);
+        parsed.category = '行业';
       }
 
       return {
@@ -159,6 +165,7 @@ ${text}
         title: parsed.title || '未命名新闻',
         summary: parsed.summary || '暂无摘要',
         category: parsed.category,
+        passReason: typeof parsed.passReason === 'string' ? parsed.passReason.trim() : undefined,
       };
     } catch (error) {
       console.error('MiniMax processNews error:', error);
@@ -170,11 +177,11 @@ ${text}
    * 翻译内容为中文
    */
   async translateContent(content: string): Promise<string> {
-    const prompt = `请将以下英文内容翻译成简体中文。要求：
-1. 准确传达原文意思
-2. 保持专业、流畅的中文表达
-3. 保留技术术语的准确性
-4. 只返回翻译结果，不要任何额外说明
+    const prompt = `请将以下内容译为简体中文（若已是中文则理顺语序即可）。要求：
+1. 准确传达原意
+2. 以简体中文为主输出，禁止整段只保留英文
+3. 专有名词、模型名可保留常见英文缩写
+4. 只返回译文正文，不要解释、不要前缀
 
 原文：
 ${content}`;
@@ -189,6 +196,16 @@ ${content}`;
       return cleaned;
     } catch (error) {
       console.error('MiniMax translateContent error:', error);
+      throw error;
+    }
+  }
+
+  async summarizeLongform(input: LongformDigestInput): Promise<LongformDigestDraft> {
+    try {
+      const responseText = await this.callAPI(buildLongformDigestPrompt(input));
+      return parseLongformDigestResponse(responseText);
+    } catch (error) {
+      console.error('MiniMax summarizeLongform error:', error);
       throw error;
     }
   }
@@ -274,11 +291,13 @@ ${content}`;
 - 研究论文发布（非顶会）：45-65分
 - 中小规模融资/合作：40-60分
 - 开源项目发布（有一定影响力）：45-65分
-- 行业观点/分析（来自权威人士）：40-60分
+- 高价值观点/线索（来自有相关经验或影响力的作者，且有具体对象、机制或后果）：60-78分
+- 行业观点/分析（来自权威人士，但只是一般分析）：40-60分
 
 【低分因素 0-39分】
 - 小功能更新、bug修复：20-40分
 - 个人观点/评论（非权威）：10-30分
+- 泛泛热评、情绪表达、没有具体事实线索的观点：5-35分
 - 转发/引用他人内容：10-30分
 - 宣传性质内容：5-25分
 
@@ -449,7 +468,7 @@ ${postsList}
     const sourcesLines = insightContext?.subscribedSourcesLines?.trim() ?? '';
     const sourcesSection = sourcesLines
       ? `用户常看的信息源（名称与 @handle）：\n${sourcesLines}`
-      : '用户常看的信息源：暂无订阅列表；relevance 仍只输出一句「和这类读者的关系」（见字段说明）。';
+      : '用户常看的信息源：暂无订阅列表。';
 
     const ref =
       referencedPost?.text?.trim() && referencedPost
@@ -476,31 +495,24 @@ ${ref.text}`
 作者：${authorName} (@${authorHandle})`;
 
     const hlDesc =
-      '字符串数组，**2～3 条，最多 3 条**。每条单独一句大白话，20-35 字以内为宜，写清一个信息点（事实、数字、动向）；少用术语。**加粗**仅用于该条里最必要的专有名词、产品/模型名、机构名或关键数字；每条**最多 1 处** Markdown 双星号短语；加粗片段不超过 6 个汉字（英文专名可略长）；禁止加粗半句或整句；避免与译文逐句重复';
-
-    const relDesc =
-      '**单个字符串**（禁止数组、禁止换行）。**只回答一句：这条帖子和这位用户有什么关系**——结合读者画像与常看订阅源（作者在不在列表、话题是否命中其关注领域、是否值得 Ta 点开看等）；无订阅列表时写与「一般关注 AI 前沿的中文读者」的关系即可。不要复述帖子事实、不要写「变化+启发」两段式，**只保留关系这一句**。35 个汉字以内；全句**最多 1 处** Markdown 加粗（如 @handle 或领域词）。若作者 @' +
-      authorHandle +
-      ' 在订阅里可自然点出。';
+      '字符串数组，**2～3 条，最多 3 条**。用大白话写，像跟朋友聊天，每条 15-25 字。不要用术语和行话，把专业概念翻译成普通人能懂的话。**加粗**仅用于最关键的名词/数字，每条最多 1 处；避免与译文逐句重复';
 
     const translationRules = ref
       ? `2. translatedText: 仅【主帖】的完整简体中文译文；主帖无实质内容时用空字符串 ""
 3. translatedTextReferenced: 【嵌套推文】的完整简体中文译文（必填，勿省略句段）。已是中文则略润色
 4. highlights: ${hlDesc}
-5. relevance: ${relDesc}
-6. entities: 实体列表（公司、产品、人物名称，如 ["OpenAI", "GPT-4", "Sam Altman"]）
-7. eventType: 事件类型（announcement/discussion/analysis/reaction/other）
-8. sourceType: 来源类型（official/media/expert/user）
-9. importanceScore: 重要性评分（0-100，考虑影响力、新颖性、价值）
-10. noveltyScore: 新颖度评分（0-100，是否是新信息）`
-      : `2. translatedText: 必填。将推文全文完整译为简体中文（勿省略句段，勿在字段内保留外文句子）。若原文已是中文，输出与原文一致或略润色后的全文
-3. highlights: ${hlDesc}
-4. relevance: ${relDesc}
 5. entities: 实体列表（公司、产品、人物名称，如 ["OpenAI", "GPT-4", "Sam Altman"]）
 6. eventType: 事件类型（announcement/discussion/analysis/reaction/other）
 7. sourceType: 来源类型（official/media/expert/user）
 8. importanceScore: 重要性评分（0-100，考虑影响力、新颖性、价值）
-9. noveltyScore: 新颖度评分（0-100，是否是新信息）`;
+9. noveltyScore: 新颖度评分（0-100，是否是新信息）`
+      : `2. translatedText: 必填。将推文全文完整译为简体中文（勿省略句段，勿在字段内保留外文句子）。若原文已是中文，输出与原文一致或略润色后的全文
+3. highlights: ${hlDesc}
+4. entities: 实体列表（公司、产品、人物名称，如 ["OpenAI", "GPT-4", "Sam Altman"]）
+5. eventType: 事件类型（announcement/discussion/analysis/reaction/other）
+6. sourceType: 来源类型（official/media/expert/user）
+7. importanceScore: 重要性评分（0-100，考虑影响力、新颖性、价值）
+8. noveltyScore: 新颖度评分（0-100，是否是新信息）`;
 
     const prompt = `分析以下推文，提取关键信息：
 
@@ -509,7 +521,7 @@ ${bodyIntro}
 读者画像（中文）：${persona}
 ${sourcesSection}
 
-**语言（强制）**：canonicalSummary、highlights、relevance、translatedText、translatedTextReferenced 等所有面向用户展示的字符串必须为**简体中文**；句子主体不得为英文，专有名词可保留必要外文。
+**语言（强制）**：canonicalSummary、highlights、translatedText、translatedTextReferenced 等所有面向用户展示的字符串必须为**简体中文**；句子主体不得为英文，专有名词可保留必要外文。
 
 请提取以下信息并以JSON格式返回：
 1. canonicalSummary: 标准化摘要（简洁描述核心内容，50字以内${ref ? '；综合主帖与嵌套推文的信息价值' : ''}）
@@ -519,8 +531,7 @@ ${translationRules}
 {
   "canonicalSummary": "...",
   "translatedText": "...",
-${ref ? '  "translatedTextReferenced": "...",\n' : ''}  "highlights": ["要点一", "要点二", "要点三"],
-  "relevance": "**@作者** 在你订阅里，这条讲模型更新，和你常看的方向相关。",
+${ref ? '  "translatedTextReferenced": "...",\n' : ''}  "highlights": ["要点一", "要点二"],
   "entities": ["...", "..."],
   "eventType": "announcement",
   "sourceType": "official",
@@ -557,18 +568,6 @@ ${ref ? '  "translatedTextReferenced": "...",\n' : ''}  "highlights": ["要点�
         if (h.length > 0) highlights = h;
       }
 
-      let relevance: string | undefined;
-      const rawRel = result.relevance;
-      if (typeof rawRel === 'string' && rawRel.trim() !== '') {
-        relevance = rawRel.trim();
-      } else if (Array.isArray(rawRel)) {
-        const first = rawRel
-          .filter((x: unknown): x is string => typeof x === 'string')
-          .map((s: string) => s.trim())
-          .filter(Boolean)[0];
-        if (first) relevance = first;
-      }
-
       const canonicalOk =
         typeof result.canonicalSummary === 'string' && result.canonicalSummary.trim() !== ''
           ? result.canonicalSummary.trim()
@@ -579,7 +578,6 @@ ${ref ? '  "translatedTextReferenced": "...",\n' : ''}  "highlights": ["要点�
         translatedText,
         translatedTextReferenced,
         highlights,
-        relevance,
         entities: Array.isArray(result.entities) ? result.entities : [],
         eventType: result.eventType || 'other',
         sourceType: result.sourceType || 'user',

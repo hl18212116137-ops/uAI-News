@@ -4,10 +4,10 @@
 
 /* Linear 风格布局动效：侧栏 / 顶栏 / Tab 指示 / Feed 金条等与 prefers-reduced-motion 共用节奏 */
 :root {
-  --layout-duration: 280ms;
+  --layout-duration: 220ms;
   --layout-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  /** 弹窗略长于布局动效，大位移时更易感知 */
-  --modal-enter-duration: 380ms;
+  /** 弹窗入场与布局动效同节奏 */
+  --modal-enter-duration: 240ms;
   /** 全站分隔线：统一 1px、略浅于 gray-200，整体比 #e5e7eb 弱半档 */
   --app-divider: #ebebef;
 }
@@ -18,8 +18,22 @@
     --modal-enter-duration: 1ms;
   }
 
-  :is(.modal-backdrop, .modal-panel-enter) {
+  :is(
+      .modal-backdrop,
+      .modal-panel-enter,
+      .refresh-progress-strip-enter,
+      .source-activity-notice-enter,
+      .source-activity-notice-exit,
+      .source-drawer-backdrop-enter,
+      .animate-spin,
+      .skeleton
+    ) {
     animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  :is(.btn-primary, .card-hover, .card-hover-lift, .btn-press, .input-field) {
+    transition-duration: 1ms !important;
   }
 }
 
@@ -36,11 +50,42 @@
 @keyframes appModalPanelIn {
   from {
     opacity: 0;
-    transform: translateY(22px) scale(0.92);
+    transform: translateY(10px) scale(0.985);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sourceActivityNoticeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sourceActivityNoticeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.99);
+  }
+}
+
+@keyframes sourceDrawerBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
@@ -67,11 +112,32 @@
     transition-property: transform, opacity;
     transition-duration: var(--layout-duration);
     transition-timing-function: var(--layout-ease);
+    backface-visibility: hidden;
   }
 
-  /** 布局级指标动画：金条 top/height、Tab 下划线 left/width 等与侧栏同节奏 */
+  /**
+   * grid 折叠（0fr ↔ 1fr）：allow-discrete 让浏览器按显示器刷新率插值；
+   * contain 缩小布局重算范围，减轻折叠时的掉帧感。
+   */
+  .motion-collapse-grid {
+    display: grid;
+    contain: layout style;
+    transition-property: grid-template-rows;
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+    transition-behavior: allow-discrete;
+  }
+
+  /** 布局级指标动画：Tab 下划线等；金条滚动定位见 .feed-analysis-rail（无过渡） */
   .motion-layout-metrics {
-    transition-property: top, height, left, width, opacity;
+    transition-property: transform, opacity;
+    transition-duration: var(--layout-duration);
+    transition-timing-function: var(--layout-ease);
+  }
+
+  /** Tab 下划线：仅 transform，避免 left/width 触发布局重算 */
+  .motion-layout-tab-underline {
+    transition-property: transform, width;
     transition-duration: var(--layout-duration);
     transition-timing-function: var(--layout-ease);
   }
@@ -90,9 +156,30 @@
     animation: refreshProgressStripIn var(--layout-duration) var(--layout-ease) both;
   }
 
+  .source-activity-notice-enter {
+    animation: sourceActivityNoticeIn var(--layout-duration) var(--layout-ease) both;
+  }
+
+  .source-activity-notice-exit {
+    animation: sourceActivityNoticeOut 180ms ease-in both;
+  }
+
+  .source-drawer-backdrop-enter {
+    animation: sourceDrawerBackdropIn var(--layout-duration) var(--layout-ease) both;
+  }
+
   /** 预留滚动条槽，避免 overflow 出现时正文整体左移 */
   .scrollbar-gutter-stable {
     scrollbar-gutter: stable;
+  }
+
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }
 
@@ -107,11 +194,17 @@
     @apply bg-[#f5f5f5] text-gray-900;
     overflow-x: auto;
   }
+
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-white text-gray-900 px-4 py-2 rounded-md hover:bg-gray-200 transition-all duration-200;
+    @apply rounded-md bg-white px-4 py-2 text-gray-900 hover:bg-gray-200 duration-200;
+    transition-property: background-color, color, box-shadow;
   }
 
   .card {
@@ -119,11 +212,13 @@
   }
 
   .card-hover {
-    @apply hover:shadow-md transition-all duration-200;
+    @apply duration-200 hover:shadow-md;
+    transition-property: box-shadow;
   }
 
   .card-hover-lift {
-    @apply transition-all duration-200 ease-out;
+    @apply duration-200 ease-out;
+    transition-property: transform, box-shadow;
   }
 
   .card-hover-lift:hover {
@@ -131,11 +226,12 @@
   }
 
   .btn-press {
-    @apply transition-transform duration-150 active:scale-95;
+    @apply transition-transform duration-100 active:scale-[0.98];
   }
 
   .input-field {
-    @apply bg-white border border-[#f3f4f6] text-[#101828] placeholder-[#99a1af] rounded-md px-3 py-2 focus:bg-white focus:shadow-sm focus:ring-2 focus:ring-primary-500 outline-none transition-all duration-200;
+    @apply rounded-md border border-[#f3f4f6] bg-white px-3 py-2 text-[#101828] outline-none placeholder-[#99a1af] duration-200 focus:bg-white focus:shadow-sm focus:ring-2 focus:ring-primary-500;
+    transition-property: background-color, border-color, box-shadow, color;
   }
 
   .gradient-mask-r {
@@ -165,6 +261,23 @@
   /** 大型弹窗外壳（周报、分析等），阴影略强一档 */
   .modal-panel-lg {
     @apply rounded-lg border border-[#e5e7eb] bg-white shadow-md;
+  }
+
+  .longform-math-inline .katex {
+    font-size: 1em;
+    line-height: 1;
+  }
+
+  .longform-math-display {
+    scrollbar-gutter: stable;
+  }
+
+  .longform-math-display .katex {
+    font-size: 1.02em;
+  }
+
+  .longform-math-display .katex-display {
+    margin: 0;
   }
 
   /**
@@ -319,15 +432,16 @@
   transition: background 0.3s ease-out;
 }
 
-/* 主内容列：gutter 稳定 + 停滚后隐藏 thumb（.is-scrolling-thumb 由 MainContent onScroll 切换） */
+/* 主内容列（Chrome）：仅用 ::-webkit-scrollbar；勿用 scrollbar-width/color，否则会走系统粗条 */
 .main-content-scroll {
-  scrollbar-gutter: stable;
-  scrollbar-color: transparent transparent;
-  scrollbar-width: thin;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .main-content-scroll::-webkit-scrollbar {
-  width: 6px;
+  width: 1px;
+  height: 1px;
 }
 
 .main-content-scroll::-webkit-scrollbar-track {
@@ -335,21 +449,30 @@
 }
 
 .main-content-scroll::-webkit-scrollbar-thumb {
-  background-color: transparent;
-  border-radius: 4px;
-  transition: background-color var(--layout-duration) var(--layout-ease);
+  background-color: rgb(209 213 219 / 0);
+  border-radius: 0;
+  transition: background-color 300ms var(--layout-ease);
 }
 
-.main-content-scroll.is-scrolling-thumb {
-  scrollbar-color: #d1d5db transparent;
-}
-
+/* 滚动中立刻显色（0ms），避免与 300ms 淡出混在同一过渡里 */
 .main-content-scroll.is-scrolling-thumb::-webkit-scrollbar-thumb {
-  background-color: #d1d5db;
+  background-color: rgb(209 213 219 / 1);
+  transition: background-color 0ms;
 }
 
 .main-content-scroll.is-scrolling-thumb::-webkit-scrollbar-thumb:hover {
-  background-color: #c4c4c4;
+  background-color: rgb(196 196 196 / 1);
+}
+
+/**
+ * Linear 对齐字号（产品 UI）
+ * - Label 12px：按钮、侧栏名、元数据
+ * - Caption 13px：模块标题、次要说明
+ * - Micro 11px：徽章、极小标注（勿低于 11px）
+ */
+.feed-analysis-rail {
+  transform: translate3d(0, 0, 0);
+  contain: layout style;
 }
 
 /* 顶栏：桌面仍用内联 left/right（对齐 800px 中栏）；窄屏覆盖为常规左右贴边 */

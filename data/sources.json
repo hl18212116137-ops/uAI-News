@@ -1,0 +1,433 @@
+[
+  {
+    "id": "x-elonmusk",
+    "platform": "x",
+    "handle": "elonmusk",
+    "name": "Elon Musk",
+    "description": "Tesla/SpaceX/xAI 创始人",
+    "avatar": "https://pbs.twimg.com/profile_images/2008546467615580160/57KcqsTA_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/elonmusk",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-zuck",
+    "platform": "x",
+    "handle": "zuck",
+    "name": "Mark Zuckerberg",
+    "description": "Meta CEO",
+    "sourceType": "blogger",
+    "url": "https://x.com/zuck",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-DarioAmodei",
+    "platform": "x",
+    "handle": "DarioAmodei",
+    "name": "Dario Amodei",
+    "description": "Anthropic CEO，AI领域专家",
+    "avatar": "https://pbs.twimg.com/profile_images/2015835742577012736/uOwdzrEz_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/DarioAmodei",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-danielaamodei",
+    "platform": "x",
+    "handle": "danielaamodei",
+    "name": "Daniela Amodei",
+    "description": "AnthropicAI总裁，前OpenAI成员，AI领域专家",
+    "avatar": "https://pbs.twimg.com/profile_images/1395428793527848961/9j1XwL8p_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/danielaamodei",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-ilyasut",
+    "platform": "x",
+    "handle": "ilyasut",
+    "name": "Ilya Sutskever",
+    "description": "OpenAI联合创始人，AI研究专家",
+    "avatar": "https://pbs.twimg.com/profile_images/1961115716889030656/We74zmE-_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/ilyasut",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-ylecun",
+    "platform": "x",
+    "handle": "ylecun",
+    "name": "Yann LeCun",
+    "description": "NYU教授，Meta前首席AI科学家，ACM图灵奖得主，AI与深度学习专家",
+    "avatar": "https://pbs.twimg.com/profile_images/1483577865056702469/rWA-3_T7_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/ylecun",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-demishassabis",
+    "platform": "x",
+    "handle": "demishassabis",
+    "name": "Demis Hassabis",
+    "description": "DeepMind联合创始人兼CEO，专注通用人工智能研究",
+    "avatar": "https://pbs.twimg.com/profile_images/1990472620614053888/xrAu0wQL_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/demishassabis",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-JeffDean",
+    "platform": "x",
+    "handle": "JeffDean",
+    "name": "Jeff Dean",
+    "description": "谷歌DeepMind首席科学家，AI系统专家",
+    "avatar": "https://pbs.twimg.com/profile_images/935325968280907776/AcBo6zJc_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/JeffDean",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-AndrewYNg",
+    "platform": "x",
+    "handle": "AndrewYNg",
+    "name": "Andrew Ng",
+    "description": "Coursera联合创始人，斯坦福大学AI教授，前百度AI负责人，谷歌大脑创始人",
+    "avatar": "https://pbs.twimg.com/profile_images/733174243714682880/oyG30NEH_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/AndrewYNg",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-drfeifei",
+    "platform": "x",
+    "handle": "drfeifei",
+    "name": "Fei-Fei Li",
+    "description": "斯坦福大学教授，AI专家，专注计算机视觉与机器人",
+    "avatar": "https://pbs.twimg.com/profile_images/841385099799085056/R1iX4QGX_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/drfeifei",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-Thom_Wolf",
+    "platform": "x",
+    "handle": "Thom_Wolf",
+    "name": "Thomas Wolf",
+    "description": "Hugging Face联合创始人，AI领域天使投资人",
+    "avatar": "https://pbs.twimg.com/profile_images/1629469939860946946/WUyBolSu_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/Thom_Wolf",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-gdb",
+    "platform": "x",
+    "handle": "gdb",
+    "name": "Greg Brockman",
+    "description": "OpenAI联合创始人，AI领域领军人物",
+    "avatar": "https://pbs.twimg.com/profile_images/1347621377503711233/bHg3ipfD_normal.jpg",
+    "sourceType": "blogger",
+    "url": "https://x.com/gdb",
+    "enabled": true,
+    "addedAt": "2026-03-17T13:02:39.387Z"
+  },
+  {
+    "id": "x-heynavtoor",
+    "platform": "X",
+    "handle": "heynavtoor",
+    "name": "Nav Toor",
+    "description": "AI内容创作者，专注AI教程与资讯",
+    "url": "https://x.com/heynavtoor",
+    "enabled": true,
+    "addedAt": "2026-03-15T17:35:14.865Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "avatar": "https://pbs.twimg.com/profile_images/2017556052938788865/3E6CcSFP_normal.jpg",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-GoogleDeepMind",
+    "platform": "X",
+    "handle": "GoogleDeepMind",
+    "name": "Google DeepMind",
+    "description": "Google DeepMind团队，专注人工智能研究与应用",
+    "url": "https://x.com/GoogleDeepMind",
+    "enabled": true,
+    "addedAt": "2026-03-15T18:17:25.771Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "avatar": "https://pbs.twimg.com/profile_images/1695024885070737408/-M-HSH5P_normal.jpg",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-naval",
+    "platform": "X",
+    "handle": "naval",
+    "name": "Naval",
+    "description": "科技投资人，专注AI与创业领域",
+    "url": "https://x.com/naval",
+    "enabled": true,
+    "addedAt": "2026-03-15T18:23:17.922Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "avatar": "https://pbs.twimg.com/profile_images/1256841238298292232/ycqwaMI2_normal.jpg",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-pmarca",
+    "platform": "X",
+    "handle": "pmarca",
+    "name": "Marc Andreessen 🇺🇸",
+    "description": "知名博主，关注游戏行业动态",
+    "url": "https://x.com/pmarca",
+    "enabled": true,
+    "addedAt": "2026-03-15T18:25:41.883Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "avatar": "https://pbs.twimg.com/profile_images/1820716712234303489/9GpKDZjq_normal.jpg",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-satyanadella",
+    "platform": "X",
+    "handle": "satyanadella",
+    "name": "Satya Nadella",
+    "description": "微软CEO，专注科技与人工智能发展",
+    "url": "https://x.com/satyanadella",
+    "avatar": "https://pbs.twimg.com/profile_images/1221837516816306177/_Ld4un5A_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-15T18:28:34.482Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-minchoi",
+    "platform": "X",
+    "handle": "minchoi",
+    "name": "Min Choi",
+    "description": "AI领域探索者，分享前沿技术与应用",
+    "url": "https://x.com/minchoi",
+    "avatar": "https://pbs.twimg.com/profile_images/1638359113221517312/CBZaJFyA_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-15T21:41:23.251Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-coreyganim",
+    "platform": "X",
+    "handle": "coreyganim",
+    "name": "Corey Ganim",
+    "description": "AI创业者，专注简化AI技术应用",
+    "url": "https://x.com/coreyganim",
+    "avatar": "https://pbs.twimg.com/profile_images/1991521820084695042/eTKoUALv_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T06:24:46.375Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-rubenhassid",
+    "platform": "X",
+    "handle": "rubenhassid",
+    "name": "Ruben Hassid",
+    "url": "https://x.com/rubenhassid",
+    "avatar": "https://pbs.twimg.com/profile_images/1995508550387245056/3YsPtVsZ_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T09:22:57.537Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "description": "AI领域博主，分享人工智能前沿资讯",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-TRDAI_SOL",
+    "platform": "X",
+    "handle": "TRDAI_SOL",
+    "name": "Thomas Williams",
+    "url": "https://x.com/TRDAI_SOL",
+    "avatar": "https://pbs.twimg.com/profile_images/2010532033941172224/G0m29n2T_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T09:33:36.871Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "description": "Web3开发者，专注智能合约和DeFi领域",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-RodmanAi",
+    "platform": "X",
+    "handle": "RodmanAi",
+    "name": "Leonard Rodman",
+    "url": "https://x.com/RodmanAi",
+    "avatar": "https://pbs.twimg.com/profile_images/1727738232249499648/4KnJDu3m_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T10:18:15.234Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "description": "AI构建者，专注Agent技术，观点鲜明",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-AYi_AInotes",
+    "platform": "X",
+    "handle": "AYi_AInotes",
+    "name": "阿绎 AYi",
+    "url": "https://x.com/AYi_AInotes",
+    "avatar": "https://pbs.twimg.com/profile_images/1989157446829350912/pW828UwK_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T11:45:26.149Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "description": "AI创业者，心理学硕士，专注AIGC与认知成长",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-CatherineXyu",
+    "platform": "X",
+    "handle": "CatherineXyu",
+    "name": "0xCathy",
+    "url": "https://x.com/CatherineXyu",
+    "avatar": "https://pbs.twimg.com/profile_images/1957345369614127104/7lnKehiz_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T12:20:54.117Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "description": "XerpaAI产品负责人，专注AI Agent与增长",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-sama",
+    "platform": "X",
+    "handle": "sama",
+    "name": "Sam Altman",
+    "url": "https://x.com/sama",
+    "avatar": "https://pbs.twimg.com/profile_images/1904933748015255552/k43GMz63_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T12:34:15.297Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "description": "OpenAI CEO，AI领域先锋",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-karpathy",
+    "platform": "X",
+    "handle": "karpathy",
+    "name": "Andrej Karpathy",
+    "url": "https://x.com/karpathy",
+    "avatar": "https://pbs.twimg.com/profile_images/1296667294148382721/9Pr6XrPB_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T12:43:21.539Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "description": "特斯拉前AI总监，OpenAI联合创始人，斯坦福博士，深度学习专家",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-goodfellow_ian",
+    "platform": "X",
+    "handle": "goodfellow_ian",
+    "name": "Ian Goodfellow",
+    "url": "https://x.com/goodfellow_ian",
+    "avatar": "https://pbs.twimg.com/profile_images/1112921710339084288/nJ2wKwuv_normal.jpg",
+    "enabled": true,
+    "addedAt": "2026-03-16T12:46:54.729Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "description": "DeepMind研究员，GAN发明者，AI领域专家",
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-geoffreyhinton",
+    "platform": "X",
+    "handle": "geoffreyhinton",
+    "name": "Geoffrey Hinton",
+    "url": "https://x.com/geoffreyhinton",
+    "avatar": "https://pbs.twimg.com/profile_images/1084213316963057664/fQGCUSt0_normal.jpg",
+    "description": "深度学习先驱，AI领域泰斗",
+    "enabled": true,
+    "addedAt": "2026-03-16T12:51:11.342Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-vast_ai",
+    "platform": "X",
+    "handle": "vast_ai",
+    "name": "vast.ai",
+    "url": "https://x.com/vast_ai",
+    "avatar": "https://pbs.twimg.com/profile_images/1935025963701862400/9ufF24sv_normal.jpg",
+    "description": "GPU算力平台，提供GPU租赁和计算服务",
+    "enabled": true,
+    "addedAt": "2026-03-16T13:00:18.709Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "sourceType": "blogger"
+  },
+  {
+    "id": "x-JaynitMakwana",
+    "platform": "X",
+    "handle": "JaynitMakwana",
+    "name": "Jaynit Makwana",
+    "url": "https://x.com/JaynitMakwana",
+    "avatar": "https://pbs.twimg.com/profile_images/1764990845030113280/gVhpRBbQ_normal.jpg",
+    "description": "AI领域博主，专注人工智能、产品化商业和无代码技术",
+    "enabled": true,
+    "addedAt": "2026-03-16T13:39:40.534Z",
+    "fetchConfig": {
+      "method": "api",
+      "interval": 60
+    },
+    "sourceType": "blogger"
+  }
+]

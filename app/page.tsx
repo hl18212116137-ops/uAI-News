@@ -1,14 +1,11 @@
-/**
- * 首页：middleware 已 refresh session，此处用 getSession 读 cookie，避免与 getUser 重复打 Auth API。
- * 顶栏在 HomePageShell；重查询在 HomeMainContentBlock（Suspense），缩短首字节到顶栏可用的时间。
- */
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
+import { unstable_cache } from "next/cache";
 import HomePageShell from "@/components/HomePageShell";
 import HomeBodySkeleton from "@/components/HomeBodySkeleton";
 import HomeMainContentBlock from "./HomeMainContentBlock";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
 import { createHomePerf } from "@/lib/home-perf";
 import {
   getUserSubscribedHandles,
@@ -16,17 +13,19 @@ import {
   ensureDefaultSubscriptions,
 } from "@/lib/subscriptions";
 
+const getCachedDefaultSubscribedHandles = unstable_cache(
+  () => getDefaultSubscribedHandles(3),
+  ["home-default-subscribed-handles"],
+  { revalidate: 60 }
+);
+
 export default async function Home() {
   const perf = createHomePerf("shell");
 
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
+  const user = await getCurrentUser();
   perf.segment("session");
 
-  const guestHandles = user ? [] : await getDefaultSubscribedHandles(3);
+  const guestHandles = user ? [] : await getCachedDefaultSubscribedHandles();
   let subscribedHandles = user ? await getUserSubscribedHandles(user.id) : guestHandles;
 
   if (user && subscribedHandles.length === 0) {

@@ -6,11 +6,13 @@ import { FeedFetchGlyph } from "@/components/feed-inline-icons";
 
 const categories = [
   { value: "all", label: "全部", tooltip: "显示全部分类" },
-  { value: "Company News", label: "行业", tooltip: "行业与公司动态" },
-  { value: "Funding", label: "融资", tooltip: "融资与交易" },
-  { value: "Policy", label: "政策", tooltip: "政策与监管" },
-  { value: "Research", label: "研究", tooltip: "研究与论文突破" },
-  { value: "Model Update", label: "模型", tooltip: "模型更新与发布" },
+  { value: "模型", label: "模型", tooltip: "模型更新与发布" },
+  { value: "产品", label: "产品", tooltip: "产品功能与发布" },
+  { value: "研究", label: "研究", tooltip: "研究与论文突破" },
+  { value: "行业", label: "行业", tooltip: "行业与公司动态" },
+  { value: "政策", label: "政策", tooltip: "政策与监管" },
+  { value: "观点线索", label: "观点线索", tooltip: "能改变判断的观点与早期信号" },
+  { value: "优质长文", label: "优质长文", tooltip: "已抓取并翻译的原文长文" },
 ];
 
 type CategoryFilterProps = {
@@ -90,7 +92,7 @@ export default function CategoryFilter({
       <nav
         data-name="Nav"
         data-node-id="37:4721"
-        className="absolute left-0 top-[8px] z-0 max-w-[calc(100%-6.5rem)] min-w-0 overflow-x-auto pb-px [-ms-overflow-style:none] [scrollbar-width:thin]"
+        className="scrollbar-none absolute left-0 right-[6.5rem] top-[8px] z-0 min-w-0 overflow-x-auto overscroll-x-contain pb-px"
         aria-label="分类筛选"
       >
         <div
@@ -98,10 +100,10 @@ export default function CategoryFilter({
           className="relative flex min-w-0 items-end gap-6 pb-px"
         >
           <span
-            className="motion-layout-metrics pointer-events-none absolute bottom-0 z-[1] h-0.5 bg-[#05f]"
+            className="motion-layout-tab-underline pointer-events-none absolute bottom-0 left-0 z-[1] h-0.5 bg-[#05f]"
             style={{
-              left: underline.left,
               width: underline.width,
+              transform: `translateX(${underline.left}px)`,
               opacity: underline.visible ? 1 : 0,
             }}
             aria-hidden
@@ -115,7 +117,7 @@ export default function CategoryFilter({
                   data-category-tab={cat.value}
                   onClick={() => handleCategoryChange(cat.value)}
                   className={[
-                    "btn-press motion-layout-ease relative z-[2] shrink-0 border-b-2 border-transparent pb-3 font-sans text-[14px] leading-[22.4px] tracking-[-0.35px] transition-colors",
+                    "btn-press motion-layout-ease relative z-[2] shrink-0 border-b-2 border-transparent pb-3 font-sans text-[14px] leading-[22.4px] tracking-[-0.35px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 focus-visible:ring-offset-2",
                     active
                       ? "font-bold text-[#05f]"
                       : "font-medium text-[#8a8f98] hover:text-[#111113]",
@@ -144,7 +146,7 @@ export default function CategoryFilter({
             onClick={onFetch}
             aria-busy={isFetchRunning}
             aria-label={isFetchRunning ? "暂停抓取" : "抓取更新"}
-            className="motion-layout-ease inline-flex h-8 max-h-8 min-h-8 shrink-0 items-center gap-2 rounded-[4px] border border-[#ebebef] bg-white px-[14px] py-0 shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)] transition-opacity hover:opacity-90"
+            className="motion-layout-ease inline-flex h-8 max-h-8 min-h-8 shrink-0 items-center gap-2 rounded-[4px] border border-[#ebebef] bg-white px-[14px] py-0 shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 focus-visible:ring-offset-2"
           >
             <span
               className={[
@@ -156,7 +158,7 @@ export default function CategoryFilter({
               <FeedFetchGlyph className="absolute inset-0 block size-full max-w-none" aria-hidden />
             </span>
             <span
-              className="font-sans text-[11px] font-semibold uppercase leading-[11px] tracking-[1.1px] text-[#05f]"
+              className="font-sans text-[12px] font-semibold uppercase leading-[18px] tracking-[0.08em] text-[#05f]"
               data-node-id="37:4739"
             >
               {isFetchRunning ? "抓取中" : "抓取"}

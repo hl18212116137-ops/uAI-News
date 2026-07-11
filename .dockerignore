@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env.production
+data/
+*.log
+.DS_Store
+.claude/
+nginx/ssl/*.pem
+nginx/ssl/*.key

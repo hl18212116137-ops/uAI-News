@@ -1,8 +1,8 @@
 import 'server-only'
 
 import type { NextRequest } from 'next/server'
-import { getRecommendedSources } from '@/lib/subscriptions'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { getRecommendedSources, RECOMMENDED_SIDEBAR_LIMIT } from '@/lib/subscriptions'
+import { getCurrentUser } from '@/lib/auth'
 
 function parseExcludeIds(param: string | null): string[] {
   if (!param || !param.trim()) return []
@@ -17,13 +17,14 @@ export type RecommendedSourcesQuery = {
   userId: string | null
   pickRandom: boolean
   excludeSourceIds: string[] | undefined
+  excludeHandles: string[] | undefined
 }
 
 export function parseRecommendedSourcesSearchParams(
   searchParams: URLSearchParams
 ): RecommendedSourcesQuery {
-  const raw = parseInt(searchParams.get('limit') || '2', 10)
-  const limit = Math.min(50, Math.max(1, Number.isFinite(raw) ? raw : 2))
+  const raw = parseInt(searchParams.get('limit') || String(RECOMMENDED_SIDEBAR_LIMIT), 10)
+  const limit = Math.min(50, Math.max(1, Number.isFinite(raw) ? raw : RECOMMENDED_SIDEBAR_LIMIT))
   const userIdParam = searchParams.get('userId')
 
   const randomParam = searchParams.get('random')
@@ -31,12 +32,14 @@ export function parseRecommendedSourcesSearchParams(
     randomParam === '1' || randomParam === 'true' || randomParam === 'yes'
 
   const excludeSourceIds = parseExcludeIds(searchParams.get('excludeIds'))
+  const excludeHandles = parseExcludeIds(searchParams.get('excludeHandles'))
 
   return {
     limit,
     userId: userIdParam,
     pickRandom,
     excludeSourceIds: excludeSourceIds.length ? excludeSourceIds : undefined,
+    excludeHandles: excludeHandles.length ? excludeHandles : undefined,
   }
 }
 
@@ -50,15 +53,13 @@ export async function loadRecommendedSourcesForApi(
 
   let userId: string | null = q.userId
   if (!userId) {
-    const supabase = createSupabaseServerClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getCurrentUser()
     userId = user?.id || null
   }
 
   return getRecommendedSources(userId, q.limit, {
     pickRandom: q.pickRandom,
     excludeSourceIds: q.excludeSourceIds,
+    excludeHandles: q.excludeHandles,
   })
 }

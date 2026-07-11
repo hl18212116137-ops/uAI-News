@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-**ainews-v2** is a Next.js 14 news aggregation app using the App Router.
+**uAI News** is a Next.js 15 news aggregation app using the App Router.
 
-- **Framework:** Next.js 14.2.0 (App Router)
+- **Framework:** Next.js 15.5.19 (App Router)
 - **Language:** TypeScript 5
 - **Styling:** Tailwind CSS 3.4.0 (utility-first, no CSS Modules or styled-components)
 - **UI Library:** React 18 (functional components only)
@@ -97,7 +97,7 @@ animation: {
 
 ## 2. Component Library
 
-**Location:** `components/` (19 components, all flat — no subdirectories)
+**Location:** `components/` (flat — no subdirectories)
 
 All components are:
 - Functional React components with TypeScript
@@ -119,7 +119,6 @@ All components are:
 | `StatusIndicator.tsx` | Refresh status display |
 | `FloatingButton.tsx` | Fixed right-side action button |
 | `WeeklyReportModal.tsx` | Full-screen modal overlay |
-| `FilterPanel.tsx` | Active filter display with clear buttons |
 | `FilterList.tsx` | Filter list UI |
 | `EmptyState.tsx` | Empty/no-results state |
 | `TopImportantNews.tsx` | Featured news section |
@@ -232,7 +231,7 @@ When implementing Figma designs with images:
 ## 6. Project Structure
 
 ```
-ainews-v2/
+uAI News/
 ├── app/
 │   ├── api/           # Next.js API routes (refresh, sources, task-status, import-from-url)
 │   ├── news/          # News detail page (news/[id]/page.tsx)
@@ -240,7 +239,7 @@ ainews-v2/
 │   ├── layout.tsx     # Root layout (fonts, metadata)
 │   ├── loading.tsx    # Skeleton screen shown during page load (streaming)
 │   └── page.tsx       # Home page (Server Component, revalidate=60)
-├── components/        # All UI components (flat, no subdirs) — 19 files
+├── components/        # All UI components (flat, no subdirs)
 ├── lib/               # Business logic, utilities, types
 │   ├── ai/            # AI service layer (claude-service, minimax-service, ai-factory)
 │   ├── deduplication/ # 3-layer deduplication pipeline
@@ -410,5 +409,5 @@ Always import types from `@/lib/types` — do not redefine them.
 | ⭐ | `app/globals.css` | 仅需确认 CSS 类时查阅 |
 | ⭐ | `tailwind.config.ts` | 仅需确认 token 时查阅 |
 
-**不需要**在开始时读所有 19 个组件文件——按任务需要查。
+**不需要**在开始时读所有组件文件——按任务需要查。
 

@@ -1,60 +1,51 @@
 import 'server-only'
 
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db/drizzle'
+import { processingJobs } from '@/lib/db/schema'
+import { eq, and, inArray, asc } from 'drizzle-orm'
 
 export type ProcessingJobRow = {
   id: string
-  raw_post_id: string | null
-  news_item_id: string | null
-  job_type: string
+  rawPostId: string | null
+  newsItemId: string | null
+  jobType: string
   status: string
   attempts: number
-  last_error: string | null
-  locked_at: string | null
-  locked_by: string | null
-  created_at: string
-  updated_at: string
+  lastError: string | null
+  lockedAt: Date | null
+  lockedBy: string | null
+  createdAt: Date
+  updatedAt: Date
 }
 
 export async function listPendingProcessingJobs(limit: number): Promise<ProcessingJobRow[]> {
-  const { data, error } = await supabase
-    .from('processing_jobs')
-    .select('*')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true })
+  return db
+    .select()
+    .from(processingJobs)
+    .where(eq(processingJobs.status, 'pending'))
+    .orderBy(asc(processingJobs.createdAt))
     .limit(limit)
-
-  if (error) throw error
-  return (data || []) as ProcessingJobRow[]
 }
 
 /** 乐观锁：仅当仍为 pending 时改为 processing */
 export async function claimProcessingJob(jobId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('processing_jobs')
-    .update({
+  const rows = await db
+    .update(processingJobs)
+    .set({
       status: 'processing',
-      locked_at: new Date().toISOString(),
+      lockedAt: new Date(),
     })
-    .eq('id', jobId)
-    .eq('status', 'pending')
-    .select('id')
-    .maybeSingle()
+    .where(and(eq(processingJobs.id, jobId), eq(processingJobs.status, 'pending')))
+    .returning({ id: processingJobs.id })
 
-  if (error) {
-    console.error('[processing_jobs] claim failed:', error)
-    return false
-  }
-  return !!data
+  return rows.length > 0
 }
 
 export async function markProcessingJobDone(jobId: string): Promise<void> {
-  const { error } = await supabase
-    .from('processing_jobs')
-    .update({ status: 'done', last_error: null })
-    .eq('id', jobId)
-
-  if (error) throw error
+  await db
+    .update(processingJobs)
+    .set({ status: 'done', lastError: null })
+    .where(eq(processingJobs.id, jobId))
 }
 
 export async function markProcessingJobFailed(
@@ -62,16 +53,14 @@ export async function markProcessingJobFailed(
   message: string,
   attemptsIncrement: number
 ): Promise<void> {
-  const { error } = await supabase
-    .from('processing_jobs')
-    .update({
+  await db
+    .update(processingJobs)
+    .set({
       status: 'failed',
-      last_error: message.slice(0, 2000),
+      lastError: message.slice(0, 2000),
       attempts: attemptsIncrement,
     })
-    .eq('id', jobId)
-
-  if (error) throw error
+    .where(eq(processingJobs.id, jobId))
 }
 
 /**
@@ -80,43 +69,40 @@ export async function markProcessingJobFailed(
 export async function enqueueFullPipelineJobsForRawIds(rawIds: string[]): Promise<void> {
   if (rawIds.length === 0) return
 
-  const { data: existing, error: exErr } = await supabase
-    .from('processing_jobs')
-    .select('raw_post_id')
-    .in('raw_post_id', rawIds)
-    .in('status', ['pending', 'processing'])
+  const existing = await db
+    .select({ rawPostId: processingJobs.rawPostId })
+    .from(processingJobs)
+    .where(
+      and(
+        inArray(processingJobs.rawPostId, rawIds),
+        inArray(processingJobs.status, ['pending', 'processing'])
+      )
+    )
 
-  if (exErr) throw exErr
-
-  const taken = new Set(
-    (existing || []).map((r: { raw_post_id: string | null }) => r.raw_post_id).filter(Boolean)
-  )
+  const taken = new Set(existing.map(r => r.rawPostId).filter(Boolean))
 
   const rows = rawIds
     .filter(id => !taken.has(id))
-    .map(raw_post_id => ({
-      raw_post_id,
-      job_type: 'full_pipeline' as const,
+    .map(rawPostId => ({
+      rawPostId,
+      jobType: 'full_pipeline' as const,
       status: 'pending' as const,
     }))
 
   if (rows.length === 0) return
 
-  const { error } = await supabase.from('processing_jobs').insert(rows)
-  if (error) throw error
+  await db.insert(processingJobs).values(rows)
 }
 
 /** 仍有 pending/processing 任务占用的 raw id（legacy 扫描需跳过） */
 export async function fetchRawPostIdsWithActiveJobs(): Promise<Set<string>> {
-  const { data, error } = await supabase
-    .from('processing_jobs')
-    .select('raw_post_id')
-    .in('status', ['pending', 'processing'])
-
-  if (error) throw error
+  const data = await db
+    .select({ rawPostId: processingJobs.rawPostId })
+    .from(processingJobs)
+    .where(inArray(processingJobs.status, ['pending', 'processing']))
 
   return new Set(
-    (data || []).map((r: { raw_post_id: string | null }) => r.raw_post_id).filter(Boolean) as string[]
+    data.map(r => r.rawPostId).filter(Boolean) as string[]
   )
 }
 
@@ -124,17 +110,16 @@ export async function fetchRawPostIdsWithActiveJobs(): Promise<Set<string>> {
 export async function hasPendingOrProcessingJobForRawPostId(
   rawPostId: string
 ): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('processing_jobs')
-    .select('id')
-    .eq('raw_post_id', rawPostId)
-    .in('status', ['pending', 'processing'])
+  const rows = await db
+    .select({ id: processingJobs.id })
+    .from(processingJobs)
+    .where(
+      and(
+        eq(processingJobs.rawPostId, rawPostId),
+        inArray(processingJobs.status, ['pending', 'processing'])
+      )
+    )
     .limit(1)
-    .maybeSingle()
 
-  if (error) {
-    console.warn('[processing_jobs] hasPendingOrProcessingJobForRawPostId:', error.message)
-    return false
-  }
-  return !!data
+  return rows.length > 0
 }

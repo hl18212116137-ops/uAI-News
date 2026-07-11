@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
-import type { User } from "@supabase/supabase-js";
+import { type CSSProperties } from "react";
+import type { AuthUser } from "@/lib/auth";
+import { useOpenLogin } from "@/hooks/useOpenLogin";
+type User = AuthUser;
 import UserMenu from "@/components/UserMenu";
 import {
   TopBarBookmarkGlyph,
@@ -24,9 +25,14 @@ type TopBarProps = {
   analysisPanelOpen?: boolean;
   /** 点击仙女棒：折叠右侧 ANALYSIS（保留列表选中态） */
   onCollapseAnalysisSidebar?: () => void;
+  /** 齿轮：打开抓取流水线与规则说明 */
+  onOpenFetchPipelineSettings?: () => void;
+  /** PASS：打开被筛掉内容的审核面板 */
+  onOpenPassReview?: () => void;
 };
 
 const layoutTf = "var(--layout-duration) var(--layout-ease)";
+const BOOKMARKS_RETURN_HOME_KEY = "uai:bookmarks-return-home";
 
 /**
  * 单一 DOM：图标不随布局切换卸载；用 left/right + transition 对齐 grid（1fr|1|800|1|1fr）几何。
@@ -40,15 +46,34 @@ export default function TopBar({
   onToggleSourcesListCollapsed,
   analysisPanelOpen = false,
   onCollapseAnalysisSidebar,
+  onOpenFetchPipelineSettings,
+  onOpenPassReview,
 }: TopBarProps) {
-  const router = useRouter();
+  const openLogin = useOpenLogin();
 
-  useEffect(() => {
-    if (!user) {
-      router.prefetch("/login");
-      router.prefetch("/register");
+  const handleOpenFetchPipelineSettings = () => {
+    if (onOpenFetchPipelineSettings) {
+      onOpenFetchPipelineSettings();
+      return;
     }
-  }, [user, router]);
+    window.dispatchEvent(new Event("uai:open-fetch-pipeline-panel"));
+  };
+
+  const handleOpenPassReview = () => {
+    if (onOpenPassReview) {
+      onOpenPassReview();
+      return;
+    }
+    window.dispatchEvent(new Event("uai:open-pass-review"));
+  };
+
+  const rememberHomeBeforeBookmarks = () => {
+    try {
+      window.sessionStorage.setItem(BOOKMARKS_RETURN_HOME_KEY, "1");
+    } catch {
+      // Ignore storage failures; the bookmarks page still has a normal home fallback.
+    }
+  };
 
   const dualCollapsed = isSourcesListCollapsed && !analysisPanelOpen;
 
@@ -126,6 +151,8 @@ export default function TopBar({
         >
           <Link
             href="/bookmarks"
+            prefetch={Boolean(user)}
+            onClick={rememberHomeBeforeBookmarks}
             data-name="Container"
             data-node-id={dualCollapsed ? "43:5033" : "3:2680"}
             className={`motion-layout-ease relative flex shrink-0 items-center justify-center text-[#111113] transition-colors hover:bg-[#f5f5f5] ${analysisPanelOpen ? "h-full min-h-[54px] w-9" : "h-[54px] w-9"}`}
@@ -142,10 +169,22 @@ export default function TopBar({
 
           <button
             type="button"
+            aria-label="PASS 审核"
+            aria-haspopup="dialog"
+            className="motion-layout-ease relative flex h-9 min-w-[52px] shrink-0 items-center justify-center rounded-md px-2 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-primary-600 transition-colors hover:bg-primary-50"
+            onClick={handleOpenPassReview}
+          >
+            PASS
+          </button>
+
+          <button
+            type="button"
             data-name="Container"
             data-node-id={dualCollapsed ? "43:5036" : "3:2683"}
-            aria-label="设置"
+            aria-label="抓取流水线与规则"
+            aria-haspopup="dialog"
             className="motion-layout-ease relative flex size-9 shrink-0 items-center justify-center rounded-md text-[#111113] transition-colors hover:bg-[#f5f5f5]"
+            onClick={handleOpenFetchPipelineSettings}
           >
             <div
               data-name="Container"
@@ -169,8 +208,9 @@ export default function TopBar({
               data-node-id={dualCollapsed ? "43:5039" : "3:2686"}
               className="relative flex size-9 shrink-0 items-center justify-center rounded-md text-[#111113]"
             >
-              <Link
-                href="/login"
+              <button
+                type="button"
+                onClick={openLogin}
                 className="motion-layout-ease flex size-9 items-center justify-center rounded-md transition-colors hover:bg-[#f5f5f5]"
                 aria-label="登录"
               >
@@ -181,7 +221,7 @@ export default function TopBar({
                 >
                   <TopBarProfileGlyph className="absolute inset-0 block size-full max-w-none" />
                 </div>
-              </Link>
+              </button>
             </div>
           )}
 

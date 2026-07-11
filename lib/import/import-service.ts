@@ -14,6 +14,9 @@ import { ImportResult, ParsedContent } from './types';
 import { getDefaultAIService } from '../ai/ai-factory';
 import { composeTextForAiProcessing } from '@/lib/x';
 import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese';
+import { canonicalNewsIdForPlatform } from '@/lib/news-dedupe';
+import { ensureChineseBody, ensureChineseTitleSummary } from '@/lib/translation-guard';
+import { maybeAttachAutoLongform } from '@/lib/longform-auto';
 
 /**
  * 统一导入服务
@@ -113,6 +116,12 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
           url: parsedContent.url,
           published_at: parsedContent.publishedAt,
           fetched_at: new Date().toISOString(),
+          ...(parsedContent.urls && parsedContent.urls.length > 0
+            ? { urls: parsedContent.urls }
+            : {}),
+          ...(parsedContent.mediaUrls && parsedContent.mediaUrls.length > 0
+            ? { media_urls: parsedContent.mediaUrls }
+            : {}),
           ...(parsedContent.referencedPost
             ? { referenced_post: parsedContent.referencedPost }
             : {}),
@@ -154,8 +163,7 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
 
 /** 与 convertToNewsItem / process 流水线中的 news id 对齐 */
 function newsIdFromPlatformAndExternal(platform: string, externalId: string): string {
-  const base = `${platform.toLowerCase()}-${externalId}`;
-  return base.replace(/^x_/, 'x-');
+  return canonicalNewsIdForPlatform(platform, externalId);
 }
 
 function newsIdFromParsed(parsed: ParsedContent): string {
@@ -208,14 +216,15 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
     const textForAi = composeTextForAiProcessing(parsed.content, parsed.referencedPost);
 
     // 使用 AI 处理：生成中文标题、摘要、分类
-    const aiResult = await aiService.processNews(
+    const aiDraft = await aiService.processNews(
       textForAi,
       parsed.author.name,
       parsed.author.handle || parsed.author.name
     );
+    const aiResult = await ensureChineseTitleSummary(aiService, aiDraft);
 
     // 翻译内容为中文
-    const [translatedContent, zhOriginal] = await Promise.all([
+    const [translatedRaw, zhOriginal] = await Promise.all([
       aiService.translateContent(textForAi),
       translateNewsOriginalToChinese(
         (s) => aiService.translateContent(s),
@@ -223,8 +232,8 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
         parsed.referencedPost,
       ),
     ])
-
-    return {
+    const translatedContent = await ensureChineseBody(aiService, translatedRaw)
+    const newsItem: NewsItem = {
       id,
       title: aiResult.title,
       summary: aiResult.summary,
@@ -239,15 +248,33 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       publishedAt: parsed.publishedAt,
       originalText: zhOriginal.originalText,
       createdAt: now, // 导入时间
+      ...(parsed.mediaUrls && parsed.mediaUrls.length > 0 ? { mediaUrls: parsed.mediaUrls } : {}),
       ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
     };
+
+    return maybeAttachAutoLongform(
+      newsItem,
+      {
+        platform: parsed.platform,
+        text: parsed.content,
+        sourceUrl: parsed.url,
+        authorName: parsed.author.name,
+        authorHandle: parsed.author.handle || parsed.author.name,
+        urls: parsed.urls,
+        mediaUrls: parsed.mediaUrls,
+        referencedPost: parsed.referencedPost,
+        xArticle: parsed.xArticle,
+      },
+      aiService,
+      { remaining: 1 },
+    );
   } catch (error) {
     console.error('AI processing failed, using fallback:', error);
 
     // 降级方案：使用简单的文本截取
     const title = parsed.title || generateTitle(parsed.content);
     const summary = generateSummary(parsed.content);
-    const category: NewsCategory = 'Other';
+    const category: NewsCategory = '行业';
 
     return {
       id,
@@ -264,6 +291,7 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       publishedAt: parsed.publishedAt,
       originalText: parsed.content,
       createdAt: now,
+      ...(parsed.mediaUrls && parsed.mediaUrls.length > 0 ? { mediaUrls: parsed.mediaUrls } : {}),
       ...(parsed.referencedPost ? { referencedPost: parsed.referencedPost } : {}),
     };
   }

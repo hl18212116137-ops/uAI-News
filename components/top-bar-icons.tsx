@@ -1,6 +1,7 @@
 /**
  * 顶栏内联 SVG：统一 24×24、stroke 1.5、圆角端点，风格与线宽一致；仙女棒保留品牌金色填充。
  */
+import BookmarkGlyph from "@/components/BookmarkGlyph";
 
 const stroke = {
   stroke: "currentColor" as const,
@@ -11,20 +12,7 @@ const stroke = {
 };
 
 export function TopBarBookmarkGlyph(props: { className?: string }) {
-  return (
-    <svg
-      className={props.className}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z"
-        {...stroke}
-      />
-    </svg>
-  );
+  return <BookmarkGlyph className={props.className} />;
 }
 
 /** 线框齿轮（与收藏/侧栏/人像同为描边体系） */

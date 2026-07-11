@@ -16,7 +16,19 @@ export interface AIProcessedContent {
   title: string;
   summary: string;
   category: NewsCategory;
+  /** important=false 时的简短 PASS 原因；不额外发起模型请求 */
+  passReason?: string;
 }
+
+export type LongformDigestDraft = {
+  summary: string;
+  points: string[];
+};
+
+export type LongformDigestInput = {
+  title: string;
+  content: string;
+};
 
 /**
  * AI 服务接口
@@ -33,7 +45,8 @@ export interface AIService {
   processNews(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    filterLearningContext?: string
   ): Promise<AIProcessedContent>;
 
   /**
@@ -42,6 +55,11 @@ export interface AIService {
    * @returns Promise<string> 翻译后的中文内容
    */
   translateContent(content: string): Promise<string>;
+
+  /**
+   * 为长文生成读者摘要：一句讲什么 + 三个重点
+   */
+  summarizeLongform(input: LongformDigestInput): Promise<LongformDigestDraft>;
 
   /**
    * 生成博主简介摘要

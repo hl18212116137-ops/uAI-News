@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Task } from "@/lib/task-manager";
 import { OPTIMISTIC_REFRESH_TASK_ID } from "@/lib/fetch-refresh-ui";
 import { formatTime } from "@/lib/utils";
+import Tooltip from "./Tooltip";
 
 /** 预计剩余秒数：优先按开始时间推算（每秒递减），否则用服务端 remainingTime 或按进度比例估算 */
 function getEstimatedRemainingSeconds(task: Task): number | null {
@@ -121,12 +122,11 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
         <div className="flex flex-col bg-[#f9f9fb] p-4">
           {/* 同一行：左为处理提示，右为预计剩余（模块右侧） */}
           <div className="flex min-h-8 items-start justify-between gap-3">
-            <p
-              className="m-0 min-h-8 min-w-0 flex-1 font-sans text-[11px] font-normal leading-4 tracking-[-0.06px] text-[#101828] line-clamp-2"
-              title={stepText}
-            >
-              {stepText}
-            </p>
+            <Tooltip content={stepText}>
+              <p className="m-0 min-h-8 min-w-0 flex-1 font-sans text-[11px] font-normal leading-4 tracking-[-0.06px] text-[#101828] line-clamp-2">
+                {stepText}
+              </p>
+            </Tooltip>
             <div className="shrink-0 pt-px text-right font-sans text-[10px] font-medium leading-4 tracking-[0.01em] text-[#99a1af]">
               {remainingSec != null ? (
                 <span className="whitespace-nowrap">
@@ -158,12 +158,11 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
       )}
       {task.status === "failed" && (
         <div className="bg-[#fffafa] p-4">
-          <p
-            className="m-0 truncate font-sans text-[10px] font-normal leading-snug text-[#b42318]"
-            title={task.error || "未知错误"}
-          >
-            {task.error || "未知错误"}
-          </p>
+          <Tooltip content={task.error || "未知错误"}>
+            <p className="m-0 truncate font-sans text-[10px] font-normal leading-snug text-[#b42318]">
+              {task.error || "未知错误"}
+            </p>
+          </Tooltip>
         </div>
       )}
       </div>

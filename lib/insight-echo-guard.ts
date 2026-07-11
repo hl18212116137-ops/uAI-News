@@ -71,14 +71,12 @@ export function sanitizeInsightContextEcho(
   return contextMatch;
 }
 
-/** 读库 / 前端展示前统一去掉误写入的「假要点/假启发」 */
 /**
- * 缓存是否仍含有「未经过滤的」要点/启发原文。
- * 用于 MainContent：预取若完全未给 review/context，仍应走 POST 拉完整分析，否则会一直停在「暂无」且 isLoading 为 false。
+ * 缓存是否仍含有「未经过滤的」要点原文。
+ * 用于 MainContent：预取若完全未给 review，仍应走 POST 拉完整分析，否则会一直停在「暂无」且 isLoading 为 false。
  */
 export function hasRawInsightPayload(payload: {
   review?: unknown;
-  contextMatch?: unknown;
 } | null | undefined): boolean {
   if (!payload) return false;
   const review = payload.review;
@@ -87,8 +85,7 @@ export function hasRawInsightPayload(payload: {
   } else if (typeof review === "string" && review.trim().length > 0) {
     return true;
   }
-  const ctx = payload.contextMatch;
-  return typeof ctx === "string" && ctx.trim().length > 0;
+  return false;
 }
 
 export function sanitizeInsightPayloadForPost(
@@ -97,10 +94,8 @@ export function sanitizeInsightPayloadForPost(
 ): InsightAnalysisPayload {
   const review = Array.isArray(payload.review) ? payload.review : null;
   const nextReview = filterInsightReviewEcho(post, review);
-  const nextContext = sanitizeInsightContextEcho(post, payload.contextMatch);
   return {
     ...payload,
     review: nextReview,
-    contextMatch: nextContext,
   };
 }

@@ -26,7 +26,6 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-inter)', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       spacing: {
         '70': '280px',
@@ -83,7 +82,7 @@ const config: Config = {
         '300': '300ms',
         '350': '350ms',
         // 与 globals.css --layout-duration 一致，供非 var 场景
-        layout: '280ms',
+        layout: '300ms',
       },
       transitionTimingFunction: {
         // Linear 类产品常用 ease-out

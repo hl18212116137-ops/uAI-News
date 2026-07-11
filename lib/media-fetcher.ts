@@ -64,7 +64,7 @@ export async function fetchFromRSS(
         handle: mediaHandle,
         url: item.link || rssUrl,
       },
-      category: 'Other', // 媒体源默认分类为 Other，可后续通过 AI 分类
+      category: '行业',
       publishedAt: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
       originalText: item.description || item.content || '',
       createdAt: new Date().toISOString(),

@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, FormEvent, useMemo } from "react";
+import { useState, FormEvent } from "react";
 import Link from "next/link";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { COMMON_WEBMAIL_QUICK, webmailForEmail } from "@/lib/webmail-entry";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
+import { mapSignInError } from "@/lib/auth-errors";
 
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -27,119 +29,43 @@ export default function RegisterPage() {
     }
 
     setIsLoading(true);
-    const supabase = createSupabaseBrowserClient();
-    const { error: authError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
 
-    if (authError) {
-      setError(
-        authError.message === "User already registered"
-          ? "该邮箱已注册，请直接登录。"
-          : authError.message
-      );
+    try {
+      const res = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password, name: name.trim() || undefined }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "注册失败，请稍后重试");
+        setIsLoading(false);
+        return;
+      }
+
+      const result = await signIn("credentials", {
+        email: email.trim().toLowerCase(),
+        password,
+        redirect: false,
+      });
+
+      if (!result || result.error || result.ok === false) {
+        setError(mapSignInError(result?.error));
+        return;
+      }
+
+      router.push("/");
+      router.refresh();
+    } catch (err) {
+      setError("网络错误，请稍后重试");
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    setSuccess(true);
-    setIsLoading(false);
   };
 
   const shell = "flex min-h-dvh items-center justify-center bg-[#f5f5f5] px-4 py-10";
-
-  const matchedWebmail = useMemo(() => webmailForEmail(email), [email]);
-  const otherWebmailLinks = useMemo(() => {
-    if (!matchedWebmail) return COMMON_WEBMAIL_QUICK;
-    return COMMON_WEBMAIL_QUICK.filter((e) => e.url !== matchedWebmail.url);
-  }, [matchedWebmail]);
-
-  if (success) {
-    return (
-      <div className={shell}>
-        <div
-          className="modal-panel modal-panel-enter w-full max-w-[400px] p-6 text-center"
-          role="region"
-          aria-labelledby="register-success-title"
-        >
-          <div
-            className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-md border border-[#e5e7eb] bg-[#fafafa]"
-            aria-hidden
-          >
-            <svg
-              className="h-5 w-5 text-[#101828]"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              />
-            </svg>
-          </div>
-          <h1
-            id="register-success-title"
-            className="text-base font-semibold tracking-[-0.02em] text-[#101828]"
-          >
-            查收验证邮件
-          </h1>
-          <p className="mt-2 text-sm font-normal leading-5 text-[#6a7282]">
-            我们已向{" "}
-            <span className="font-medium text-[#101828]">{email}</span>{" "}
-            发送确认邮件，请打开邮箱并<strong className="font-medium text-[#101828]">
-              点击邮件中的验证链接
-            </strong>
-            完成注册。
-          </p>
-          <p className="mt-2 text-xs font-normal leading-5 text-[#99a1af]">
-            若暂时未收到，请稍等几分钟，或查看垃圾箱、广告邮件夹。
-          </p>
-
-          {matchedWebmail ? (
-            <a
-              href={matchedWebmail.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-press mt-5 flex h-9 w-full items-center justify-center rounded-[4px] bg-[#0055FF] text-xs font-medium text-white transition-colors hover:bg-[#0046CC]"
-            >
-              打开 {matchedWebmail.label}
-            </a>
-          ) : null}
-
-          <p className="mb-2 mt-5 text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]">
-            {matchedWebmail ? "其它常用邮箱" : "打开网页邮箱"}
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {otherWebmailLinks.map((entry) => (
-              <a
-                key={entry.url}
-                href={entry.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-press flex h-9 items-center justify-center rounded-[4px] border border-[#e5e7eb] bg-white text-xs font-medium text-[#101828] transition-colors hover:bg-[#f9fafb]"
-              >
-                {entry.label}
-              </a>
-            ))}
-          </div>
-
-          <Link
-            href="/login"
-            className="mt-6 inline-block text-sm font-medium text-[#6a7282] underline-offset-2 transition-colors hover:text-[#101828] hover:underline"
-          >
-            返回登录
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={shell}>
@@ -160,6 +86,24 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label
+              htmlFor="register-name"
+              className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
+            >
+              昵称（可选）
+            </label>
+            <input
+              id="register-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="你的昵称"
+              autoComplete="name"
+              className="input-field h-9 w-full rounded-[4px] text-sm font-normal"
+            />
+          </div>
+
           <div>
             <label
               htmlFor="register-email"
@@ -234,12 +178,12 @@ export default function RegisterPage() {
 
         <p className="mt-6 text-center text-sm font-normal text-[#99a1af]">
           已有账号？{" "}
-          <Link
+          <a
             href="/login"
             className="font-medium text-[#101828] underline-offset-2 hover:underline"
           >
             登录
-          </Link>
+          </a>
         </p>
       </div>
     </div>

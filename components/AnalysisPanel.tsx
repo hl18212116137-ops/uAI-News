@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import {
   type MouseEvent,
   type ReactNode,
@@ -12,9 +11,9 @@ import {
   useState,
 } from "react";
 import type { NewsItem } from "@/lib/types";
+import { resolveNewsPostUrl } from "@/lib/news-post-url";
 import {
   filterInsightReviewEcho,
-  sanitizeInsightContextEcho,
 } from "@/lib/insight-echo-guard";
 import { isMostlyChinese } from "@/lib/text-locale";
 import {
@@ -23,11 +22,12 @@ import {
   formatTypography,
 } from "@/lib/utils";
 import { BoldLinkifiedInline } from "@/components/LinkifiedParagraph";
+import BookmarkGlyph from "@/components/BookmarkGlyph";
 import SourceAvatarImg from "@/components/SourceAvatarImg";
+import { defaultAvatarUrlForHandle } from "@/lib/source-avatar";
 import {
   InsightKeyPointsGlyph,
   InsightOriginalGlyph,
-  InsightRelevanceGlyph,
 } from "@/components/insight-section-icons";
 import { SourcesChevronRightGlyph } from "@/components/sources-sidebar-icons";
 
@@ -38,7 +38,7 @@ const ORIGINAL_COLLAPSED_MAX_PX = 220;
  * INSIGHT 侧栏三模块正文：13px / leading-[21px]；ORIGINAL 略浅，分析块近黑。
  */
 const INSIGHT_BODY_TYPE =
-  "font-sans text-[13px] font-normal leading-[21px] tracking-[-0.01em] antialiased whitespace-pre-wrap break-words";
+  "font-sans text-[14px] font-normal leading-[22px] tracking-[-0.01em] antialiased whitespace-pre-wrap break-words";
 const INSIGHT_ORIGINAL_BODY_TEXT = `${INSIGHT_BODY_TYPE} text-[#6a7282]`;
 const INSIGHT_ANALYSIS_BODY_TEXT = `${INSIGHT_BODY_TYPE} text-[#111113]`;
 const INSIGHT_ANALYSIS_BOLD = "font-semibold text-[#111113]";
@@ -48,9 +48,8 @@ type AnalysisData = {
   scores?: number | null;
   reliability?: number | null;
   review?: string | string[] | null;
-  contextMatch?: string | null;
-  originalTranslation?: string | null;
-  originalTranslationReferenced?: string | null;
+  originalTranslation?: unknown;
+  originalTranslationReferenced?: unknown;
 };
 
 type AnalysisPanelProps = {
@@ -62,11 +61,96 @@ type AnalysisPanelProps = {
   onRetryAnalysis?: () => void;
   onClose?: () => void;
   isOpen?: boolean;
+  isBookmarked?: boolean;
+  bookmarkPending?: boolean;
+  onBookmarkToggle?: (postId: string, post: NewsItem) => void;
+  longformPending?: boolean;
+  onLongformExtract?: (post: NewsItem) => void;
 };
+
+function OpenOriginalGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      focusable="false"
+    >
+      <path
+        d="M14 3.5h6.5V10"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20.25 3.75 10.75 13.25"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.75 4.75h-3.5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.5"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AddToLongformModuleGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      focusable="false"
+    >
+      <path
+        d="M14.5 2.75H6a2 2 0 0 0-2 2v14.5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8.25L14.5 2.75Z"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14.25 3v5.5h5.5"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12 12.5v6M9 15.5h6"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 function normalizeScorePercent(n: number | null | undefined): number | null {
   if (n == null || Number.isNaN(n)) return null;
   return Math.round(Math.min(100, Math.max(0, n)));
+}
+
+function safeTrimmedText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value).trim();
+  return "";
+}
+
+function safeStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((u): u is string => typeof u === "string") : [];
 }
 
 function scoreMetaLabel(pct: number | null): string {
@@ -174,7 +258,7 @@ function OriginalPrimaryAndTranslation({
           />
           {shouldShowChineseTranslationBelow(primary.text, translation, rawBody) ? (
             <div className="app-divider-border-t mt-3 pt-3">
-              <p className="m-0 mb-2 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.12em] text-[#99a1af]">
+              <p className="m-0 mb-2 font-mono text-[12px] font-medium uppercase leading-[18px] tracking-[0.08em] text-[#99a1af]">
                 中文译文
               </p>
               <OriginalInsightBodyParagraph
@@ -194,6 +278,43 @@ function OriginalPrimaryAndTranslation({
   );
 }
 
+/**
+ * 将长段落按句号/句末标点拆分成多个自然段落，提升阅读体验。
+ * 每段至少 40 字以上才断，避免过碎；已有换行的文本保持原有分段。
+ */
+function splitIntoParagraphs(text: string): string[] {
+  if (text.includes("\n")) {
+    return text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  }
+  if (text.length < 100) return [text];
+
+  const segments: string[] = [];
+  let buf = "";
+  const sentenceEnd = /([。！？.!?])\s*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = sentenceEnd.exec(text)) !== null) {
+    const chunk = text.slice(lastIndex, match.index + match[0].length);
+    buf += chunk;
+    lastIndex = match.index + match[0].length;
+    if (buf.length >= 60) {
+      segments.push(buf.trim());
+      buf = "";
+    }
+  }
+  if (lastIndex < text.length) buf += text.slice(lastIndex);
+  if (buf.trim()) {
+    if (segments.length > 0 && buf.trim().length < 40) {
+      segments[segments.length - 1] += " " + buf.trim();
+    } else {
+      segments.push(buf.trim());
+    }
+  }
+
+  return segments.length > 0 ? segments : [text];
+}
+
 /** ORIGINAL：可点链接 + 书名《》、短引「」、编辑注【】等少量加粗（全文合计有上限，见 `emphasizeOriginalInsightKeyPhrases`） */
 function OriginalInsightBodyParagraph({
   rawText,
@@ -205,14 +326,32 @@ function OriginalInsightBodyParagraph({
   linkClassName: string;
 }) {
   const text = emphasizeOriginalInsightKeyPhrases(formatOriginalInsightBody(rawText));
+  const paragraphs = splitIntoParagraphs(text);
+
+  if (paragraphs.length <= 1) {
+    return (
+      <p className={paragraphClassName}>
+        <BoldLinkifiedInline
+          text={text}
+          linkClassName={linkClassName}
+          boldClassName="font-semibold text-[#52525b]"
+        />
+      </p>
+    );
+  }
+
   return (
-    <p className={paragraphClassName}>
-      <BoldLinkifiedInline
-        text={text}
-        linkClassName={linkClassName}
-        boldClassName="font-semibold text-[#52525b]"
-      />
-    </p>
+    <div className="flex flex-col gap-2.5">
+      {paragraphs.map((para, i) => (
+        <p key={i} className={paragraphClassName}>
+          <BoldLinkifiedInline
+            text={para}
+            linkClassName={linkClassName}
+            boldClassName="font-semibold text-[#52525b]"
+          />
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -261,13 +400,15 @@ function OriginalMediaGallery({
             key={u}
             className={`relative flex min-h-[120px] w-full max-w-full justify-center overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#fafafa] shadow-xs ${imageWrapClass}`}
           >
-            <Image
+            <img
               src={u}
               alt=""
               width={800}
               height={800}
               className="max-h-[280px] w-auto max-w-full object-contain"
-              sizes="(max-width: 400px) 85vw, 288px"
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
             />
           </div>
         )
@@ -289,7 +430,7 @@ function isVideoMediaUrl(url: string): boolean {
 const INSIGHT_SECTION_ICON_GLYPH_CLASS =
   "absolute inset-0 block size-full max-w-none !text-[#FFB224]";
 
-function InsightSectionTitleIcon({ section }: { section: "original" | "keyPoints" | "relevance" }) {
+function InsightSectionTitleIcon({ section }: { section: "original" | "keyPoints" }) {
   if (section === "original") {
     return (
       <span className="relative size-[13px] shrink-0 !text-[#FFB224]" aria-hidden>
@@ -297,16 +438,9 @@ function InsightSectionTitleIcon({ section }: { section: "original" | "keyPoints
       </span>
     );
   }
-  if (section === "keyPoints") {
-    return (
-      <span className="relative size-[13px] shrink-0 !text-[#FFB224]" aria-hidden>
-        <InsightKeyPointsGlyph className={INSIGHT_SECTION_ICON_GLYPH_CLASS} />
-      </span>
-    );
-  }
   return (
     <span className="relative size-[13px] shrink-0 !text-[#FFB224]" aria-hidden>
-      <InsightRelevanceGlyph className={INSIGHT_SECTION_ICON_GLYPH_CLASS} />
+      <InsightKeyPointsGlyph className={INSIGHT_SECTION_ICON_GLYPH_CLASS} />
     </span>
   );
 }
@@ -331,7 +465,8 @@ function PostMetaRow({
     );
   }
 
-  const name = post.source.name || post.source.handle?.replace(/^@/, "") || "未知来源";
+  const sourceHandle = safeTrimmedText(post.source.handle);
+  const name = safeTrimmedText(post.source.name) || sourceHandle.replace(/^@/, "") || "未知来源";
   const scoreAria =
     scoreLabel.trim().length > 0
       ? `重要度 ${scoreDisplay} 分，满分 100。${scoreLabel}`
@@ -342,10 +477,11 @@ function PostMetaRow({
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <SourceAvatarImg
           src={post.source.avatar}
+          fallbackSrc={defaultAvatarUrlForHandle(sourceHandle)}
           alt={name}
-          letter={post.source.name || post.source.handle || "?"}
+          letter={name}
           imgClassName="h-6 w-6 shrink-0 rounded-[3px] object-cover ring-1 ring-[color:var(--app-divider)]"
-          placeholderClassName="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] bg-[#fafafa] text-[8px] font-semibold text-[#99a1af] ring-1 ring-[color:var(--app-divider)]"
+          placeholderClassName="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] bg-[#fafafa] text-[10px] font-semibold text-[#99a1af] ring-1 ring-[color:var(--app-divider)]"
         />
         <a
           href={titleHref}
@@ -364,7 +500,7 @@ function PostMetaRow({
         <span className="font-mono text-[24px] font-semibold leading-none tracking-[-0.05em] !text-[#FFB224] antialiased tabular-nums">
           {scoreDisplay}
         </span>
-        <span className="translate-y-[-1px] font-mono text-[11px] font-normal leading-none text-[#99a1af] tabular-nums">
+        <span className="translate-y-[-1px] font-mono text-[12px] font-normal leading-none text-[#99a1af] tabular-nums">
           /100
         </span>
       </div>
@@ -372,7 +508,7 @@ function PostMetaRow({
   );
 }
 
-/** 与 SourcesList 订阅区 BLOGGERS 等标题行同款：`min-h-10 py-2`、`gap-2`、mono 11px bold 蓝字。 */
+/** 与 SourcesList 订阅区 BLOGGERS 等标题行同款：`min-h-10 py-2`、`gap-2`、mono 13px bold 蓝字。 */
 function SectionHeading({
   icon,
   label,
@@ -399,7 +535,7 @@ function SectionHeading({
   const titleLabel = (
     <span
       id={id}
-      className="shrink-0 font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#0055FF]"
+      className="shrink-0 font-mono text-[13px] font-bold uppercase leading-[19.5px] tracking-[1.1px] text-[#0055FF]"
     >
       {label}
     </span>
@@ -466,7 +602,7 @@ function InsightCollapsibleSectionHeading({
   expanded,
   onToggle,
 }: {
-  section: "keyPoints" | "relevance";
+  section: "keyPoints";
   label: string;
   headingId: string;
   controlsId: string;
@@ -485,7 +621,7 @@ function InsightCollapsibleSectionHeading({
         <InsightSectionTitleIcon section={section} />
         <span
           id={headingId}
-          className="shrink-0 font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#0055FF]"
+          className="shrink-0 font-mono text-[13px] font-bold uppercase leading-[19.5px] tracking-[1.1px] text-[#0055FF]"
         >
           {label}
         </span>
@@ -515,25 +651,7 @@ function normalizeHighlightLines(review: string | string[] | null | undefined): 
   return t.split(/\n+/).map((s) => s.trim()).filter(Boolean);
 }
 
-/** 去掉 API 自带的成对引号，避免与装饰性金引号重复且呈黑色正文色。 */
-function stripOuterMatchingQuotes(s: string): string {
-  const t = s.trim();
-  if (t.length < 2) return t;
-  const a = t[0];
-  const b = t[t.length - 1];
-  if (
-    (a === '"' && b === '"') ||
-    (a === "\u201c" && b === "\u201d") ||
-    (a === "'" && b === "'") ||
-    (a === "「" && b === "」") ||
-    (a === "『" && b === "』")
-  ) {
-    return t.slice(1, -1).trim();
-  }
-  return t;
-}
-
-/** 要点/启发生成中：旋转刷新图标 + 文案 */
+/** 要点生成中：旋转刷新图标 + 文案 */
 function InsightGeneratingRow({ label, mutedClass }: { label: string; mutedClass: string }) {
   return (
     <span
@@ -557,60 +675,6 @@ function InsightGeneratingRow({ label, mutedClass }: { label: string; mutedClass
       </svg>
       <span>{label}</span>
     </span>
-  );
-}
-
-/** RELEVANCE：单句启发，无编号 */
-function InsightRelevanceSingle({
-  text,
-  isPending,
-  loadingLabel,
-  emptyLabel,
-}: {
-  text: string;
-  isPending: boolean;
-  loadingLabel: string;
-  emptyLabel: string;
-}) {
-  const mutedClass = `m-0 ${INSIGHT_BODY_MUTED}`;
-  const t = stripOuterMatchingQuotes(text);
-  if (!t) {
-    return (
-      <p className={`m-0 box-border block w-full min-w-0 max-w-full self-stretch ${mutedClass}`}>
-        {isPending ? <InsightGeneratingRow label={loadingLabel} mutedClass={mutedClass} /> : emptyLabel}
-      </p>
-    );
-  }
-  /**
-   * 引号定位：此前用三列 grid，第三列宽为 `auto`，右引号贴在列首＝紧贴正文右侧，无法与 INSIGHT 内容区右缘对齐。
-   * 改为满宽 `relative` 容器 + 左/右 `absolute`，正文 `pl-5 pr-5` 避让 18px 引号。
-   */
-  return (
-    <div
-      className="relative box-border w-full min-w-0 max-w-full self-stretch"
-      role="note"
-      aria-label="重点点评"
-    >
-      <span
-        className="pointer-events-none absolute left-0 top-px z-0 select-none font-sans text-[18px] font-bold leading-none antialiased text-[#c5cad3]"
-        aria-hidden
-      >
-        &ldquo;
-      </span>
-      <span
-        className="pointer-events-none absolute bottom-px right-0 z-0 select-none font-sans text-[18px] font-bold leading-none antialiased text-[#c5cad3]"
-        aria-hidden
-      >
-        &rdquo;
-      </span>
-      <p className={`relative z-[1] m-0 min-w-0 w-full max-w-full pl-5 pr-5 ${INSIGHT_ANALYSIS_BODY_TEXT}`}>
-        <BoldLinkifiedInline
-          className="block min-w-0 w-full max-w-full"
-          text={t}
-          boldClassName={INSIGHT_ANALYSIS_BOLD}
-        />
-      </p>
-    </div>
   );
 }
 
@@ -639,12 +703,12 @@ function InsightNumberedBody({
   return (
     <ul className="m-0 flex w-full min-w-0 max-w-full list-none flex-col gap-4 p-0" role="list">
       {items.map((item, i) => (
-        <li key={i} className="flex w-full min-w-0 max-w-full gap-1.5" role="listitem">
+        <li key={i} className="flex w-full min-w-0 max-w-full items-start gap-2" role="listitem">
           <span
-            className="w-2 shrink-0 select-none pt-px text-left font-mono text-[13px] font-normal leading-[21px] text-[#99a1af]"
+            className="w-4 shrink-0 select-none pt-px text-left font-mono text-[14px] font-semibold tabular-nums leading-[22px] text-[#FFB224] antialiased"
             aria-hidden
           >
-            -
+            {i + 1}
           </span>
           <p className={lineClass}>
             <BoldLinkifiedInline text={item} boldClassName={INSIGHT_ANALYSIS_BOLD} />
@@ -663,6 +727,11 @@ export default function AnalysisPanel({
   onRetryAnalysis,
   onClose,
   isOpen: _isOpen,
+  isBookmarked = false,
+  bookmarkPending = false,
+  onBookmarkToggle,
+  longformPending = false,
+  onLongformExtract,
 }: AnalysisPanelProps) {
   void _isOpen;
 
@@ -680,73 +749,87 @@ export default function AnalysisPanel({
     return filtered ?? [];
   }, [post, analysis?.review]);
 
-  const contextText = useMemo(() => {
-    const raw = analysis?.contextMatch?.trim() ?? "";
-    if (!post) return raw;
-    return sanitizeInsightContextEcho(post, raw || null)?.trim() ?? "";
-  }, [post, analysis?.contextMatch]);
-
-  /** 要点/启发仅在接口进行中显示「生成中」；echo 过滤后为空时显示「暂无」，由用户点重试（自动清空缓存曾导致反复请求与界面抖动） */
   const keyPointsPending = isLoading;
-  const relevancePending = isLoading;
 
-  const originalTranslation = analysis?.originalTranslation?.trim() ?? "";
-  const refTranslation = analysis?.originalTranslationReferenced?.trim() ?? "";
-  const originalBody = post?.originalText?.trim() ?? "";
+  const originalTranslation = safeTrimmedText(analysis?.originalTranslation);
+  const refTranslation = safeTrimmedText(analysis?.originalTranslationReferenced);
+  const originalBody = safeTrimmedText(post?.originalText);
   const refPost = post?.referencedPost;
-  const refBody = refPost?.text?.trim() ?? "";
-  const sourceUrl = post?.source?.url?.trim() ?? "";
+  const refBody = safeTrimmedText(refPost?.text);
+  const refUserName = safeTrimmedText(refPost?.userName);
+  const refName = safeTrimmedText(refPost?.name);
+  const refMediaUrls = safeStringArray(refPost?.mediaUrls);
+  const sourceUrl = post ? resolveNewsPostUrl(post) : "";
+  const hasLongformArticle = Boolean(post?.longform?.translatedContent);
+  const bottomActionButtonClass =
+    "btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60";
+  const bottomActionIconClass = "relative flex size-4 shrink-0 items-center justify-center";
+  const bottomActionGlyphClass = "block size-4";
   const referencedTweetHref =
-    refPost?.id && refPost.userName?.trim()
-      ? `https://x.com/${refPost.userName.replace(/^@/, "")}/status/${refPost.id}`
+    refPost?.id && refUserName
+      ? `https://x.com/${refUserName.replace(/^@/, "")}/status/${refPost.id}`
       : sourceUrl;
   const titleHref = sourceUrl || "#";
-  const mediaUrls = post?.mediaUrls?.filter((u) => typeof u === "string" && /^https:\/\//i.test(u)) ?? [];
+  const mediaUrls = safeStringArray(post?.mediaUrls).filter((u) => /^https:\/\//i.test(u));
 
   const originalContentRef = useRef<HTMLDivElement>(null);
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const mainScrollTargetRef = useRef<HTMLElement | null>(null);
   const [originalExpanded, setOriginalExpanded] = useState(false);
   const [originalOverflows, setOriginalOverflows] = useState(false);
   const [keyPointsOpen, setKeyPointsOpen] = useState(true);
-  const [relevanceOpen, setRelevanceOpen] = useState(true);
 
-  /** 展开 ORIGINAL 全文且可折叠时：底部两模块正文强制收起，把纵向空间留给原文 */
-  const originalFocusMode = originalExpanded && originalOverflows;
-  const keyPointsExpanded = originalFocusMode ? false : keyPointsOpen;
-  const relevanceExpanded = originalFocusMode ? false : relevanceOpen;
-  /** 两块都收起时：KEY POINTS / RELEVANCE 之间用较小 gap；任一块展开时用 gap-4 */
-  const insightBottomBothCollapsed = !keyPointsExpanded && !relevanceExpanded;
+  useEffect(() => {
+    mainScrollTargetRef.current = document.querySelector<HTMLElement>(".main-content-scroll");
+  }, []);
+
+  useEffect(() => {
+    const sidebar = sidebarScrollRef.current;
+    if (!sidebar) return;
+
+    const onWheel = (e: WheelEvent) => {
+      const origContent = originalContentRef.current;
+      if (origContent && origContent.contains(e.target as Node)) {
+        const isOverflowing = origContent.scrollHeight > origContent.clientHeight;
+        if (isOverflowing) {
+          const atTop = origContent.scrollTop <= 0 && e.deltaY < 0;
+          const atBottom =
+            origContent.scrollTop + origContent.clientHeight >= origContent.scrollHeight - 1 &&
+            e.deltaY > 0;
+          if (!atTop && !atBottom) return;
+        }
+      }
+
+      const canScrollUp = sidebar.scrollTop > 0;
+      const canScrollDown = sidebar.scrollTop + sidebar.clientHeight < sidebar.scrollHeight - 1;
+      const wantsDown = e.deltaY > 0;
+      const wantsUp = e.deltaY < 0;
+
+      if ((wantsDown && canScrollDown) || (wantsUp && canScrollUp)) return;
+
+      const mainScroll =
+        mainScrollTargetRef.current ??
+        document.querySelector<HTMLElement>(".main-content-scroll");
+      if (!mainScroll) return;
+
+      e.preventDefault();
+      mainScroll.scrollTop += e.deltaY;
+    };
+
+    sidebar.addEventListener("wheel", onWheel, { passive: false });
+    return () => sidebar.removeEventListener("wheel", onWheel);
+  }, [post?.id]);
+
+  const keyPointsExpanded = keyPointsOpen;
 
   useEffect(() => {
     setOriginalExpanded(false);
     setKeyPointsOpen(true);
-    setRelevanceOpen(true);
   }, [post?.id]);
 
   const toggleKeyPointsSection = useCallback(() => {
-    if (originalFocusMode) {
-      setOriginalExpanded(false);
-      setKeyPointsOpen(true);
-      return;
-    }
-    setKeyPointsOpen((o) => {
-      if (o) return false;
-      setOriginalExpanded(false);
-      return true;
-    });
-  }, [originalFocusMode]);
-
-  const toggleRelevanceSection = useCallback(() => {
-    if (originalFocusMode) {
-      setOriginalExpanded(false);
-      setRelevanceOpen(true);
-      return;
-    }
-    setRelevanceOpen((o) => {
-      if (o) return false;
-      setOriginalExpanded(false);
-      return true;
-    });
-  }, [originalFocusMode]);
+    setKeyPointsOpen((o) => !o);
+  }, []);
 
   const handleKeyPointsBodyClick = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
@@ -760,19 +843,7 @@ export default function AnalysisPanel({
     [keyPointsExpanded, toggleKeyPointsSection],
   );
 
-  const handleRelevanceBodyClick = useCallback(
-    (e: MouseEvent<HTMLDivElement>) => {
-      if (!relevanceExpanded) return;
-      if (typeof window !== "undefined" && window.getSelection()?.toString().trim()) return;
-      const t = e.target;
-      if (!(t instanceof Element)) return;
-      if (t.closest("a, button, [role='button'], img, video")) return;
-      toggleRelevanceSection();
-    },
-    [relevanceExpanded, toggleRelevanceSection],
-  );
-
-  const refMediaLen = refPost?.mediaUrls?.length ?? 0;
+  const refMediaLen = refMediaUrls.length;
   useLayoutEffect(() => {
     if (!post?.id) {
       setOriginalOverflows(false);
@@ -868,16 +939,16 @@ export default function AnalysisPanel({
               </>
             ) : refPost.kind === "retweet" ? (
               <>
-                {refPost.userName ? (
+                {refUserName ? (
                   <p className="mb-2 font-sans text-[13px] font-normal leading-[21px] text-[#99a1af]">
-                    转发自 @{refPost.userName.replace(/^@/, "")}
-                    {refPost.name ? ` · ${formatTypography(refPost.name)}` : ""}
+                    转发自 @{refUserName.replace(/^@/, "")}
+                    {refName ? ` · ${formatTypography(refName)}` : ""}
                   </p>
                 ) : null}
                 <div>
                   <OriginalPrimaryAndTranslation
-                    rawBody={refBody.trim() ? refBody : originalBody}
-                    translation={refBody.trim() ? refTranslation : originalTranslation}
+                    rawBody={refBody ? refBody : originalBody}
+                    translation={refBody ? refTranslation : originalTranslation}
                     isLoading={isLoading}
                     paragraphClassName={originalBodyPrimaryClass}
                     mutedClassName={originalBodyMutedClass}
@@ -886,7 +957,7 @@ export default function AnalysisPanel({
                   />
                 </div>
                 <OriginalMediaGallery
-                  urls={refPost.mediaUrls ?? []}
+                  urls={refMediaUrls}
                   tweetHref={referencedTweetHref}
                   videoLinkClassName={linkifiedOriginalClass}
                 />
@@ -917,13 +988,13 @@ export default function AnalysisPanel({
                   videoLinkClassName={linkifiedOriginalClass}
                 />
                 <div className="app-divider-border-l mt-4 bg-[#fafafa]/80 py-3 pl-3 pr-2">
-                  <p className="m-0 mb-2 font-mono text-[9px] font-medium uppercase leading-none tracking-[0.12em] text-[#99a1af]">
+                  <p className="m-0 mb-2 font-mono text-[12px] font-medium uppercase leading-[18px] tracking-[0.08em] text-[#99a1af]">
                     引用原文
                   </p>
-                  {refPost.userName ? (
+                  {refUserName ? (
                     <p className="m-0 mb-2 font-sans text-[13px] font-medium leading-[21px] text-[#6a7282]">
-                      {refPost.name ? `${formatTypography(refPost.name)} ` : ""}@
-                      {refPost.userName.replace(/^@/, "")}
+                      {refName ? `${formatTypography(refName)} ` : ""}@
+                      {refUserName.replace(/^@/, "")}
                     </p>
                   ) : null}
                   <div>
@@ -938,7 +1009,7 @@ export default function AnalysisPanel({
                     />
                   </div>
                   <OriginalMediaGallery
-                    urls={refPost.mediaUrls ?? []}
+                    urls={refMediaUrls}
                     tweetHref={referencedTweetHref}
                     videoLinkClassName={linkifiedOriginalClass}
                   />
@@ -1022,22 +1093,22 @@ export default function AnalysisPanel({
 
       {/* 顶区：标题 + POST META（帖次元数据：作者 + 重要度），不随中部滚动 */}
       <div className="shrink-0 pr-4">
-        <div className="relative flex h-[24px] w-full shrink-0 items-center gap-2">
+        <div className="relative flex min-h-[24px] w-full shrink-0 items-center gap-2">
           <div className="flex flex-col items-start justify-center">
-            <span className="block h-[18px] font-sans text-[12px] font-bold uppercase leading-[18px] tracking-[1.2px] text-[#111113]">
+            <span className="block font-sans text-[13px] font-bold uppercase leading-[19.5px] tracking-[0.08em] text-[#111113]">
               解读
             </span>
           </div>
-          <div className="flex shrink-0 items-center justify-center rounded-[2px] bg-[#1A1C1E] px-[6px] py-[2px]">
-            <span className="block h-[7px] font-sans text-[7px] font-bold uppercase leading-[7px] tracking-[0.7px] text-[#FFB224]">
+          <div className="flex shrink-0 items-center justify-center rounded-[2px] bg-[#1A1C1E] px-2 py-0.5">
+            <span className="font-sans text-[11px] font-bold uppercase leading-none tracking-[0.04em] text-[#FFB224]">
               专业版
             </span>
           </div>
         </div>
 
-        <div className="relative flex h-[24px] w-full shrink-0 items-center justify-between">
+        <div className="relative flex min-h-[24px] w-full shrink-0 items-center justify-between">
           <div className="flex h-full min-h-0 min-w-0 flex-[1_0_0] flex-col justify-center">
-            <p className="m-0 w-full font-sans text-[10px] font-medium leading-[15px] text-[#FFB224]">
+            <p className="m-0 w-full font-sans text-[12px] font-medium leading-[18px] text-[#FFB224]">
               实时 AI 解析与深度摘要。
             </p>
           </div>
@@ -1060,7 +1131,7 @@ export default function AnalysisPanel({
             <button
               type="button"
               onClick={onRetryAnalysis}
-              className="btn-press self-start rounded-md bg-primary-500 px-3 py-1.5 font-sans text-[11px] font-medium text-white transition-colors hover:bg-primary-600"
+              className="btn-press self-start rounded-md bg-primary-500 px-3 py-1.5 font-sans text-[12px] font-medium text-white transition-colors hover:bg-primary-600"
             >
               重试
             </button>
@@ -1070,7 +1141,10 @@ export default function AnalysisPanel({
 
       {/* 中区：单栏纵向滚动；原文高度随内容，要点/启发紧跟其下（不再被 flex-1 撑满顶到底） */}
       <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col self-stretch overflow-hidden pr-4">
-        <div className="sidebar-scroll flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-contain">
+        <div
+          ref={sidebarScrollRef}
+          className="sidebar-scroll flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden"
+        >
           <section
             className="flex w-full max-w-full shrink-0 flex-col items-stretch gap-4 pt-4 pb-3"
             aria-labelledby="analysis-original-heading"
@@ -1113,12 +1187,7 @@ export default function AnalysisPanel({
             </div>
           </section>
 
-          <div
-            className={[
-              "flex shrink-0 flex-col pb-8",
-              insightBottomBothCollapsed ? "gap-2 pt-2" : "gap-4 pt-4",
-            ].join(" ")}
-          >
+          <div className="flex shrink-0 flex-col gap-4 pb-8 pt-4">
           <section
             className={[
               "flex w-full max-w-full min-h-0 min-w-0 flex-col items-stretch overflow-hidden",
@@ -1136,7 +1205,7 @@ export default function AnalysisPanel({
             />
             <div
               className={[
-                "motion-layout-ease grid w-full transition-[grid-template-rows]",
+                "motion-collapse-grid w-full",
                 keyPointsExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
               ].join(" ")}
             >
@@ -1160,48 +1229,6 @@ export default function AnalysisPanel({
               </div>
             </div>
           </section>
-
-          <section
-            className={[
-              "box-border flex w-full min-w-0 max-w-full min-h-0 flex-col items-stretch overflow-hidden",
-              relevanceExpanded ? "gap-4" : "gap-0",
-            ].join(" ")}
-            aria-labelledby="analysis-relevance-heading"
-          >
-            <InsightCollapsibleSectionHeading
-              section="relevance"
-              label="启发"
-              headingId="analysis-relevance-heading"
-              controlsId="insight-relevance-body"
-              expanded={relevanceExpanded}
-              onToggle={toggleRelevanceSection}
-            />
-            <div
-              className={[
-                "motion-layout-ease grid w-full transition-[grid-template-rows]",
-                relevanceExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-              ].join(" ")}
-            >
-              <div className="min-h-0 overflow-hidden">
-                <div
-                  id="insight-relevance-body"
-                  className="box-border min-h-0 w-full min-w-0 max-w-full overflow-visible"
-                >
-                  <div
-                    onClick={handleRelevanceBodyClick}
-                    className={relevanceExpanded ? "min-h-0 w-full cursor-pointer rounded-sm" : "min-h-0 w-full"}
-                  >
-                    <InsightRelevanceSingle
-                      text={contextText}
-                      isPending={relevancePending}
-                      loadingLabel="正在生成启发…"
-                      emptyLabel="暂无启发"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
         </div>
         </div>
       </div>
@@ -1213,16 +1240,20 @@ export default function AnalysisPanel({
       >
         <button
           type="button"
-          className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
-          aria-label="收藏"
+          className={bottomActionButtonClass}
+          aria-label={isBookmarked ? "取消收藏" : "收藏"}
+          aria-pressed={isBookmarked}
+          aria-busy={bookmarkPending}
+          disabled={!post || !onBookmarkToggle || bookmarkPending}
+          onClick={() => {
+            if (!post || !onBookmarkToggle) return;
+            onBookmarkToggle(post.id, post);
+          }}
         >
-          <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
-            <img
-              alt=""
-              src="/analysis-bottom-icons/bookmark.svg"
-              className="block h-3.5 w-auto max-w-full object-contain"
-              decoding="async"
-              draggable={false}
+          <span className={bottomActionIconClass} aria-hidden>
+            <BookmarkGlyph
+              className={`${bottomActionGlyphClass} ${isBookmarked ? "text-[#d7a220]" : "text-current"}`}
+              filled={isBookmarked}
             />
           </span>
         </button>
@@ -1231,49 +1262,40 @@ export default function AnalysisPanel({
             href={sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
+            className={bottomActionButtonClass}
             aria-label="打开原文链接"
           >
-            <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
-              <img
-                alt=""
-                src="/analysis-bottom-icons/open.svg"
-                className="block size-3.5 max-h-full max-w-full object-contain"
-                decoding="async"
-                draggable={false}
-              />
+            <span className={bottomActionIconClass} aria-hidden>
+              <OpenOriginalGlyph className={bottomActionGlyphClass} />
             </span>
           </a>
         ) : (
           <button
             type="button"
             disabled
-            className="flex h-8 w-8 shrink-0 cursor-not-allowed items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#99a1af] opacity-50 outline-none"
+            className={bottomActionButtonClass}
             aria-label="打开"
           >
-            <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
-              <img
-                alt=""
-                src="/analysis-bottom-icons/open.svg"
-                className="block size-3.5 max-h-full max-w-full object-contain opacity-60"
-                decoding="async"
-                draggable={false}
-              />
+            <span className={bottomActionIconClass} aria-hidden>
+              <OpenOriginalGlyph className={bottomActionGlyphClass} />
             </span>
           </button>
         )}
         <button
           type="button"
-          className="btn-press flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[#6a7282] outline-none transition-colors hover:bg-[#f4f4f5] hover:text-[#111113] focus-visible:ring-2 focus-visible:ring-[#0055FF] focus-visible:ring-offset-1"
-          aria-label="分享"
+          className={bottomActionButtonClass}
+          aria-label={hasLongformArticle ? "已加入长文" : "加入长文"}
+          aria-pressed={hasLongformArticle}
+          aria-busy={longformPending}
+          disabled={!post || !onLongformExtract || longformPending || hasLongformArticle}
+          onClick={() => {
+            if (!post || !onLongformExtract) return;
+            onLongformExtract(post);
+          }}
         >
-          <span className="relative flex size-3.5 shrink-0 items-center justify-center" aria-hidden>
-            <img
-              alt=""
-              src="/analysis-bottom-icons/share.svg"
-              className="block h-3.5 w-3 max-h-full max-w-full object-contain"
-              decoding="async"
-              draggable={false}
+          <span className={bottomActionIconClass} aria-hidden>
+            <AddToLongformModuleGlyph
+              className={`${bottomActionGlyphClass} ${hasLongformArticle ? "text-[#d7a220]" : "text-current"} ${longformPending ? "animate-pulse" : ""}`}
             />
           </span>
         </button>

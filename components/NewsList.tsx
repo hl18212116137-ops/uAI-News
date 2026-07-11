@@ -5,7 +5,6 @@ import {
   useRef,
   useCallback,
   useLayoutEffect,
-  useState,
   useEffect,
 } from "react";
 import { NewsItem } from "@/lib/types";
@@ -15,84 +14,99 @@ import EmptyState from "./EmptyState";
 type NewsListProps = {
   posts: NewsItem[];
   bookmarkedIds?: Set<string>;
-  onBookmarkToggle?: (id: string) => void;
+  bookmarkPendingIds?: Set<string>;
+  onBookmarkToggle?: (id: string, post: NewsItem) => void;
+  passPendingIds?: Set<string>;
+  onPassPost?: (post: NewsItem) => void;
+  newPostIds?: Set<string>;
   analysisActivePostId?: string | null;
   onAnalysisToggle?: (postId: string) => void;
-  emptyFeedDemoSourcesHint?: boolean;
+  emptyFeedAwaitingFetch?: boolean;
 };
-
-type BarState = { visible: boolean; top: number; height: number };
 
 export default memo(NewsList);
 
 function NewsList({
   posts,
   bookmarkedIds,
+  bookmarkPendingIds,
   onBookmarkToggle,
+  passPendingIds,
+  onPassPost,
+  newPostIds,
   analysisActivePostId = null,
   onAnalysisToggle,
-  emptyFeedDemoSourcesHint = false,
+  emptyFeedAwaitingFetch = false,
 }: NewsListProps) {
   const listRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const barRafRef = useRef<number | null>(null);
+  const activePostIdRef = useRef(analysisActivePostId);
 
-  const [bar, setBar] = useState<BarState>({
-    visible: false,
-    top: 0,
-    height: 0,
-  });
+  useEffect(() => {
+    activePostIdRef.current = analysisActivePostId;
+  }, [analysisActivePostId]);
 
-  const updateBarPosition = useCallback(() => {
+  const applyBarPosition = useCallback(() => {
     const listEl = listRef.current;
-    const id = analysisActivePostId;
-    if (!listEl || !id) {
-      setBar((prev) =>
-        prev.visible ? { visible: false, top: 0, height: 0 } : prev
-      );
+    const barEl = barRef.current;
+    if (!listEl || !barEl) return;
+
+    const id = activePostIdRef.current;
+    if (!id) {
+      barEl.style.opacity = "0";
       return;
     }
+
     const row = rowNodesRef.current.get(id);
     if (!row) {
-      setBar((prev) =>
-        prev.visible ? { visible: false, top: 0, height: 0 } : prev
-      );
+      barEl.style.opacity = "0";
       return;
     }
+
     const lr = listEl.getBoundingClientRect();
     const rr = row.getBoundingClientRect();
-    setBar({
-      visible: true,
-      top: rr.top - lr.top,
-      height: rr.height,
+    const top = rr.top - lr.top;
+    const height = rr.height;
+
+    barEl.style.transform = `translate3d(0, ${top}px, 0)`;
+    barEl.style.height = `${height}px`;
+    barEl.style.opacity = "1";
+  }, []);
+
+  const scheduleBarUpdate = useCallback(() => {
+    if (barRafRef.current != null) return;
+    barRafRef.current = requestAnimationFrame(() => {
+      barRafRef.current = null;
+      applyBarPosition();
     });
-  }, [analysisActivePostId]);
+  }, [applyBarPosition]);
 
   const setRowRef = useCallback(
     (postId: string) => (el: HTMLDivElement | null) => {
       if (el) rowNodesRef.current.set(postId, el);
       else rowNodesRef.current.delete(postId);
-      requestAnimationFrame(() => updateBarPosition());
+      scheduleBarUpdate();
     },
-    [updateBarPosition]
+    [scheduleBarUpdate],
   );
 
   useLayoutEffect(() => {
-    updateBarPosition();
-    const id = requestAnimationFrame(() => updateBarPosition());
-    return () => cancelAnimationFrame(id);
-  }, [updateBarPosition, posts]);
+    scheduleBarUpdate();
+  }, [scheduleBarUpdate, posts, analysisActivePostId]);
 
   useEffect(() => {
     const listEl = listRef.current;
     if (!listEl) return;
-    const scrollParent = listEl.closest(".overflow-y-auto");
-    const onScrollOrResize = () => updateBarPosition();
+    const scrollParent = listEl.closest(".main-content-scroll");
+    const onScrollOrResize = () => scheduleBarUpdate();
     if (scrollParent) {
       scrollParent.addEventListener("scroll", onScrollOrResize, {
         passive: true,
       });
     }
-    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("resize", onScrollOrResize, { passive: true });
     const ro = new ResizeObserver(onScrollOrResize);
     ro.observe(listEl);
     return () => {
@@ -101,22 +115,23 @@ function NewsList({
       }
       window.removeEventListener("resize", onScrollOrResize);
       ro.disconnect();
+      if (barRafRef.current != null) {
+        cancelAnimationFrame(barRafRef.current);
+        barRafRef.current = null;
+      }
     };
-  }, [updateBarPosition]);
+  }, [scheduleBarUpdate]);
 
   if (posts.length === 0) {
-    return <EmptyState demoSourcesHint={emptyFeedDemoSourcesHint} />;
+    return <EmptyState awaitingFetch={emptyFeedAwaitingFetch} />;
   }
 
   return (
     <div ref={listRef} className="relative flex w-full flex-col gap-0">
       <div
-        className="motion-layout-metrics pointer-events-none absolute right-0 z-[2] w-[2px] bg-[#ffb224]"
-        style={{
-          top: bar.top,
-          height: bar.height,
-          opacity: bar.visible ? 1 : 0,
-        }}
+        ref={barRef}
+        className="feed-analysis-rail pointer-events-none absolute right-0 top-0 z-[2] w-px bg-[#ffb224] will-change-transform"
+        style={{ opacity: 0, height: 0 }}
         aria-hidden
         data-name="Analysis gold rail"
       />
@@ -129,7 +144,11 @@ function NewsList({
           <NewsCard
             post={post}
             isBookmarked={bookmarkedIds?.has(post.id) ?? false}
+            bookmarkPending={bookmarkPendingIds?.has(post.id) ?? false}
             onBookmarkToggle={onBookmarkToggle}
+            passPending={passPendingIds?.has(post.id) ?? false}
+            onPassPost={onPassPost}
+            showNewBadge={newPostIds?.has(post.id) ?? false}
             analysisActive={analysisActivePostId === post.id}
             onAnalysisToggle={onAnalysisToggle}
           />

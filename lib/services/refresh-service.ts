@@ -1,8 +1,12 @@
 import 'server-only'
 
 import { runRefreshFetchFromEnabledSources } from '@/lib/services/ingest-service'
-import { runRefreshProcessRawQueue } from '@/lib/services/process-service'
+import {
+  PROCESS_RAW_BATCH_LIMIT,
+  runRefreshProcessRawQueue,
+} from '@/lib/services/process-service'
 import { taskManager } from '@/lib/task-manager'
+import { revalidateHomeSourceCaches } from '@/lib/home-cache-invalidation'
 
 export type StartRefreshResult =
   | { ok: true; taskId: string; message: string }
@@ -22,6 +26,8 @@ function messageFromUnknownError(e: unknown): string {
 const devLog = (...args: unknown[]) => {
   if (process.env.NODE_ENV === 'development') console.log(...args)
 }
+
+const PROCESS_DRAIN_MAX_PASSES = 5
 
 /**
  * 创建任务并异步串联 fetch → process（与 POST /api/refresh 行为一致，直接调服务层）
@@ -56,17 +62,52 @@ export function startBackgroundFullRefresh(_request: Request, userId: string): S
           return
         }
 
-        const processData = await runRefreshProcessRawQueue({ taskId })
-        devLog(`[Refresh API] 处理完成：${processData.count} 条`)
+        let processedTotal = 0
+        let reachedDrainLimit = false
+
+        for (let pass = 1; pass <= PROCESS_DRAIN_MAX_PASSES; pass += 1) {
+          const processData = await runRefreshProcessRawQueue({
+            taskId,
+            userId,
+            rawLimit: PROCESS_RAW_BATCH_LIMIT,
+          })
+          const processedThisPass = processData.count || 0
+          processedTotal += processedThisPass
+
+          if (taskManager.getTask(taskId)?.status === 'cancelled') {
+            return
+          }
+
+          if (processedThisPass < PROCESS_RAW_BATCH_LIMIT) {
+            reachedDrainLimit = false
+            break
+          }
+
+          reachedDrainLimit = pass === PROCESS_DRAIN_MAX_PASSES
+          if (reachedDrainLimit) break
+
+          taskManager.updateTask(taskId, {
+            status: 'running',
+            progress: 95,
+            message: `已处理 ${processedTotal} 条推文，继续清理剩余队列...`,
+          })
+        }
+        devLog(`[Refresh API] 处理完成：${processedTotal} 条`)
 
         if (taskManager.getTask(taskId)?.status === 'cancelled') {
           return
         }
 
+        if (fetchData.count > 0 || processedTotal > 0) {
+          revalidateHomeSourceCaches()
+        }
+
         taskManager.updateTask(taskId, {
           status: 'completed',
           progress: 100,
-          message: `完成！共处理 ${processData.count || 0} 条新内容`,
+          message: reachedDrainLimit
+            ? `完成！本轮处理 ${processedTotal} 条新内容，仍可能有历史队列待下次继续`
+            : `完成！共处理 ${processedTotal} 条新内容`,
         })
       } catch (error: unknown) {
         if (taskManager.getTask(taskId)?.status === 'cancelled') {

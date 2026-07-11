@@ -5,6 +5,7 @@ import {
   getBookmarkedIdsForUser,
   removeBookmarkForUser,
 } from '@/lib/services/bookmarks-service'
+import { revalidateHomeBookmarkCaches } from '@/lib/home-cache-invalidation'
 
 /**
  * GET /api/bookmarks
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     await addBookmarkForUser(user!.id, news_item_id)
+    revalidateHomeBookmarkCaches()
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '收藏失败'
@@ -69,6 +71,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     await removeBookmarkForUser(user!.id, newsItemId)
+    revalidateHomeBookmarkCaches()
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '取消收藏失败'

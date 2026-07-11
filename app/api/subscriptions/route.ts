@@ -5,6 +5,7 @@ import {
   subscribeUserToSource,
   unsubscribeUserFromSource,
 } from '@/lib/services/user-subscriptions-service'
+import { revalidateHomeSourceCaches } from '@/lib/home-cache-invalidation'
 
 /**
  * GET /api/subscriptions
@@ -53,8 +54,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await subscribeUserToSource(user!.id, source_id, source_handle)
-    return NextResponse.json({ success: true })
+    const result = await subscribeUserToSource(user!.id, source_id, source_handle)
+    revalidateHomeSourceCaches()
+    return NextResponse.json({
+      success: true,
+      sourceId: result.sourceId,
+      taskId: result.taskId,
+    })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '订阅失败'
     console.error('Failed to subscribe source:', error)
@@ -79,6 +85,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     await unsubscribeUserFromSource(user!.id, sourceId)
+    revalidateHomeSourceCaches()
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '取消订阅失败'

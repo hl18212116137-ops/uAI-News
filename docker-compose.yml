@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ainews-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ainews
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ainews_secret}
+      POSTGRES_DB: ainews
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ainews"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ainews-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ainews:${DB_PASSWORD:-ainews_secret}@postgres:5432/ainews
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev_secret_change_in_production}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      AI_PROVIDER: ${AI_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      TWITTERAPI_IO_KEY: ${TWITTERAPI_IO_KEY:-}
+      FEED_VISIBLE_DAYS: ${FEED_VISIBLE_DAYS:-7}
+      NEWS_RETENTION_DAYS: ${NEWS_RETENTION_DAYS:-30}
+      PROCESSING_JOBS_ENABLED: ${PROCESSING_JOBS_ENABLED:-false}
+    ports:
+      - "3000:3000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: ainews-nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - certbot-webroot:/var/www/certbot:ro
+
+volumes:
+  pgdata:
+  certbot-webroot:

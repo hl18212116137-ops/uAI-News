@@ -1,8 +1,59 @@
 import 'server-only'
 
-import { supabase } from '@/lib/supabase'
+import { db } from '@/lib/db/drizzle'
+import { newsItems } from '@/lib/db/schema'
+import { eq, desc, lt, gte, sql, inArray, isNotNull, or } from 'drizzle-orm'
 import { sanitizeInsightPayloadForPost } from '@/lib/insight-echo-guard'
-import type { InsightAnalysisPayload, NewsItem, SocialEngagement, XReferencedPost } from '@/lib/types'
+import { canonicalizeExternalUrlForDedupe, canonicalizeNewsSourceUrl } from '@/lib/news-post-url'
+import { cleanNewsTitle } from '@/lib/news-title-cleanup'
+import { isLongformPreviewPost } from '@/lib/longform-post-utils'
+import { isUsableLongformArticle } from '@/lib/longform-quality'
+import { areNewsItemsNearDuplicate, canonicalNewsIdForRawPost, newsItemContentFingerprint } from '@/lib/news-dedupe'
+import {
+  clampFeedPageLimit,
+  clampFeedPageOffset,
+  LONGFORM_FEED_PAGE_SIZE,
+  type FeedPage,
+} from '@/lib/feed-pagination'
+import type {
+  InsightAnalysisPayload,
+  LongformArticle,
+  LongformDiscoveryMethod,
+  NewsItem,
+  SocialEngagement,
+  XReferencedPost,
+} from '@/lib/types'
+
+/** 读取/返回前修正 X 推文 status 链接（避免 profile 或错误 url 导致无法跳转原文） */
+export function withCanonicalPostSourceUrl(item: NewsItem): NewsItem {
+  const url = canonicalizeNewsSourceUrl(item)
+  if (url === item.source.url) return item
+  return { ...item, source: { ...item.source, url } }
+}
+
+function mapNewsRowToItem(row: typeof newsItems.$inferSelect): NewsItem {
+  return withCanonicalPostSourceUrl({
+    id: row.id,
+    title: cleanNewsTitle(row.title),
+    summary: row.summary,
+    content: row.content,
+    source: {
+      platform: row.sourcePlatform as NewsItem['source']['platform'],
+      name: row.sourceName ?? '',
+      handle: row.sourceHandle ?? '',
+      url: row.sourceUrl ?? '',
+    },
+    category: row.category as NewsItem['category'],
+    publishedAt: row.publishedAt instanceof Date ? row.publishedAt.toISOString() : String(row.publishedAt ?? ''),
+    originalText: row.originalText ?? '',
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt ?? ''),
+    importanceScore: row.importanceScore ?? undefined,
+    mediaUrls: mediaUrlsFromDbJson(row.mediaUrls),
+    socialEngagement: socialEngagementFromDbJson(row.socialEngagement),
+    referencedPost: referencedPostFromDbJson(row.referencedPost),
+    longform: longformArticleFromDbJson(row.longformJson),
+  })
+}
 
 /** news_items / raw_posts 的 jsonb media_urls → NewsItem.mediaUrls */
 export function mediaUrlsFromDbJson(value: unknown): string[] | undefined {
@@ -47,6 +98,13 @@ export function referencedPostFromDbJson(value: unknown): XReferencedPost | unde
   const id = typeof o.id === 'string' ? o.id : undefined
   const userName = typeof o.userName === 'string' ? o.userName : undefined
   const name = typeof o.name === 'string' ? o.name : undefined
+  const urls = Array.isArray(o.urls)
+    ? Array.from(new Set(
+        o.urls
+          .map((u) => (typeof u === 'string' ? u.trim() : ''))
+          .filter((u) => /^https?:\/\//i.test(u)),
+      ))
+    : undefined
   const mediaUrls = mediaUrlsFromDbJson(o.mediaUrls)
   return {
     kind,
@@ -54,6 +112,7 @@ export function referencedPostFromDbJson(value: unknown): XReferencedPost | unde
     ...(id ? { id } : {}),
     ...(userName ? { userName } : {}),
     ...(name ? { name } : {}),
+    ...(urls && urls.length > 0 ? { urls } : {}),
     ...(mediaUrls ? { mediaUrls } : {}),
   }
 }
@@ -63,36 +122,9 @@ export function referencedPostFromDbJson(value: unknown): XReferencedPost | unde
  */
 export async function getAllPosts(): Promise<NewsItem[]> {
   try {
-    const { data, error } = await supabase
-      .from('news_items')
-      .select('*')
-      .order('published_at', { ascending: false })
+    const data = await db.select().from(newsItems).orderBy(desc(newsItems.publishedAt))
 
-    if (error) {
-      console.error('Failed to fetch posts:', error)
-      return []
-    }
-
-    return (data || []).map(row => ({
-      id: row.id,
-      title: row.title,
-      summary: row.summary,
-      content: row.content,
-      source: {
-        platform: row.source_platform,
-        name: row.source_name,
-        handle: row.source_handle,
-        url: row.source_url,
-      },
-      category: row.category,
-      publishedAt: row.published_at,
-      originalText: row.original_text,
-      createdAt: row.created_at,
-      importanceScore: row.importance_score,
-      mediaUrls: mediaUrlsFromDbJson(row.media_urls),
-      socialEngagement: socialEngagementFromDbJson(row.social_engagement),
-      referencedPost: referencedPostFromDbJson(row.referenced_post),
-    })) as NewsItem[]
+    return data.map(mapNewsRowToItem)
   } catch (error) {
     console.error('Failed to fetch posts:', error)
     return []
@@ -106,27 +138,21 @@ export async function getNewsItemsPostCountSummary(): Promise<{
   totalPosts: number
   todayPosts: number
 }> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
   try {
     const [allRes, recentRes] = await Promise.all([
-      supabase.from('news_items').select('id', { count: 'exact', head: true }),
-      supabase
-        .from('news_items')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', since),
+      db.select({ count: sql<number>`count(*)` }).from(newsItems),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(newsItems)
+        .where(gte(newsItems.createdAt, since)),
     ])
-    if (allRes.error) {
-      console.error('Failed to count news_items:', allRes.error)
-    }
-    if (recentRes.error) {
-      console.error('Failed to count recent news_items:', recentRes.error)
-    }
     return {
-      totalPosts: allRes.count ?? 0,
-      todayPosts: recentRes.count ?? 0,
+      totalPosts: Number(allRes[0]?.count ?? 0),
+      todayPosts: Number(recentRes[0]?.count ?? 0),
     }
   } catch (error) {
-    console.error('Failed to get news item counts:', error)
+    console.warn('Failed to get news item counts:', error)
     return { totalPosts: 0, todayPosts: 0 }
   }
 }
@@ -136,42 +162,17 @@ export async function getNewsItemsPostCountSummary(): Promise<{
  */
 export async function getPostByUrl(url: string): Promise<NewsItem | null> {
   try {
-    const { data, error } = await supabase
-      .from('news_items')
-      .select('*')
-      .eq('source_url', url)
-      .single()
+    const canonicalUrl = canonicalizeExternalUrlForDedupe(url)
+    const rows = await db
+      .select()
+      .from(newsItems)
+      .where(eq(newsItems.sourceUrl, canonicalUrl))
+      .limit(1)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null
-      }
-      console.error('Failed to fetch post by URL:', error)
-      return null
-    }
-
+    const data = rows[0]
     if (!data) return null
 
-    return {
-      id: data.id,
-      title: data.title,
-      summary: data.summary,
-      content: data.content,
-      source: {
-        platform: data.source_platform,
-        name: data.source_name,
-        handle: data.source_handle,
-        url: data.source_url,
-      },
-      category: data.category,
-      publishedAt: data.published_at,
-      originalText: data.original_text,
-      createdAt: data.created_at,
-      importanceScore: data.importance_score,
-      mediaUrls: mediaUrlsFromDbJson(data.media_urls),
-      socialEngagement: socialEngagementFromDbJson(data.social_engagement),
-      referencedPost: referencedPostFromDbJson(data.referenced_post),
-    } as NewsItem
+    return mapNewsRowToItem(data)
   } catch (error) {
     console.error('Failed to fetch post by URL:', error)
     return null
@@ -183,42 +184,16 @@ export async function getPostByUrl(url: string): Promise<NewsItem | null> {
  */
 export async function getPostById(id: string): Promise<NewsItem | null> {
   try {
-    const { data, error } = await supabase
-      .from('news_items')
-      .select('*')
-      .eq('id', id)
-      .single()
+    const rows = await db
+      .select()
+      .from(newsItems)
+      .where(eq(newsItems.id, id))
+      .limit(1)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null
-      }
-      console.error('Failed to fetch post by ID:', error)
-      return null
-    }
-
+    const data = rows[0]
     if (!data) return null
 
-    return {
-      id: data.id,
-      title: data.title,
-      summary: data.summary,
-      content: data.content,
-      source: {
-        platform: data.source_platform,
-        name: data.source_name,
-        handle: data.source_handle,
-        url: data.source_url,
-      },
-      category: data.category,
-      publishedAt: data.published_at,
-      originalText: data.original_text,
-      createdAt: data.created_at,
-      importanceScore: data.importance_score,
-      mediaUrls: mediaUrlsFromDbJson(data.media_urls),
-      socialEngagement: socialEngagementFromDbJson(data.social_engagement),
-      referencedPost: referencedPostFromDbJson(data.referenced_post),
-    } as NewsItem
+    return mapNewsRowToItem(data)
   } catch (error) {
     console.error('Failed to fetch post by ID:', error)
     return null
@@ -228,58 +203,416 @@ export async function getPostById(id: string): Promise<NewsItem | null> {
 export type AddPostOptions = {
   /** S2+：与 raw_posts.id 对齐，便于溯源 */
   rawPostId?: string | null
+  /** PASS 恢复等人工操作需要绕过内容近似去重，确保用户选择能回到 feed。 */
+  skipContentDedupe?: boolean
+  /** 若同 ID / URL 已存在，则刷新现有行，而不是静默跳过。 */
+  refreshExisting?: boolean
+}
+
+export type AddPostResult =
+  | { status: 'inserted'; id: string }
+  | { status: 'updated'; id: string }
+  | { status: 'duplicate_exact'; id: string }
+  | { status: 'duplicate_content'; id: string }
+
+export async function getRecentLongformPosts(limit = 40): Promise<NewsItem[]> {
+  try {
+    const data = await db
+      .select()
+      .from(newsItems)
+      .where(isNotNull(newsItems.longformJson))
+      .orderBy(desc(newsItems.publishedAt))
+      .limit(limit)
+
+    return data
+      .map(mapNewsRowToItem)
+      .filter((post) => Boolean(post.longform?.translatedContent) && !isLongformPreviewPost(post))
+  } catch (error) {
+    console.error('Failed to fetch longform posts:', error)
+    return []
+  }
+}
+
+const LONGFORM_LIST_CONTENT_PREVIEW_CHARS = 320
+const LONGFORM_DISCOVERY_METHODS = new Set<LongformDiscoveryMethod>([
+  'url',
+  'image-search',
+  'text-search',
+  'x-article',
+  'x-long-post',
+  'x-thread',
+  'reply-chain',
+  'image-ocr',
+  'video-transcript',
+])
+
+function isLongformDiscoveryMethod(value: unknown): value is LongformDiscoveryMethod {
+  return typeof value === 'string' && LONGFORM_DISCOVERY_METHODS.has(value as LongformDiscoveryMethod)
+}
+
+type LongformPreviewRow = {
+  id: string
+  title: string
+  summary: string
+  contentPreview: string
+  sourcePlatform: string | null
+  sourceName: string | null
+  sourceHandle: string | null
+  sourceUrl: string | null
+  category: string | null
+  publishedAt: Date | string
+  createdAt: Date | string
+  importanceScore: number | null
+  url: string
+  resolvedUrl: string
+  longformTitle: string
+  sourceNameLongform: string
+  authorName: string
+  excerpt: string
+  digestSummary: string
+  digestPoints: unknown
+  translatedTitle: string
+  translatedContentPreview: string
+  originalWordCount: string
+  fetchedAt: string
+  discoveryMethod: string
+  confidence: string
+  discoverySourceImageUrl: string
+}
+
+function dateLikeToIso(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : String(value ?? '')
+}
+
+function numberFromText(value: string): number | undefined {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function mapLongformPreviewRowToItem(row: LongformPreviewRow): NewsItem | null {
+  const url = row.url.trim()
+  const resolvedUrl = row.resolvedUrl.trim() || url
+  const translatedContent = row.translatedContentPreview.trim() || row.excerpt.trim()
+  if (!url || !resolvedUrl || !translatedContent) return null
+
+  const confidence = numberFromText(row.confidence)
+  const discoveryMethod = row.discoveryMethod
+  const longform: LongformArticle = {
+    url,
+    resolvedUrl,
+    title: row.longformTitle.trim() || resolvedUrl,
+    sourceName: row.sourceNameLongform.trim(),
+    translatedContent,
+    isPreview: true,
+    originalWordCount: Math.max(0, Math.floor(numberFromText(row.originalWordCount) ?? 0)),
+    fetchedAt: row.fetchedAt,
+    excerpt: row.excerpt.trim() || translatedContent.slice(0, 260),
+  }
+  if (row.authorName.trim()) longform.authorName = row.authorName.trim()
+  if (row.digestSummary.trim()) longform.digestSummary = row.digestSummary.trim()
+  const digestPoints = Array.isArray(row.digestPoints)
+    ? row.digestPoints.map((point) => String(point).trim()).filter(Boolean).slice(0, 3)
+    : []
+  if (digestPoints.length > 0) longform.digestPoints = digestPoints
+  if (row.translatedTitle.trim()) longform.translatedTitle = row.translatedTitle.trim()
+  if (isLongformDiscoveryMethod(discoveryMethod)) {
+    longform.discoveryMethod = discoveryMethod
+  }
+  if (confidence != null) longform.confidence = confidence
+  if (row.discoverySourceImageUrl.trim()) {
+    longform.discoverySourceImageUrl = row.discoverySourceImageUrl.trim()
+  }
+  if (!isUsableLongformArticle(longform)) return null
+
+  return withCanonicalPostSourceUrl({
+    id: row.id,
+    title: cleanNewsTitle(row.title),
+    summary: row.summary,
+    content: row.contentPreview.trim() || row.summary || row.excerpt.trim(),
+    source: {
+      platform: row.sourcePlatform as NewsItem['source']['platform'],
+      name: row.sourceName ?? '',
+      handle: row.sourceHandle ?? '',
+      url: row.sourceUrl ?? '',
+    },
+    category: row.category as NewsItem['category'],
+    publishedAt: dateLikeToIso(row.publishedAt),
+    originalText: '',
+    createdAt: dateLikeToIso(row.createdAt),
+    importanceScore: row.importanceScore ?? undefined,
+    longform,
+  })
+}
+
+export async function getRecentLongformPostPreviews(limit = 40): Promise<NewsItem[]> {
+  return (await getRecentLongformPostPreviewPage(0, limit)).posts
+}
+
+export async function getRecentLongformPostPreviewPage(
+  offset = 0,
+  limit = LONGFORM_FEED_PAGE_SIZE,
+): Promise<FeedPage> {
+  try {
+    const start = clampFeedPageOffset(offset)
+    const pageSize = clampFeedPageLimit(limit, LONGFORM_FEED_PAGE_SIZE)
+    const previewLength = Math.max(360, Math.min(800, Math.floor(LONGFORM_LIST_CONTENT_PREVIEW_CHARS)))
+    const [countRows, data] = await Promise.all([
+      db
+        .select({ count: sql<string>`count(*)::text` })
+        .from(newsItems)
+        .where(isNotNull(newsItems.longformJson)),
+      db
+        .select({
+          id: newsItems.id,
+          title: newsItems.title,
+          summary: newsItems.summary,
+          contentPreview: sql<string>`substring(coalesce(${newsItems.content}, '') from 1 for 360)`,
+          sourcePlatform: newsItems.sourcePlatform,
+          sourceName: newsItems.sourceName,
+          sourceHandle: newsItems.sourceHandle,
+          sourceUrl: newsItems.sourceUrl,
+          category: newsItems.category,
+          publishedAt: newsItems.publishedAt,
+          createdAt: newsItems.createdAt,
+          importanceScore: newsItems.importanceScore,
+          url: sql<string>`coalesce(${newsItems.longformJson}->>'url', '')`,
+          resolvedUrl: sql<string>`coalesce(${newsItems.longformJson}->>'resolvedUrl', ${newsItems.longformJson}->>'url', '')`,
+          longformTitle: sql<string>`coalesce(${newsItems.longformJson}->>'title', '')`,
+          sourceNameLongform: sql<string>`coalesce(${newsItems.longformJson}->>'sourceName', '')`,
+          authorName: sql<string>`coalesce(${newsItems.longformJson}->>'authorName', '')`,
+          excerpt: sql<string>`coalesce(${newsItems.longformJson}->>'excerpt', '')`,
+          digestSummary: sql<string>`coalesce(${newsItems.longformJson}->>'digestSummary', '')`,
+          digestPoints: sql<unknown>`${newsItems.longformJson}->'digestPoints'`,
+          translatedTitle: sql<string>`coalesce(${newsItems.longformJson}->>'translatedTitle', '')`,
+          translatedContentPreview: sql<string>`substring(coalesce(${newsItems.longformJson}->>'translatedContent', '') from 1 for ${previewLength})`,
+          originalWordCount: sql<string>`coalesce(${newsItems.longformJson}->>'originalWordCount', '')`,
+          fetchedAt: sql<string>`coalesce(${newsItems.longformJson}->>'fetchedAt', '')`,
+          discoveryMethod: sql<string>`coalesce(${newsItems.longformJson}->>'discoveryMethod', '')`,
+          confidence: sql<string>`coalesce(${newsItems.longformJson}->>'confidence', '')`,
+          discoverySourceImageUrl: sql<string>`coalesce(${newsItems.longformJson}->>'discoverySourceImageUrl', '')`,
+        })
+        .from(newsItems)
+        .where(isNotNull(newsItems.longformJson))
+        .orderBy(desc(newsItems.publishedAt))
+        .limit(pageSize)
+        .offset(start),
+    ])
+
+    const posts = data
+      .map(mapLongformPreviewRowToItem)
+      .filter((post): post is NewsItem => Boolean(post))
+      .filter((post) => !isLongformPreviewPost(post))
+
+    const total = Number(countRows[0]?.count ?? posts.length)
+    const nextOffset = start + data.length
+    return {
+      posts,
+      total,
+      nextOffset,
+      hasMore: nextOffset < total,
+    }
+  } catch (error) {
+    console.error('Failed to fetch longform post previews:', error)
+    return { posts: [], total: 0, nextOffset: 0, hasMore: false }
+  }
+}
+
+export function longformArticleFromDbJson(value: unknown): LongformArticle | undefined {
+  if (value == null || typeof value !== 'object') return undefined
+  const o = value as Record<string, unknown>
+  const url = typeof o.url === 'string' ? o.url : ''
+  const resolvedUrl = typeof o.resolvedUrl === 'string' ? o.resolvedUrl : url
+  const title = typeof o.title === 'string' ? o.title : ''
+  const translatedContent = typeof o.translatedContent === 'string' ? o.translatedContent : ''
+  if (!url || !resolvedUrl || !translatedContent.trim()) return undefined
+
+  const article: LongformArticle = {
+    url,
+    resolvedUrl,
+    title: title || resolvedUrl,
+    sourceName: typeof o.sourceName === 'string' ? o.sourceName : '',
+    authorName:
+      typeof o.authorName === 'string' && o.authorName.trim()
+        ? o.authorName.trim()
+        : undefined,
+    excerpt:
+      typeof o.excerpt === 'string'
+        ? o.excerpt
+        : translatedContent.slice(0, 260),
+    translatedContent,
+    originalWordCount:
+      typeof o.originalWordCount === 'number' && Number.isFinite(o.originalWordCount)
+        ? Math.max(0, Math.floor(o.originalWordCount))
+        : 0,
+    fetchedAt: typeof o.fetchedAt === 'string' ? o.fetchedAt : '',
+  }
+  if (typeof o.translatedTitle === 'string' && o.translatedTitle.trim()) {
+    article.translatedTitle = o.translatedTitle
+  }
+  if (typeof o.digestSummary === 'string' && o.digestSummary.trim()) {
+    article.digestSummary = o.digestSummary.trim()
+  }
+  if (Array.isArray(o.digestPoints)) {
+    const digestPoints = o.digestPoints.map((point) => String(point).trim()).filter(Boolean).slice(0, 3)
+    if (digestPoints.length > 0) article.digestPoints = digestPoints
+  }
+  if (isLongformDiscoveryMethod(o.discoveryMethod)) {
+    article.discoveryMethod = o.discoveryMethod
+  }
+  if (typeof o.confidence === 'number' && Number.isFinite(o.confidence)) {
+    article.confidence = Math.max(0, Math.min(1, o.confidence))
+  }
+  if (typeof o.discoverySourceImageUrl === 'string' && o.discoverySourceImageUrl.startsWith('https://')) {
+    article.discoverySourceImageUrl = o.discoverySourceImageUrl
+  }
+  return isUsableLongformArticle(article) ? article : undefined
+}
+
+function toDatabaseDate(value: unknown, fallback: Date): Date {
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return value
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value)
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed
+    }
+  }
+
+  return fallback
 }
 
 /**
  * 添加新闻项到数据库（按 source_url 去重，防止同一推文重复入库）
  */
-export async function addPost(post: NewsItem, options?: AddPostOptions): Promise<void> {
+export async function addPost(post: NewsItem, options?: AddPostOptions): Promise<AddPostResult> {
   try {
-    const normalizedId = normalizeNewsItemId(post.id)
+    const cleanedPost: NewsItem = { ...post, title: cleanNewsTitle(post.title) }
+    const rawInputId = normalizeNewsItemId(post.id)
+    const normalizedId =
+      canonicalNewsIdForRawPost({
+        id: rawInputId,
+        platform: post.source.platform,
+        url: post.source.url,
+      }) || rawInputId
+    const canonicalUrl = canonicalizeNewsSourceUrl({ ...cleanedPost, id: normalizedId })
+    const now = new Date()
+    const createdAt = toDatabaseDate(post.createdAt, now)
+    const publishedAt = toDatabaseDate(post.publishedAt, createdAt)
 
-    const { data: existing } = await supabase
-      .from('news_items')
-      .select('id')
-      .eq('source_url', post.source.url)
-      .single()
+    const exactConditions = [eq(newsItems.id, normalizedId)]
+    if (rawInputId !== normalizedId) exactConditions.push(eq(newsItems.id, rawInputId))
+    if (canonicalUrl) exactConditions.push(eq(newsItems.sourceUrl, canonicalUrl))
+    if (options?.rawPostId) exactConditions.push(eq(newsItems.rawPostId, options.rawPostId))
 
-    if (existing) {
-      return
+    const existing = await db
+      .select({ id: newsItems.id })
+      .from(newsItems)
+      .where(or(...exactConditions))
+      .limit(1)
+
+    if (existing.length > 0) {
+      if (options?.refreshExisting) {
+        const patch: Partial<typeof newsItems.$inferInsert> = {
+          title: cleanedPost.title,
+          summary: cleanedPost.summary,
+          content: cleanedPost.content,
+          sourcePlatform: cleanedPost.source.platform,
+          sourceName: cleanedPost.source.name,
+          sourceHandle: cleanedPost.source.handle,
+          sourceUrl: canonicalUrl,
+          category: cleanedPost.category,
+          publishedAt,
+          originalText: cleanedPost.originalText,
+          createdAt,
+          importanceScore: cleanedPost.importanceScore ?? null,
+          mediaUrls: cleanedPost.mediaUrls && cleanedPost.mediaUrls.length > 0 ? cleanedPost.mediaUrls : null,
+          socialEngagement:
+            cleanedPost.socialEngagement && Object.keys(cleanedPost.socialEngagement).length > 0
+              ? cleanedPost.socialEngagement
+              : null,
+          referencedPost: cleanedPost.referencedPost ?? null,
+          longformJson: cleanedPost.longform ?? null,
+        }
+        if (options?.rawPostId) patch.rawPostId = options.rawPostId
+
+        await db
+          .update(newsItems)
+          .set(patch)
+          .where(eq(newsItems.id, existing[0].id))
+        return { status: 'updated', id: existing[0].id }
+      }
+      return { status: 'duplicate_exact', id: existing[0].id }
     }
 
-    const row: Record<string, unknown> = {
+    const candidatePost: NewsItem = {
+      ...cleanedPost,
       id: normalizedId,
-      title: post.title,
-      summary: post.summary,
-      content: post.content,
-      source_platform: post.source.platform,
-      source_name: post.source.name,
-      source_handle: post.source.handle,
-      source_url: post.source.url,
-      category: post.category,
-      published_at: post.publishedAt,
-      original_text: post.originalText,
-      created_at: post.createdAt,
-      importance_score: post.importanceScore ?? null,
-      ...(post.mediaUrls && post.mediaUrls.length > 0
-        ? { media_urls: post.mediaUrls }
+      source: { ...cleanedPost.source, url: canonicalUrl },
+      publishedAt: publishedAt.toISOString(),
+      createdAt: createdAt.toISOString(),
+    }
+    if (!options?.skipContentDedupe) {
+      const candidateContentHash = newsItemContentFingerprint(candidatePost)
+
+      const lookbackDaysRaw = parseInt(process.env.NEWS_CONTENT_DEDUPE_LOOKBACK_DAYS || '30', 10)
+      const lookbackDays = Number.isFinite(lookbackDaysRaw)
+        ? Math.min(365, Math.max(1, lookbackDaysRaw))
+        : 30
+      const since = new Date(publishedAt.getTime() - lookbackDays * 24 * 60 * 60 * 1000)
+      const recentRows = await db
+        .select()
+        .from(newsItems)
+        .where(gte(newsItems.publishedAt, since))
+        .orderBy(desc(newsItems.publishedAt))
+        .limit(500)
+
+      const hasContentDuplicate = recentRows.some((row) => {
+        const existingItem = mapNewsRowToItem(row)
+        if (existingItem.id === normalizedId) return true
+        return (
+          (candidateContentHash
+            ? newsItemContentFingerprint(existingItem) === candidateContentHash
+            : false) || areNewsItemsNearDuplicate(existingItem, candidatePost)
+        )
+      })
+
+      if (hasContentDuplicate) {
+        return { status: 'duplicate_content', id: normalizedId }
+      }
+    }
+
+    const row: typeof newsItems.$inferInsert = {
+      id: normalizedId,
+      title: cleanedPost.title,
+      summary: cleanedPost.summary,
+      content: cleanedPost.content,
+      sourcePlatform: cleanedPost.source.platform,
+      sourceName: cleanedPost.source.name,
+      sourceHandle: cleanedPost.source.handle,
+      sourceUrl: canonicalUrl,
+      category: cleanedPost.category,
+      publishedAt,
+      originalText: cleanedPost.originalText,
+      createdAt,
+      importanceScore: cleanedPost.importanceScore ?? null,
+      ...(cleanedPost.mediaUrls && cleanedPost.mediaUrls.length > 0
+        ? { mediaUrls: cleanedPost.mediaUrls }
         : {}),
-      ...(post.socialEngagement && Object.keys(post.socialEngagement).length > 0
-        ? { social_engagement: post.socialEngagement }
+      ...(cleanedPost.socialEngagement && Object.keys(cleanedPost.socialEngagement).length > 0
+        ? { socialEngagement: cleanedPost.socialEngagement }
         : {}),
-      ...(post.referencedPost ? { referenced_post: post.referencedPost } : {}),
+      ...(cleanedPost.referencedPost ? { referencedPost: cleanedPost.referencedPost } : {}),
+      ...(cleanedPost.longform ? { longformJson: cleanedPost.longform } : {}),
+      ...(options?.rawPostId ? { rawPostId: options.rawPostId } : {}),
     }
 
-    if (options?.rawPostId) {
-      row.raw_post_id = options.rawPostId
-    }
-
-    const { error } = await supabase.from('news_items').upsert(row, { onConflict: 'id' })
-
-    if (error) {
-      console.error('Failed to add post:', error)
-      throw error
-    }
+    await db.insert(newsItems).values(row).onConflictDoUpdate({
+      target: newsItems.id,
+      set: row,
+    })
+    return { status: 'inserted', id: normalizedId }
   } catch (error) {
     console.error('Failed to add post:', error)
     throw error
@@ -310,18 +643,34 @@ export async function updateNewsItemTextFields(
   }
 
   const normalizedId = normalizeNewsItemId(id)
-  const row: Record<string, unknown> = {}
-  if (patch.title !== undefined) row.title = patch.title
+  const row: Partial<typeof newsItems.$inferInsert> = {}
+  if (patch.title !== undefined) row.title = cleanNewsTitle(patch.title)
   if (patch.summary !== undefined) row.summary = patch.summary
   if (patch.content !== undefined) row.content = patch.content
-  if (patch.originalText !== undefined) row.original_text = patch.originalText
+  if (patch.originalText !== undefined) row.originalText = patch.originalText
   if (patch.referencedPost !== undefined) {
-    row.referenced_post = patch.referencedPost
+    row.referencedPost = patch.referencedPost
   }
 
   try {
-    const { error } = await supabase.from('news_items').update(row).eq('id', normalizedId)
-    if (error) return { ok: false, error: error.message }
+    await db.update(newsItems).set(row).where(eq(newsItems.id, normalizedId))
+    return { ok: true }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: message }
+  }
+}
+
+export async function updateNewsItemLongform(
+  id: string,
+  longform: LongformArticle,
+): Promise<{ ok: boolean; error?: string }> {
+  const normalizedId = normalizeNewsItemId(id)
+  try {
+    await db
+      .update(newsItems)
+      .set({ longformJson: longform })
+      .where(eq(newsItems.id, normalizedId))
     return { ok: true }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
@@ -347,37 +696,60 @@ export async function deleteNewsItemsOlderThanRetention(): Promise<{
 }> {
   const raw = parseInt(process.env.NEWS_RETENTION_DAYS || '30', 10)
   const days = Number.isFinite(raw) ? Math.min(365, Math.max(7, raw)) : 30
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
   try {
-    const { error, count } = await supabase
-      .from('news_items')
-      .delete({ count: 'exact' })
-      .lt('published_at', cutoff)
+    const deleted = await db
+      .delete(newsItems)
+      .where(lt(newsItems.publishedAt, cutoff))
+      .returning({ id: newsItems.id })
 
-    if (error) {
-      console.error('deleteNewsItemsOlderThanRetention:', error)
-      return { ok: false, deleted: null, error: error.message }
-    }
-    return { ok: true, deleted: count ?? null }
+    return { ok: true, deleted: deleted.length }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     return { ok: false, deleted: null, error: message }
   }
 }
 
+export async function deleteNewsItemById(id: string): Promise<boolean> {
+  try {
+    const normalizedId = normalizeNewsItemId(id)
+    const deleted = await db
+      .delete(newsItems)
+      .where(eq(newsItems.id, normalizedId))
+      .returning({ id: newsItems.id })
+    return deleted.length > 0
+  } catch (error) {
+    console.error('Failed to delete news item:', error)
+    return false
+  }
+}
+
+export async function updateNewsItemImportanceScore(
+  id: string,
+  importanceScore: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const normalizedId = normalizeNewsItemId(id)
+  const score = Math.min(100, Math.max(0, Math.floor(importanceScore)))
+  try {
+    await db
+      .update(newsItems)
+      .set({ importanceScore: score })
+      .where(eq(newsItems.id, normalizedId))
+    return { ok: true }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: message }
+  }
+}
+
 export async function deletePostsByHandle(handle: string): Promise<number> {
   try {
-    const { count, error } = await supabase
-      .from('news_items')
-      .delete()
-      .eq('source_handle', handle)
+    const deleted = await db
+      .delete(newsItems)
+      .where(eq(newsItems.sourceHandle, handle))
+      .returning({ id: newsItems.id })
 
-    if (error) {
-      console.error('Failed to delete posts:', error)
-      throw error
-    }
-
-    return count ?? 0
+    return deleted.length
   } catch (error) {
     console.error('Failed to delete posts:', error)
     throw error
@@ -397,7 +769,6 @@ function isInsightAnalysisPayloadCore(x: unknown): x is Record<string, unknown> 
     'scores' in o &&
     'reliability' in o &&
     'review' in o &&
-    'contextMatch' in o &&
     'originalTranslation' in o
   )
 }
@@ -410,7 +781,6 @@ function insightPayloadFromUnknown(v: unknown): InsightAnalysisPayload | null {
     scores: o.scores as InsightAnalysisPayload['scores'],
     reliability: o.reliability as InsightAnalysisPayload['reliability'],
     review: o.review as InsightAnalysisPayload['review'],
-    contextMatch: o.contextMatch as InsightAnalysisPayload['contextMatch'],
     originalTranslation: o.originalTranslation as InsightAnalysisPayload['originalTranslation'],
     originalTranslationReferenced: typeof ref === 'string' ? ref : null,
   }
@@ -441,18 +811,14 @@ export async function getInsightPayloadBySourcesSig(
   sourcesSig: string
 ): Promise<InsightAnalysisPayload | null> {
   try {
-    const { data, error } = await supabase
-      .from('news_items')
-      .select('insight_json')
-      .eq('id', postId)
-      .maybeSingle()
+    const rows = await db
+      .select({ insightJson: newsItems.insightJson })
+      .from(newsItems)
+      .where(eq(newsItems.id, postId))
+      .limit(1)
 
-    if (error) {
-      console.error('getInsightPayloadBySourcesSig:', error)
-      return null
-    }
-
-    const doc = parseInsightJsonDoc(data?.insight_json)
+    const data = rows[0] ?? null
+    const doc = parseInsightJsonDoc(data?.insightJson)
     if (!doc) return null
     return doc.bySourcesSig[sourcesSig] ?? null
   } catch {
@@ -463,18 +829,14 @@ export async function getInsightPayloadBySourcesSig(
 /** 优先 global；否则回退任一历史 bySourcesSig 桶（稳定按 key 排序） */
 export async function getPersistedInsightForRead(postId: string): Promise<InsightAnalysisPayload | null> {
   try {
-    const { data, error } = await supabase
-      .from('news_items')
-      .select('insight_json')
-      .eq('id', postId)
-      .maybeSingle()
+    const rows = await db
+      .select({ insightJson: newsItems.insightJson })
+      .from(newsItems)
+      .where(eq(newsItems.id, postId))
+      .limit(1)
 
-    if (error) {
-      console.error('getPersistedInsightForRead:', error)
-      return null
-    }
-
-    const payload = insightPayloadFromDoc(parseInsightJsonDoc(data?.insight_json))
+    const data = rows[0] ?? null
+    const payload = insightPayloadFromDoc(parseInsightJsonDoc(data?.insightJson))
     if (!payload) return null
     const post = await getPostById(normalizeNewsItemId(postId))
     if (!post) return payload
@@ -511,24 +873,24 @@ export async function getPersistedInsightsForReadBatch(
   try {
     for (let i = 0; i < unique.length; i += INSIGHT_PREFETCH_IN_CHUNK) {
       const chunk = unique.slice(i, i + INSIGHT_PREFETCH_IN_CHUNK)
-      const { data, error } = await supabase
-        .from('news_items')
-        .select('id, insight_json, original_text, referenced_post')
-        .in('id', chunk)
+      const data = await db
+        .select({
+          id: newsItems.id,
+          insightJson: newsItems.insightJson,
+          originalText: newsItems.originalText,
+          referencedPost: newsItems.referencedPost,
+        })
+        .from(newsItems)
+        .where(inArray(newsItems.id, chunk))
 
-      if (error) {
-        console.error('getPersistedInsightsForReadBatch:', error)
-        continue
-      }
-
-      for (const row of data ?? []) {
+      for (const row of data) {
         const id = typeof row.id === 'string' ? row.id : null
         if (!id) continue
-        const payload = insightPayloadFromDoc(parseInsightJsonDoc(row.insight_json))
+        const payload = insightPayloadFromDoc(parseInsightJsonDoc(row.insightJson))
         if (!payload) continue
         const slice = {
-          originalText: typeof row.original_text === 'string' ? row.original_text : '',
-          referencedPost: referencedPostFromDbJson(row.referenced_post),
+          originalText: typeof row.originalText === 'string' ? row.originalText : '',
+          referencedPost: referencedPostFromDbJson(row.referencedPost),
         }
         out[id] = sanitizeInsightPayloadForPost(slice, payload)
       }
@@ -550,18 +912,15 @@ export async function mergeInsightPayloadForSourcesSig(
   payload: InsightAnalysisPayload
 ): Promise<void> {
   try {
-    const { data, error } = await supabase
-      .from('news_items')
-      .select('insight_json')
-      .eq('id', postId)
-      .maybeSingle()
+    const rows = await db
+      .select({ insightJson: newsItems.insightJson })
+      .from(newsItems)
+      .where(eq(newsItems.id, postId))
+      .limit(1)
 
-    if (error) {
-      console.warn('[insight_json] read skipped:', error.message)
-      return
-    }
+    const data = rows[0] ?? null
 
-    const prev = parseInsightJsonDoc(data?.insight_json)
+    const prev = parseInsightJsonDoc(data?.insightJson)
     const bySourcesSig: Record<string, InsightAnalysisPayload> = {
       ...(prev?.bySourcesSig ?? {}),
       [sourcesSig]: payload,
@@ -579,14 +938,10 @@ export async function mergeInsightPayloadForSourcesSig(
       bySourcesSig,
     }
 
-    const { error: upErr } = await supabase
-      .from('news_items')
-      .update({ insight_json: doc })
-      .eq('id', postId)
-
-    if (upErr) {
-      console.warn('[insight_json] update skipped:', upErr.message)
-    }
+    await db
+      .update(newsItems)
+      .set({ insightJson: doc })
+      .where(eq(newsItems.id, postId))
   } catch (e) {
     console.warn('[insight_json] persist skipped', e)
   }
@@ -598,17 +953,14 @@ export async function mergeInsightPayloadForSourcesSig(
 /** 供回填脚本读取 / 写回完整 insight_json 文档 */
 export async function readInsightJsonDocForPost(postId: string): Promise<InsightJsonDoc | null> {
   try {
-    const { data, error } = await supabase
-      .from('news_items')
-      .select('insight_json')
-      .eq('id', normalizeNewsItemId(postId))
-      .maybeSingle()
+    const rows = await db
+      .select({ insightJson: newsItems.insightJson })
+      .from(newsItems)
+      .where(eq(newsItems.id, normalizeNewsItemId(postId)))
+      .limit(1)
 
-    if (error) {
-      console.error('readInsightJsonDocForPost:', error)
-      return null
-    }
-    return parseInsightJsonDoc(data?.insight_json)
+    const data = rows[0] ?? null
+    return parseInsightJsonDoc(data?.insightJson)
   } catch {
     return null
   }
@@ -619,12 +971,11 @@ export async function writeInsightJsonDocForPost(
   doc: InsightJsonDoc,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const { error } = await supabase
-      .from('news_items')
-      .update({ insight_json: doc })
-      .eq('id', normalizeNewsItemId(postId))
+    await db
+      .update(newsItems)
+      .set({ insightJson: doc })
+      .where(eq(newsItems.id, normalizeNewsItemId(postId)))
 
-    if (error) return { ok: false, error: error.message }
     return { ok: true }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
@@ -637,32 +988,25 @@ export async function mergeInsightGlobalPayload(
   payload: InsightAnalysisPayload
 ): Promise<void> {
   try {
-    const { data, error } = await supabase
-      .from('news_items')
-      .select('insight_json')
-      .eq('id', postId)
-      .maybeSingle()
+    const rows = await db
+      .select({ insightJson: newsItems.insightJson })
+      .from(newsItems)
+      .where(eq(newsItems.id, postId))
+      .limit(1)
 
-    if (error) {
-      console.warn('[insight_json] global read skipped:', error.message)
-      return
-    }
+    const data = rows[0] ?? null
 
-    const prev = parseInsightJsonDoc(data?.insight_json)
+    const prev = parseInsightJsonDoc(data?.insightJson)
     const doc: InsightJsonDoc = {
       v: 2,
       global: payload,
       bySourcesSig: prev?.bySourcesSig ?? {},
     }
 
-    const { error: upErr } = await supabase
-      .from('news_items')
-      .update({ insight_json: doc })
-      .eq('id', postId)
-
-    if (upErr) {
-      console.warn('[insight_json] global update skipped:', upErr.message)
-    }
+    await db
+      .update(newsItems)
+      .set({ insightJson: doc })
+      .where(eq(newsItems.id, postId))
   } catch (e) {
     console.warn('[insight_json] global persist skipped', e)
   }

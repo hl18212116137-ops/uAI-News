@@ -1,14 +1,19 @@
 "use client";
 
-import type { User } from "@supabase/supabase-js";
+import type { AuthUser } from "@/lib/auth";
+import dynamic from "next/dynamic";
 import TopBar from "@/components/TopBar";
 import { HomeLayoutProvider, useOptionalHomeLayout } from "@/components/HomeLayoutContext";
+
+const LoginModalShell = dynamic(() => import("@/components/LoginModalShell"), {
+  ssr: false,
+});
 
 function HomePageShellInner({
   user,
   children,
 }: {
-  user: User | null;
+  user: AuthUser | null;
   children: React.ReactNode;
 }) {
   const layout = useOptionalHomeLayout();
@@ -26,6 +31,7 @@ function HomePageShellInner({
         onToggleSourcesListCollapsed={layout.toggleSourcesListCollapsed}
         analysisPanelOpen={layout.analysisPanelOpen}
         onCollapseAnalysisSidebar={() => layout.onCollapseAnalysisRef.current?.()}
+        onOpenFetchPipelineSettings={() => layout.setFetchPipelinePanelOpen(true)}
       />
 
       <div className="w-full shrink-0 pt-14">
@@ -38,6 +44,10 @@ function HomePageShellInner({
       </div>
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+
+      {layout.isLoginModalOpen ? (
+        <LoginModalShell controlledOpen onControlledClose={layout.closeLoginModal} />
+      ) : null}
     </div>
   );
 }
@@ -49,7 +59,7 @@ export default function HomePageShell({
   user,
   children,
 }: {
-  user: User | null;
+  user: AuthUser | null;
   children: React.ReactNode;
 }) {
   return (

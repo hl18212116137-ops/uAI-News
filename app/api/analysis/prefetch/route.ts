@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getPersistedInsightsForReadBatch, normalizeNewsItemId } from "@/lib/db/news";
 import type { InsightAnalysisPayload } from "@/lib/types";
 
-const MAX_IDS = 48;
+const MAX_IDS = 16;
 
 /**
  * 仅读库中已写入的 INSIGHT（insight_json），不调用 AI、不占 /api/analysis 限流。

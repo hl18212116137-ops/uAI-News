@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import type { User } from "@supabase/supabase-js";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { TopBarProfileGlyph } from "@/components/top-bar-icons";
 
+type UserMenuUser = {
+  id: string;
+  email: string;
+  name?: string | null;
+};
+
 type UserMenuProps = {
-  user: User;
-  /** Figma 3:2668 顶栏：2686/2687 嵌套，外层 36×36 · rounded-[6px] */
+  user: UserMenuUser;
   variant?: "default" | "toolbar";
-  /** 双折叠顶栏 43:5039 / 43:5040 等稿面节点覆盖 */
   toolbarOuterNodeId?: string;
   toolbarInnerNodeId?: string;
 };
@@ -24,7 +25,6 @@ export default function UserMenu({
   const [isOpen, setIsOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -36,34 +36,23 @@ export default function UserMenu({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const displayName =
-    user.user_metadata?.full_name || user.email?.split("@")[0] || "用户";
-
-  const avatarUrl = user.user_metadata?.avatar_url;
+  const displayName = user.name || user.email?.split("@")[0] || "用户";
 
   const handleSignOut = async () => {
     setIsLoggingOut(true);
-    const supabase = createSupabaseBrowserClient();
-    await supabase.auth.signOut();
+    const { signOut } = await import("next-auth/react");
+    await signOut({ redirect: false });
     setIsOpen(false);
-    router.refresh();
+    window.location.assign("/");
   };
 
   const isToolbar = variant === "toolbar";
 
   const defaultTriggerInner = (
     <>
-      {avatarUrl ? (
-        <img
-          src={avatarUrl}
-          alt={displayName}
-          className="h-9 w-9 shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#101828]">
-          <span className="text-sm font-semibold text-white">{displayName.charAt(0).toUpperCase()}</span>
-        </div>
-      )}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#101828]">
+        <span className="text-sm font-semibold text-white">{displayName.charAt(0).toUpperCase()}</span>
+      </div>
       <span className="hidden max-w-[120px] truncate text-sm font-medium text-[#101828] sm:block">
         {displayName}
       </span>
@@ -92,15 +81,7 @@ export default function UserMenu({
               data-node-id={toolbarInnerNodeId}
               className="relative flex size-5 shrink-0 items-center justify-center"
             >
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt={displayName}
-                  className="block size-full rounded-[6px] object-cover"
-                />
-              ) : (
-                <TopBarProfileGlyph className="block size-full max-w-none object-contain text-[#111113]" />
-              )}
+              <TopBarProfileGlyph className="block size-full max-w-none object-contain text-[#111113]" />
             </span>
           </button>
         </div>

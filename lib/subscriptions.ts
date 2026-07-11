@@ -1,30 +1,217 @@
 import 'server-only'
+import { db } from '@/lib/db/drizzle'
+import { userSourceSubscriptions, newsItems, sources } from '@/lib/db/schema'
+import { eq, and, desc, gte, inArray, isNotNull, notLike, or, sql } from 'drizzle-orm'
 import {
   mediaUrlsFromDbJson,
+  longformArticleFromDbJson,
   referencedPostFromDbJson,
   socialEngagementFromDbJson,
+  withCanonicalPostSourceUrl,
 } from '@/lib/db/news'
-import { supabase } from './supabase'
 import { NewsItem } from './types'
 import { mergeDemoPostsIfFeedEmpty } from './demo-feed-posts'
+import { scheduleStaleSourceFetches } from './feed-stale-fetch'
 import { fetchSourceProfilesByHandles, mergeSourceProfilesIntoPosts } from './news-source-enrichment'
-import { defaultBioForSourceNotInDb } from './source-bio-fallback'
-import { expandHandleQueryVariants, resolveSourceAvatarUrl } from './source-avatar'
-import { getFeedPublishedAtGte } from './feed-window'
+import { expandHandleQueryVariants, normalizeSourceHandle } from './source-avatar'
+import { resolveSourceHomeUrl } from './source-home-url'
+import { resolveSourceProfile } from './source-profile'
+import {
+  getFeedPublishedAtGte,
+  getRecommendationFeedPublishedAtGte,
+  getRecentlyFetchedFeedCreatedAtGte,
+} from './feed-window'
+import { cleanNewsTitle } from '@/lib/news-title-cleanup'
+import { applyRecommendationToPosts, getUserRecommendationVisibleDays } from '@/lib/user-pipeline-rules'
+import { dedupeNewsItemsForDisplay } from '@/lib/news-dedupe'
+import { diversifyNewsItemsBySource } from '@/lib/feed-diversity'
+import { compareNewsItemsForFeedDisplay } from '@/lib/feed-sort'
+import {
+  filterPostsForPublicFeed,
+  getFeedMinImportanceScore,
+  RECOMMENDED_SIDEBAR_LIMIT,
+} from '@/lib/feed-quality'
+import { getPromotedPassedPostRefsForUser, getUserPassedPostIdsForUser } from '@/lib/db/pass-logs'
+import type { SourceType } from '@/lib/sources'
+
+/** 排除本地种子帖（source_url 为假 status，外链会 404） */
+const EXCLUDE_PLACEHOLDER_NEWS = notLike(newsItems.id, 'seed-%')
 
 /** news_items 列：与列表 + INSIGHT 首包映射一致；避免 select('*') 随表膨胀 */
-const NEWS_ITEMS_FEED_COLUMNS =
-  'id,title,summary,content,source_platform,source_name,source_handle,source_url,category,published_at,original_text,created_at,importance_score,media_urls,social_engagement,referenced_post'
+const NEWS_ITEMS_FEED_COLUMNS = {
+  id: newsItems.id,
+  title: newsItems.title,
+  summary: newsItems.summary,
+  content: newsItems.content,
+  sourcePlatform: newsItems.sourcePlatform,
+  sourceName: newsItems.sourceName,
+  sourceHandle: newsItems.sourceHandle,
+  sourceUrl: newsItems.sourceUrl,
+  category: newsItems.category,
+  publishedAt: newsItems.publishedAt,
+  originalText: newsItems.originalText,
+  createdAt: newsItems.createdAt,
+  importanceScore: newsItems.importanceScore,
+  mediaUrls: newsItems.mediaUrls,
+  socialEngagement: newsItems.socialEngagement,
+  referencedPost: newsItems.referencedPost,
+  longformJson: newsItems.longformJson,
+}
 
-type SourceMeta = {
+type NewsFeedRow = {
+  id: string
+  title: string
+  summary: string
+  content: string
+  sourcePlatform: string | null
+  sourceName: string | null
+  sourceHandle: string | null
+  sourceUrl: string | null
+  category: string | null
+  publishedAt: Date | string
+  originalText: string | null
+  createdAt: Date | string
+  importanceScore: number | null
+  mediaUrls: unknown
+  socialEngagement: unknown
+  referencedPost: unknown
+  longformJson: unknown
+}
+
+function mapRowToNewsItem(row: NewsFeedRow): NewsItem {
+  return withCanonicalPostSourceUrl({
+    id: row.id,
+    title: cleanNewsTitle(row.title),
+    summary: row.summary,
+    content: row.content,
+    source: {
+      platform: row.sourcePlatform as NewsItem['source']['platform'],
+      name: row.sourceName ?? '',
+      handle: row.sourceHandle ?? '',
+      url: row.sourceUrl ?? '',
+    },
+    category: row.category as NewsItem['category'],
+    publishedAt: row.publishedAt instanceof Date ? row.publishedAt.toISOString() : row.publishedAt,
+    originalText: row.originalText ?? '',
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+    importanceScore: row.importanceScore ?? undefined,
+    mediaUrls: mediaUrlsFromDbJson(row.mediaUrls),
+    socialEngagement: socialEngagementFromDbJson(row.socialEngagement),
+    referencedPost: referencedPostFromDbJson(row.referencedPost),
+    longform: longformArticleFromDbJson(row.longformJson),
+  })
+}
+
+export type SourceMeta = {
   id: string
   handle: string
   name: string
-  avatar?: string
-  description?: string
+  url?: string
+  avatar: string
+  description: string
+  enabled?: boolean
   postCount: number
+  totalPostCount?: number
   latestPostTime?: string
-  sourceType?: 'blogger' | 'media' | 'academic'
+  sourceType?: SourceType
+}
+
+type SourcePostStats = {
+  count: number
+  total: number
+  latest?: string
+}
+
+function normalizeSourceType(value: string | null | undefined): SourceType {
+  return value === 'media' || value === 'academic' ? value : 'blogger'
+}
+
+function dateToIso(value: unknown): string | undefined {
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'string' && value.trim()) return value
+  return undefined
+}
+
+function mergeSourcePostStats(
+  map: Map<string, SourcePostStats>,
+  handle: string | null | undefined,
+  count: unknown,
+  total: unknown,
+  latest: unknown
+) {
+  const key = normalizeSourceHandle(handle)
+  if (!key) return
+
+  const latestIso = dateToIso(latest)
+  const prev = map.get(key) ?? { count: 0, total: 0, latest: undefined }
+  const nextLatest =
+    latestIso && (!prev.latest || latestIso > prev.latest) ? latestIso : prev.latest
+
+  map.set(key, {
+    count: prev.count + Number(count ?? 0),
+    total: prev.total + Number(total ?? 0),
+    latest: nextLatest,
+  })
+}
+
+async function getSourcePostStatsByHandle(
+  handles: string[],
+  since: Date
+): Promise<Map<string, SourcePostStats>> {
+  const variants = expandHandleQueryVariants(handles)
+  if (variants.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      sourceHandle: newsItems.sourceHandle,
+      postCount: sql<number>`sum(case when ${newsItems.publishedAt} >= ${since} then 1 else 0 end)::int`,
+      totalPostCount: sql<number>`count(*)::int`,
+      latestPostTime: sql<Date | string | null>`max(${newsItems.publishedAt})`,
+    })
+    .from(newsItems)
+    .where(
+      and(
+        EXCLUDE_PLACEHOLDER_NEWS,
+        inArray(newsItems.sourceHandle, variants)
+      )
+    )
+    .groupBy(newsItems.sourceHandle)
+
+  const out = new Map<string, SourcePostStats>()
+  for (const row of rows) {
+    mergeSourcePostStats(out, row.sourceHandle, row.postCount, row.totalPostCount, row.latestPostTime)
+  }
+  return out
+}
+
+/** 保证侧栏/API 返回的 SourceMeta 始终带头像 URL 与非空简介 */
+function withResolvedSourceProfile(row: {
+  id: string
+  handle: string
+  name: string
+  url?: string | null
+  avatar?: string | null
+  description?: string | null
+  platform?: string | null
+  enabled?: boolean
+  postCount: number
+  totalPostCount?: number
+  latestPostTime?: string
+  sourceType?: string
+}): SourceMeta {
+  const profile = resolveSourceProfile({
+    handle: row.handle,
+    platform: row.platform ?? 'X',
+    avatar: row.avatar,
+    description: row.description,
+  })
+  return {
+    ...row,
+    url: resolveSourceHomeUrl(row),
+    avatar: profile.avatar,
+    description: profile.description,
+    sourceType: normalizeSourceType(row.sourceType),
+  }
 }
 
 export type GetRecommendedSourcesOptions = {
@@ -32,6 +219,8 @@ export type GetRecommendedSourcesOptions = {
   pickRandom?: boolean
   /** 刷新「换一批」时排除当前已展示的推荐 id */
   excludeSourceIds?: string[]
+  /** 刷新时排除当前已展示的 handle（比 id 更可靠，兼容 demo id） */
+  excludeHandles?: string[]
 }
 
 function shuffleInPlace<T>(arr: T[]): void {
@@ -46,19 +235,16 @@ function shuffleInPlace<T>(arr: T[]): void {
  */
 export async function getUserSubscribedHandles(userId: string): Promise<string[]> {
   try {
-    const { data, error } = await supabase
-      .from('user_source_subscriptions')
-      .select('source_handle')
-      .eq('user_id', userId)
+    const rows = await db
+      .select({ sourceHandle: userSourceSubscriptions.sourceHandle })
+      .from(userSourceSubscriptions)
+      .where(eq(userSourceSubscriptions.userId, userId))
 
-    if (error) {
-      console.error('Failed to get subscribed handles:', error)
-      return []
-    }
-
-    return (data || []).map((row: any) => row.source_handle)
+    return rows
+      .map(row => row.sourceHandle)
+      .filter((h): h is string => h != null)
   } catch (error) {
-    console.error('Failed to get subscribed handles:', error)
+    console.warn('Failed to get subscribed handles:', error)
     return []
   }
 }
@@ -68,19 +254,14 @@ export async function getUserSubscribedHandles(userId: string): Promise<string[]
  */
 export async function getUserSubscribedSourceIds(userId: string): Promise<string[]> {
   try {
-    const { data, error } = await supabase
-      .from('user_source_subscriptions')
-      .select('source_id')
-      .eq('user_id', userId)
+    const rows = await db
+      .select({ sourceId: userSourceSubscriptions.sourceId })
+      .from(userSourceSubscriptions)
+      .where(eq(userSourceSubscriptions.userId, userId))
 
-    if (error) {
-      console.error('Failed to get subscribed source ids:', error)
-      return []
-    }
-
-    return (data || []).map((row: any) => row.source_id)
+    return rows.map(row => row.sourceId)
   } catch (error) {
-    console.error('Failed to get subscribed source ids:', error)
+    console.warn('Failed to get subscribed source ids:', error)
     return []
   }
 }
@@ -94,21 +275,79 @@ export async function subscribeSource(
   sourceId: string,
   sourceHandle: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('user_source_subscriptions')
-    .insert({ user_id: userId, source_id: sourceId, source_handle: sourceHandle })
+  const { resolveSubscriptionSourceId } = await import('@/lib/resolve-subscription-source-id')
+  const resolvedId = await resolveSubscriptionSourceId(sourceId, sourceHandle)
+  await db
+    .insert(userSourceSubscriptions)
+    .values({ userId, sourceId: resolvedId, sourceHandle })
+    .onConflictDoNothing()
+}
 
-  if (error) {
-    // 唯一约束冲突（重复订阅）→ 静默忽略
-    if (error.code !== '23505') {
-      console.error('Failed to subscribe source:', error)
-      throw error
-    }
+const DEFAULT_GUEST_HANDLES = ["karpathy", "sama", "ylecun"]
+
+async function getDefaultSubscriptionCandidates(
+  defaultCount: number
+): Promise<Array<{ id: string; handle: string }>> {
+  const recentPostRows = await db
+    .select({ handle: newsItems.sourceHandle })
+    .from(newsItems)
+    .where(and(EXCLUDE_PLACEHOLDER_NEWS, isNotNull(newsItems.sourceHandle)))
+    .orderBy(desc(newsItems.publishedAt))
+    .limit(Math.max(30, defaultCount * 20))
+
+  const recentHandles = Array.from(
+    new Set(
+      recentPostRows
+        .map((row) => String(row.handle ?? "").trim())
+        .filter(Boolean)
+    )
+  )
+  const preferredHandles = [...recentHandles, ...DEFAULT_GUEST_HANDLES]
+  const preferredRows = await db
+    .select({ id: sources.id, handle: sources.handle })
+    .from(sources)
+    .where(
+      and(
+        eq(sources.enabled, true),
+        inArray(sources.handle, expandHandleQueryVariants(preferredHandles))
+      )
+    )
+
+  const preferredByHandle = new Map(
+    preferredRows.map((row) => [String(row.handle).toLowerCase(), row])
+  )
+  const picked: Array<{ id: string; handle: string }> = []
+  const pickedHandles = new Set<string>()
+
+  for (const handle of preferredHandles) {
+    const normalized = handle.toLowerCase()
+    const row = preferredByHandle.get(normalized)
+    if (!row || pickedHandles.has(normalized)) continue
+    picked.push(row)
+    pickedHandles.add(normalized)
+    if (picked.length >= defaultCount) return picked
   }
+
+  const fallbackRows = await db
+    .select({ id: sources.id, handle: sources.handle })
+    .from(sources)
+    .where(eq(sources.enabled, true))
+    .orderBy(desc(sources.addedAt))
+    .limit(defaultCount * 3)
+
+  for (const row of fallbackRows) {
+    const normalized = String(row.handle).toLowerCase()
+    if (pickedHandles.has(normalized)) continue
+    picked.push(row)
+    pickedHandles.add(normalized)
+    if (picked.length >= defaultCount) break
+  }
+
+  return picked
 }
 
 /**
- * 为“新用户/首次进入”自动补齐默认订阅（3条）
+ * 为"新用户/首次进入"自动补齐默认订阅（3条）
  *
  * 长远考虑：
  * - 不强依赖固定 handles（因为不同环境 sources 表可能不同）
@@ -116,188 +355,89 @@ export async function subscribeSource(
  */
 export async function ensureDefaultSubscriptions(userId: string, defaultCount = 3): Promise<void> {
   try {
-    // 只要存在 1 条订阅，就认为无需补齐
-    const { data: existing, error: existError } = await supabase
-      .from('user_source_subscriptions')
-      .select('source_id')
-      .eq('user_id', userId)
-      .limit(1);
+    const existing = await db
+      .select({ sourceId: userSourceSubscriptions.sourceId })
+      .from(userSourceSubscriptions)
+      .where(eq(userSourceSubscriptions.userId, userId))
+      .limit(1)
 
-    if (existError) {
-      console.error('Failed to check user subscriptions:', existError);
-      return;
-    }
+    if (existing.length > 0) return
 
-    if (existing && existing.length > 0) return;
+    const enabledSources = await getDefaultSubscriptionCandidates(defaultCount)
 
-    // 占位默认订阅源（之后你可以替换成最终 Figma 对应的 handles）
-    const placeholderHandles = ['karpathy', 'sama', 'ylecun'];
+    if (enabledSources.length === 0) return
 
-    const desired = placeholderHandles.slice(0, defaultCount);
+    const inserts = enabledSources.slice(0, defaultCount).map(s => ({
+      userId,
+      sourceId: s.id,
+      sourceHandle: s.handle,
+    }))
 
-    // 1) 优先找这几个 handle 对应的 enabled sources
-    const { data: desiredSources, error: desiredError } = await supabase
-      .from('sources')
-      .select('id, handle')
-      .eq('enabled', true)
-      .in('handle', desired);
+    await db.insert(userSourceSubscriptions).values(inserts).onConflictDoNothing()
 
-    if (desiredError) {
-      console.error('Failed to fetch desired default sources:', desiredError);
-      return;
-    }
-
-    const picked = (desiredSources || []).slice(0, defaultCount);
-    const pickedHandles = new Set(picked.map((s: any) => String(s.handle).toLowerCase()));
-
-    // 2) 不足时，用 enabled 最新的 sources 补齐，保证“3 条”可用
-    let enabledSources = picked;
-    if (enabledSources.length < defaultCount) {
-      const { data: fallbackSources, error: fallbackError } = await supabase
-        .from('sources')
-        .select('id, handle')
-        .eq('enabled', true)
-        .order('added_at', { ascending: false })
-        .limit(defaultCount * 2);
-
-      if (fallbackError) {
-        console.error('Failed to fetch fallback default sources:', fallbackError);
-        return;
-      }
-
-      const fill = (fallbackSources || [])
-        .filter((s: any) => !pickedHandles.has(String(s.handle).toLowerCase()))
-        .slice(0, defaultCount - enabledSources.length);
-
-      enabledSources = [...enabledSources, ...fill];
-    }
-
-    if (!enabledSources || enabledSources.length === 0) return;
-
-    const inserts = enabledSources.slice(0, defaultCount).map((s: any) => ({
-      user_id: userId,
-      source_id: s.id,
-      source_handle: s.handle,
-    }));
-
-    const { error: insertError } = await supabase
-      .from('user_source_subscriptions')
-      .insert(inserts);
-
-    if (insertError && insertError.code !== '23505') {
-      // unique 冲突忽略，其它错误直接记日志
-      console.error('Failed to insert default subscriptions:', insertError);
-    }
+    const handles = enabledSources.slice(0, defaultCount).map((s) => String(s.handle))
+    scheduleStaleSourceFetches(handles)
   } catch (error) {
-    console.error('ensureDefaultSubscriptions error:', error);
+    console.warn('ensureDefaultSubscriptions error:', error)
   }
 }
 
-const DEFAULT_GUEST_HANDLES = ["karpathy", "sama", "ylecun"];
-
 /**
- * 为“未登录用户/访客”选择默认订阅 source handles（不写入 DB，只做读取）
+ * 为"未登录用户/访客"选择默认订阅 source handles（不写入 DB，只做读取）
  * - 优先从 placeholders 找 enabled=true 的源
  * - 不足时用 enabled=true 最新 added_at 的源补齐
  */
 export async function getDefaultSubscribedHandles(defaultCount = 3): Promise<string[]> {
-  // 只在 placeholders 命中不足时才查 fallback，减少无谓查询
-  const desired = DEFAULT_GUEST_HANDLES.slice(0, defaultCount);
-
   try {
-  const { data: desiredSources, error: desiredError } = await supabase
-    .from("sources")
-    .select("handle")
-    .eq("enabled", true)
-    .in("handle", desired);
-
-  if (desiredError) {
-    console.error("Failed to fetch desired default handles:", desiredError);
-    return desired;
-  }
-
-  const picked = (desiredSources || []).slice(0, defaultCount).map((s: any) => String(s.handle));
-  const pickedSet = new Set(picked.map((h) => h.toLowerCase()));
-
-  if (picked.length >= defaultCount) return picked;
-
-  const { data: fallbackSources, error: fallbackError } = await supabase
-    .from("sources")
-    .select("handle")
-    .eq("enabled", true)
-    .order("added_at", { ascending: false })
-    .limit(defaultCount * 2);
-
-  if (fallbackError) {
-    console.error("Failed to fetch fallback default handles:", fallbackError);
-    return picked;
-  }
-
-  const fill = (fallbackSources || [])
-    .map((s: any) => String(s.handle))
-    .filter((h) => !pickedSet.has(h.toLowerCase()))
-    .slice(0, defaultCount - picked.length);
-
-  return [...picked, ...fill];
+    const candidates = await getDefaultSubscriptionCandidates(defaultCount)
+    return candidates.map((source) => String(source.handle))
   } catch (err) {
-    console.error("getDefaultSubscribedHandles error:", err);
-    return desired;
+    console.warn("getDefaultSubscribedHandles error:", err)
+    return DEFAULT_GUEST_HANDLES.slice(0, defaultCount)
   }
 }
 
 /**
  * 基于 source handles 直接获取 feed（用于未登录访客）
  */
-export async function getFeedByHandles(handles: string[]): Promise<NewsItem[]> {
+export async function getFeedByHandles(handles: string[], limit = 40): Promise<NewsItem[]> {
   try {
-    const normalized = handles.map((h) => h.trim()).filter(Boolean);
-    if (normalized.length === 0) return [];
+    const normalized = handles.map(h => h.trim()).filter(Boolean)
+    if (normalized.length === 0) return []
+    const cappedLimit = Math.max(1, Math.min(120, Math.floor(limit)))
 
-    const feedSince = getFeedPublishedAtGte();
-    const { data, error } = await supabase
-      .from("news_items")
-      .select(NEWS_ITEMS_FEED_COLUMNS)
-      .in("source_handle", normalized)
-      .gte("published_at", feedSince)
-      .order("published_at", { ascending: false });
+    const feedSince = getFeedPublishedAtGte()
+    const handleVariants = expandHandleQueryVariants(normalized)
+    const profilesPromise = fetchSourceProfilesByHandles(normalized)
+    const [data, profiles] = await Promise.all([
+      db
+        .select(NEWS_ITEMS_FEED_COLUMNS)
+        .from(newsItems)
+        .where(and(
+          EXCLUDE_PLACEHOLDER_NEWS,
+          inArray(newsItems.sourceHandle, handleVariants),
+          gte(newsItems.publishedAt, feedSince),
+        ))
+        .orderBy(desc(newsItems.publishedAt))
+        .limit(cappedLimit),
+      profilesPromise,
+    ])
 
-    if (error) {
-      console.error("Failed to get feed by handles:", error);
-      const demo = mergeDemoPostsIfFeedEmpty([], normalized);
-      const profiles = await fetchSourceProfilesByHandles(normalized);
-      return mergeSourceProfilesIntoPosts(demo, profiles);
+    const mapped = data.map(mapRowToNewsItem)
+    const enriched = mergeSourceProfilesIntoPosts(mapped, profiles)
+    const curated = diversifyNewsItemsBySource(
+      dedupeNewsItemsForDisplay(filterPostsForPublicFeed(enriched))
+    )
+    if (curated.length === 0) {
+      scheduleStaleSourceFetches(normalized)
     }
-
-    const mapped = (data || []).map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      summary: row.summary,
-      content: row.content,
-      source: {
-        platform: row.source_platform,
-        name: row.source_name,
-        handle: row.source_handle,
-        url: row.source_url,
-      },
-      category: row.category,
-      publishedAt: row.published_at,
-      originalText: row.original_text,
-      createdAt: row.created_at,
-      importanceScore: row.importance_score,
-      mediaUrls: mediaUrlsFromDbJson(row.media_urls),
-      socialEngagement: socialEngagementFromDbJson(row.social_engagement),
-      referencedPost: referencedPostFromDbJson(row.referenced_post),
-    })) as NewsItem[];
-
-    const profiles = await fetchSourceProfilesByHandles(normalized);
-    const enriched = mergeSourceProfilesIntoPosts(mapped, profiles);
-    return mergeDemoPostsIfFeedEmpty(enriched, normalized);
+    return mergeDemoPostsIfFeedEmpty(curated, normalized)
   } catch (error) {
-    console.error("Failed to get feed by handles:", error);
-    const normalized = handles.map((h) => h.trim()).filter(Boolean);
-    const demo = mergeDemoPostsIfFeedEmpty([], normalized);
-    const profiles = await fetchSourceProfilesByHandles(normalized);
-    return mergeSourceProfilesIntoPosts(demo, profiles);
+    console.warn("Failed to get feed by handles:", error)
+    const normalized = handles.map(h => h.trim()).filter(Boolean)
+    const demo = mergeDemoPostsIfFeedEmpty([], normalized)
+    const profiles = await fetchSourceProfilesByHandles(normalized)
+    return mergeSourceProfilesIntoPosts(demo, profiles)
   }
 }
 
@@ -306,127 +446,114 @@ export async function getFeedByHandles(handles: string[]): Promise<NewsItem[]> {
  */
 export async function getSubscribedSourcesMetaByHandles(handles: string[]): Promise<SourceMeta[]> {
   try {
-    const normalized = handles.map((h) => h.trim()).filter(Boolean);
-    if (normalized.length === 0) return [];
+    const normalized = handles.map(h => h.trim()).filter(Boolean)
+    if (normalized.length === 0) return []
 
     const nameMap: Record<string, string> = {
       karpathy: "Andrej Karpathy",
       sama: "Sam Altman",
       ylecun: "Yann LeCun",
-    };
-
-    const fallbackMeta = (): SourceMeta[] =>
-      normalized.slice(0, 3).map((h) => ({
-        id: `guest-${h.toLowerCase()}`,
-        handle: h,
-        name: nameMap[h.toLowerCase()] || h,
-        avatar: resolveSourceAvatarUrl(h, undefined, "x"),
-        description: defaultBioForSourceNotInDb(h),
-        postCount: 0,
-        latestPostTime: undefined,
-        sourceType: "blogger",
-      }));
-
-    // 1) 先拿到这些 handles 对应的 sources 基础信息
-    const { data: sourcesData, error: sourcesError } = await supabase
-      .from("sources")
-      .select("*")
-      .in("handle", expandHandleQueryVariants(normalized))
-      .eq("enabled", true);
-
-    if (sourcesError) {
-      console.error("Failed to fetch sources meta by handles:", sourcesError);
-      return fallbackMeta();
     }
 
-    const sources = (sourcesData || []).map((row: any) => ({
+    const sourcesData = await db
+      .select({
+        id: sources.id,
+        handle: sources.handle,
+        name: sources.name,
+        url: sources.url,
+        avatar: sources.avatar,
+        description: sources.description,
+        enabled: sources.enabled,
+        sourceType: sources.sourceType,
+        platform: sources.platform,
+      })
+      .from(sources)
+      .where(and(
+        inArray(sources.handle, expandHandleQueryVariants(normalized)),
+        eq(sources.enabled, true),
+      ))
+
+    const srcs = sourcesData.map(row => ({
       id: row.id,
       handle: row.handle,
       name: row.name,
+      url: row.url,
       avatar: row.avatar,
       description: row.description,
-      sourceType: row.source_type,
+      enabled: row.enabled,
+      sourceType: row.sourceType,
       platform: row.platform,
-    }));
+    }))
 
-    const handleToSource = new Map<string, typeof sources[number]>();
-    for (const s of sources) handleToSource.set(String(s.handle).toLowerCase(), s);
+    const handleToSource = new Map<string, typeof srcs[number]>()
+    for (const s of srcs) handleToSource.set(normalizeSourceHandle(s.handle), s)
 
-    // 2) 聚合 news_items 的 postCount / latestPostTime（与 feed 可见窗口一致）
-    const feedSinceMeta = getFeedPublishedAtGte();
-    const { data: postCounts, error: countsError } = await supabase
-      .from("news_items")
-      .select("source_handle, published_at")
-      .in("source_handle", normalized)
-      .gte("published_at", feedSinceMeta);
-
-    if (countsError) {
-      console.error("Failed to aggregate post counts by handles:", countsError);
+    const feedSinceMeta = getFeedPublishedAtGte()
+    let countMap = new Map<string, SourcePostStats>()
+    try {
+      countMap = await getSourcePostStatsByHandle(normalized, feedSinceMeta)
+    } catch (err) {
+      console.warn("Failed to aggregate post counts by handles:", err)
     }
 
-    const countMap = new Map<string, { count: number; latest?: string }>();
-    for (const item of postCounts || []) {
-      const h = String(item.source_handle).toLowerCase();
-      const publishedAt = item.published_at;
-      const prev = countMap.get(h) || { count: 0, latest: undefined };
-      const nextLatest =
-        prev.latest && publishedAt ? (new Date(publishedAt).getTime() > new Date(prev.latest).getTime() ? publishedAt : prev.latest) : publishedAt;
-      countMap.set(h, { count: prev.count + 1, latest: nextLatest });
-    }
+    const guestRow = (h: string): SourceMeta =>
+      withResolvedSourceProfile({
+        id: `guest-${h.toLowerCase()}`,
+        handle: h,
+        name: nameMap[h.toLowerCase()] || h,
+        postCount: 0,
+        latestPostTime: undefined,
+        sourceType: "blogger",
+        platform: 'X',
+      })
 
-    const guestRow = (h: string): SourceMeta => ({
-      id: `guest-${h.toLowerCase()}`,
-      handle: h,
-      name: nameMap[h.toLowerCase()] || h,
-      avatar: resolveSourceAvatarUrl(h, undefined, "x"),
-      description: defaultBioForSourceNotInDb(h),
-      postCount: 0,
-      latestPostTime: undefined,
-      sourceType: "blogger",
-    });
-
-    // 3) 输出顺序与 handles 输入一致；库中无 enabled 行时仍返回占位（与 fallback 一致）
-    const out: SourceMeta[] = [];
+    const out: SourceMeta[] = []
     for (const h of normalized) {
-      const key = h.toLowerCase();
-      const src = handleToSource.get(key);
-      const meta = countMap.get(key) || { count: 0, latest: undefined };
+      const key = normalizeSourceHandle(h)
+      const src = handleToSource.get(key)
+      const meta = countMap.get(key) || { count: 0, total: 0, latest: undefined }
       if (src) {
-        out.push({
-          id: src.id,
-          handle: src.handle,
-          name: src.name,
-          avatar: resolveSourceAvatarUrl(src.handle, src.avatar, src.platform),
-          description: src.description,
-          postCount: meta.count,
-          latestPostTime: meta.latest,
-          sourceType: src.sourceType as any,
-        });
+        out.push(
+          withResolvedSourceProfile({
+            id: src.id,
+            handle: src.handle,
+            name: src.name,
+            url: src.url,
+            avatar: src.avatar,
+            description: src.description,
+            platform: src.platform,
+            enabled: src.enabled,
+            postCount: meta.count,
+            totalPostCount: meta.total,
+            latestPostTime: meta.latest,
+            sourceType: normalizeSourceType(src.sourceType),
+          })
+        )
       } else {
-        out.push(guestRow(h));
+        out.push(guestRow(h))
       }
     }
 
-    return out;
+    return out
   } catch (error) {
-    console.error("getSubscribedSourcesMetaByHandles error:", error);
-    // 断网/环境未配置时，至少给 UI 返回默认 SOURCES 占位，避免“展不开/空白”的观感
-    const normalized = handles.map((h) => h.trim()).filter(Boolean);
+    console.warn("getSubscribedSourcesMetaByHandles error:", error)
+    const normalized = handles.map(h => h.trim()).filter(Boolean)
     const nameMap: Record<string, string> = {
       karpathy: "Andrej Karpathy",
       sama: "Sam Altman",
       ylecun: "Yann LeCun",
-    };
-    return normalized.slice(0, 3).map((h) => ({
-      id: `guest-${h.toLowerCase()}`,
-      handle: h,
-      name: nameMap[h.toLowerCase()] || h,
-      avatar: resolveSourceAvatarUrl(h, undefined, "x"),
-      description: defaultBioForSourceNotInDb(h),
-      postCount: 0,
-      latestPostTime: undefined,
-      sourceType: "blogger",
-    }));
+    }
+    return normalized.slice(0, 3).map((h) =>
+      withResolvedSourceProfile({
+        id: `guest-${h.toLowerCase()}`,
+        handle: h,
+        name: nameMap[h.toLowerCase()] || h,
+        postCount: 0,
+        latestPostTime: undefined,
+        sourceType: "blogger",
+        platform: 'X',
+      })
+    )
   }
 }
 
@@ -438,32 +565,28 @@ export async function isUserSubscribedToSource(
   sourceId: string
 ): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from('user_source_subscriptions')
-      .select('source_id')
-      .eq('user_id', userId)
-      .eq('source_id', sourceId)
+    const rows = await db
+      .select({ sourceId: userSourceSubscriptions.sourceId })
+      .from(userSourceSubscriptions)
+      .where(and(
+        eq(userSourceSubscriptions.userId, userId),
+        eq(userSourceSubscriptions.sourceId, sourceId),
+      ))
       .limit(1)
-      .maybeSingle()
 
-    if (error) return false
-    return !!data
+    return rows.length > 0
   } catch {
     return false
   }
 }
 
 export async function unsubscribeSource(userId: string, sourceId: string): Promise<void> {
-  const { error } = await supabase
-    .from('user_source_subscriptions')
-    .delete()
-    .eq('user_id', userId)
-    .eq('source_id', sourceId)
-
-  if (error) {
-    console.error('Failed to unsubscribe source:', error)
-    throw error
-  }
+  await db
+    .delete(userSourceSubscriptions)
+    .where(and(
+      eq(userSourceSubscriptions.userId, userId),
+      eq(userSourceSubscriptions.sourceId, sourceId),
+    ))
 }
 
 /**
@@ -477,56 +600,65 @@ export async function getSubscribedFeed(
   try {
     const handles =
       subscribedHandles !== undefined
-        ? subscribedHandles.map((h) => h.trim()).filter(Boolean)
+        ? subscribedHandles.map(h => h.trim()).filter(Boolean)
         : await getUserSubscribedHandles(userId)
 
     if (handles.length === 0) return []
 
-    const feedSinceSub = getFeedPublishedAtGte()
-    const { data, error } = await supabase
-      .from('news_items')
-      .select(NEWS_ITEMS_FEED_COLUMNS)
-      .in('source_handle', handles)
-      .gte('published_at', feedSinceSub)
-      .order('published_at', { ascending: false })
+    const profilesPromise = fetchSourceProfilesByHandles(handles)
+    const [userRecDays, promotedRefs, userPassedPostIds] = await Promise.all([
+      getUserRecommendationVisibleDays(userId),
+      getPromotedPassedPostRefsForUser(userId),
+      getUserPassedPostIdsForUser(userId),
+    ])
+    const feedSinceSub = getRecommendationFeedPublishedAtGte(userRecDays)
+    const recentlyFetchedSince = getRecentlyFetchedFeedCreatedAtGte()
+    const handleVariants = expandHandleQueryVariants(handles)
+    const promotedAtById = new Map(promotedRefs.map((ref) => [ref.id, ref.promotedAt]))
+    const promotedIds = promotedRefs.map((ref) => ref.id)
+    const baseVisibilityClause = or(
+      gte(newsItems.publishedAt, feedSinceSub),
+      gte(newsItems.createdAt, recentlyFetchedSince)
+    )
+    const visibilityClause =
+      promotedIds.length > 0
+        ? or(baseVisibilityClause, inArray(newsItems.id, promotedIds))
+        : baseVisibilityClause
+    const [data, profiles] = await Promise.all([
+      db
+        .select(NEWS_ITEMS_FEED_COLUMNS)
+        .from(newsItems)
+        .where(and(
+          EXCLUDE_PLACEHOLDER_NEWS,
+          inArray(newsItems.sourceHandle, handleVariants),
+          visibilityClause,
+        ))
+        .orderBy(desc(newsItems.createdAt), desc(newsItems.publishedAt)),
+      profilesPromise,
+    ])
 
-    if (error) {
-      console.error('Failed to get subscribed feed:', error)
-      const demo = mergeDemoPostsIfFeedEmpty([], handles)
-      const profiles = await fetchSourceProfilesByHandles(handles)
-      return mergeSourceProfilesIntoPosts(demo, profiles)
-    }
+    const userPassedPostIdSet = new Set(userPassedPostIds)
+    const mapped = data.map((row) => {
+      const item = mapRowToNewsItem(row)
+      const promotedAt = promotedAtById.get(item.id)
+      return promotedAt ? { ...item, promotedAt } : item
+    }).filter((item) => !userPassedPostIdSet.has(item.id) || promotedAtById.has(item.id))
 
-    const mapped = (data || []).map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      summary: row.summary,
-      content: row.content,
-      source: {
-        platform: row.source_platform,
-        name: row.source_name,
-        handle: row.source_handle,
-        url: row.source_url,
-      },
-      category: row.category,
-      publishedAt: row.published_at,
-      originalText: row.original_text,
-      createdAt: row.created_at,
-      importanceScore: row.importance_score,
-      mediaUrls: mediaUrlsFromDbJson(row.media_urls),
-      socialEngagement: socialEngagementFromDbJson(row.social_engagement),
-      referencedPost: referencedPostFromDbJson(row.referenced_post),
-    })) as NewsItem[]
-
-    const profiles = await fetchSourceProfilesByHandles(handles)
     const enriched = mergeSourceProfilesIntoPosts(mapped, profiles)
-    return mergeDemoPostsIfFeedEmpty(enriched, handles)
+    const qualityPosts = filterPostsForPublicFeed(
+      await applyRecommendationToPosts(userId, enriched),
+    ).sort((a, b) => compareNewsItemsForFeedDisplay(a, b))
+    const curated = dedupeNewsItemsForDisplay(qualityPosts)
+    if (curated.length === 0) {
+      scheduleStaleSourceFetches(handles)
+    }
+    return mergeDemoPostsIfFeedEmpty(curated, handles)
   } catch (error) {
-    console.error('Failed to get subscribed feed:', error)
+    console.warn('Failed to get subscribed feed:', error)
     try {
       const handles =
         subscribedHandles !== undefined
-          ? subscribedHandles.map((h) => h.trim()).filter(Boolean)
+          ? subscribedHandles.map(h => h.trim()).filter(Boolean)
           : await getUserSubscribedHandles(userId)
       const demo = mergeDemoPostsIfFeedEmpty([], handles)
       const profiles = await fetchSourceProfilesByHandles(handles)
@@ -549,71 +681,73 @@ export type SubscribedSourcesMetaResult = {
  */
 export async function getSubscribedSourcesMeta(userId: string): Promise<SubscribedSourcesMetaResult> {
   try {
-    // 第一步：取订阅的 source_id 列表
-    const { data: subscriptions, error: subError } = await supabase
-      .from('user_source_subscriptions')
-      .select('source_id, source_handle')
-      .eq('user_id', userId)
+    const subscriptions = await db
+      .select({
+        sourceId: userSourceSubscriptions.sourceId,
+        sourceHandle: userSourceSubscriptions.sourceHandle,
+      })
+      .from(userSourceSubscriptions)
+      .where(eq(userSourceSubscriptions.userId, userId))
 
-    if (subError || !subscriptions || subscriptions.length === 0) {
+    if (subscriptions.length === 0) {
       return { sources: [], subscribedSourceIds: [] }
     }
 
-    const subscribedSourceIds = (subscriptions as { source_id: string }[]).map((s) =>
-      String(s.source_id)
-    )
-    const sourceIds = subscriptions.map((s: any) => s.source_id)
-    const handles = subscriptions.map((s: any) => s.source_handle)
+    const subscribedSourceIds = subscriptions.map(s => String(s.sourceId))
+    const sourceIds = subscriptions.map(s => s.sourceId)
+    const handles = subscriptions
+      .map(s => s.sourceHandle)
+      .filter((h): h is string => h != null)
 
-    // 第二步：批量查 sources 表
-    const [{ data: sourcesData }, { data: postCounts }] = await Promise.all([
-      supabase
-        .from('sources')
-        .select('id,handle,name,avatar,description,platform,source_type')
-        .in('id', sourceIds),
-      // 聚合每个 handle 的文章数和最新发布时间（与 feed 可见窗口一致）
-      supabase
-        .from('news_items')
-        .select('source_handle, published_at')
-        .in('source_handle', handles)
-        .gte('published_at', getFeedPublishedAtGte()),
+    const feedSince = getFeedPublishedAtGte()
+
+    const [sourcesData, countMap] = await Promise.all([
+      db.select({
+        id: sources.id,
+        handle: sources.handle,
+        name: sources.name,
+        url: sources.url,
+        avatar: sources.avatar,
+        description: sources.description,
+        platform: sources.platform,
+        enabled: sources.enabled,
+        sourceType: sources.sourceType,
+      }).from(sources).where(inArray(sources.id, sourceIds)),
+
+      handles.length > 0
+        ? getSourcePostStatsByHandle(handles, feedSince)
+        : Promise.resolve(new Map<string, SourcePostStats>()),
     ])
 
-    // 计算 postCount 和 latestPostTime
-    const countMap = new Map<string, { count: number; latest?: string }>()
-    for (const item of postCounts || []) {
-      const key = (item.source_handle as string).toLowerCase()
-      const existing = countMap.get(key) || { count: 0 }
-      existing.count += 1
-      if (!existing.latest || item.published_at > existing.latest) {
-        existing.latest = item.published_at
-      }
-      countMap.set(key, existing)
-    }
-
-    const idToSource = new Map<string, any>()
-    for (const s of sourcesData || []) idToSource.set(String(s.id), s)
+    const idToSource = new Map<string, typeof sourcesData[number]>()
+    for (const s of sourcesData) idToSource.set(String(s.id), s)
 
     const ordered: SourceMeta[] = []
-    for (const sub of subscriptions as any[]) {
-      const s = idToSource.get(String(sub.source_id))
+    for (const sub of subscriptions) {
+      const s = idToSource.get(String(sub.sourceId))
       if (!s) continue
-      const h = String(sub.source_handle || s.handle || '').toLowerCase()
-      const stats = countMap.get(h) || { count: 0 }
-      ordered.push({
-        id: s.id,
-        handle: s.handle,
-        name: s.name,
-        avatar: resolveSourceAvatarUrl(s.handle, s.avatar, s.platform),
-        description: s.description,
-        postCount: stats.count,
-        latestPostTime: stats.latest,
-        sourceType: s.source_type,
-      })
+      const h = normalizeSourceHandle(sub.sourceHandle || s.handle || '')
+      const stats = countMap.get(h) || { count: 0, total: 0 }
+      ordered.push(
+        withResolvedSourceProfile({
+          id: s.id,
+          handle: s.handle,
+          name: s.name,
+          url: s.url,
+          avatar: s.avatar,
+          description: s.description,
+          platform: s.platform,
+          enabled: s.enabled,
+          postCount: stats.count,
+          totalPostCount: stats.total,
+          latestPostTime: stats.latest,
+          sourceType: normalizeSourceType(s.sourceType),
+        })
+      )
     }
     return { sources: ordered, subscribedSourceIds }
   } catch (error) {
-    console.error('Failed to get subscribed sources meta:', error)
+    console.warn('Failed to get subscribed sources meta:', error)
     return { sources: [], subscribedSourceIds: [] }
   }
 }
@@ -622,30 +756,98 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
  * DB 不可用时 RECOMMEND 占位（id 前缀 uai-demo-rec-，无真实外键，仅展示）。
  * 仍按 handle 合并 sources 表中的 avatar/description，有则展示真实资料。
  */
-async function demoRecommendedSourceMetas(limit: number): Promise<SourceMeta[]> {
-  const rows = [
-    { handle: 'huggingface', name: 'Hugging Face', sourceType: 'media' as const },
-    { handle: 'ylecun', name: 'Yann LeCun', sourceType: 'blogger' as const },
-    { handle: 'ilyasut', name: 'Ilya Sutskever', sourceType: 'blogger' as const },
-    { handle: 'sama', name: 'Sam Altman', sourceType: 'blogger' as const },
-    { handle: 'karpathy', name: 'Andrej Karpathy', sourceType: 'blogger' as const },
-  ].slice(0, Math.max(1, limit))
+import { RECOMMENDATION_POOL } from '@/lib/recommendation-pool-data'
 
-  const handles = rows.map((r) => r.handle)
+export { RECOMMENDED_SIDEBAR_LIMIT }
+
+function buildExcludeHandleSet(handles: string[]): Set<string> {
+  return new Set(handles.map(normalizeSourceHandle).filter(Boolean))
+}
+
+function filterOutExcludedHandles<T extends { handle: string }>(
+  rows: T[],
+  exclude: Set<string>
+): T[] {
+  if (exclude.size === 0) return rows
+  return rows.filter(row => !exclude.has(normalizeSourceHandle(row.handle)))
+}
+
+function pickRecommendedSourceMetas(
+  candidates: SourceMeta[],
+  limit: number,
+  pickRandom: boolean
+): SourceMeta[] {
+  const bloggers = candidates.filter((c) => (c.sourceType || 'blogger') === 'blogger')
+  const others = candidates.filter((c) => (c.sourceType || 'blogger') !== 'blogger')
+
+  if (pickRandom) {
+    shuffleInPlace(bloggers)
+    shuffleInPlace(others)
+  } else {
+    bloggers.sort((a, b) => b.postCount - a.postCount)
+    others.sort((a, b) => b.postCount - a.postCount)
+  }
+
+  const picked: SourceMeta[] = []
+  for (const source of bloggers) {
+    if (picked.length >= limit) break
+    picked.push(source)
+  }
+  for (const source of others) {
+    if (picked.length >= limit) break
+    picked.push(source)
+  }
+  return picked
+}
+
+async function demoRecommendedSourceMetas(
+  limit: number,
+  excludeHandles: string[] = []
+): Promise<SourceMeta[]> {
+  const exclude = buildExcludeHandleSet(excludeHandles)
+  const fallbackRows = RECOMMENDATION_POOL.map((r) => ({
+    handle: r.handle,
+    name: r.name,
+    description: r.description,
+    sourceType: r.sourceType,
+  }))
+  const rows = filterOutExcludedHandles(fallbackRows, exclude).slice(0, Math.max(1, limit))
+
+  if (rows.length === 0) return []
+
+  const rowHandles = rows.map(r => r.handle)
   const byHandle = new Map<
     string,
-    { avatar?: string | null; description?: string | null; name?: string | null; platform?: string | null }
+    {
+      id?: string | null
+      avatar?: string | null
+      description?: string | null
+      name?: string | null
+      url?: string | null
+      platform?: string | null
+    }
   >()
   try {
-    const { data: dbRows } = await supabase
-      .from('sources')
-      .select('handle, avatar, description, name, platform')
-      .in('handle', expandHandleQueryVariants(handles))
-    for (const row of dbRows || []) {
+    const dbRows = await db
+      .select({
+        id: sources.id,
+        handle: sources.handle,
+        url: sources.url,
+        avatar: sources.avatar,
+        description: sources.description,
+        name: sources.name,
+        platform: sources.platform,
+      })
+      .from(sources)
+      .where(inArray(sources.handle, expandHandleQueryVariants(rowHandles)))
+
+    for (const row of dbRows) {
       byHandle.set(String(row.handle).toLowerCase(), {
+        id: row.id,
         avatar: row.avatar,
         description: row.description,
         name: row.name,
+        url: row.url,
         platform: row.platform,
       })
     }
@@ -654,133 +856,133 @@ async function demoRecommendedSourceMetas(limit: number): Promise<SourceMeta[]> 
   }
 
   return rows.map((r) => {
-    const db = byHandle.get(r.handle.toLowerCase())
-    const dbName = db?.name && String(db.name).trim()
-    const dbDesc = db?.description && String(db.description).trim()
-    return {
-      id: `uai-demo-rec-${r.handle}`,
+    const dbEntry = byHandle.get(r.handle.toLowerCase())
+    const dbName = dbEntry?.name && String(dbEntry.name).trim()
+    const resolvedId =
+      dbEntry?.id && String(dbEntry.id).trim()
+        ? String(dbEntry.id)
+        : `uai-demo-rec-${r.handle}`
+    return withResolvedSourceProfile({
+      id: resolvedId,
       handle: r.handle,
       name: dbName || r.name,
-      avatar: resolveSourceAvatarUrl(r.handle, db?.avatar, db?.platform ?? null),
-      description: dbDesc || defaultBioForSourceNotInDb(r.handle),
+      url: dbEntry?.url,
+      avatar: dbEntry?.avatar,
+      description: dbEntry?.description ?? r.description,
+      platform: dbEntry?.platform ?? 'X',
       postCount: 0,
       sourceType: r.sourceType,
-    }
+    })
   })
 }
 
 /**
- * 获取全局热门推荐信息源（排除已订阅的）
- * 供 SourcesList 的"推荐关注"区块使用，以及未登录/无订阅时的引导
+ * 获取推荐池信息源（sources.in_recommendation_pool = true，排除已订阅）
+ * 供 SourcesList 的"推荐关注"区块使用
  */
 export async function getRecommendedSources(
   userId: string | null,
   limit = 8,
   options?: GetRecommendedSourcesOptions
 ): Promise<SourceMeta[]> {
-  const recommendedSourcesColumns =
-    'id, handle, name, avatar, description, platform, source_type'
+  const recCols = {
+    id: sources.id,
+    handle: sources.handle,
+    name: sources.name,
+    url: sources.url,
+    avatar: sources.avatar,
+    description: sources.description,
+    platform: sources.platform,
+    sourceType: sources.sourceType,
+  }
 
   try {
-    let allSources: any[] | null = null
-
-    const enabledRes = await supabase
-      .from('sources')
-      .select(recommendedSourcesColumns)
-      .eq('enabled', true)
-    if (!enabledRes.error && enabledRes.data?.length) {
-      allSources = enabledRes.data
-    } else {
-      const anyRes = await supabase.from('sources').select(recommendedSourcesColumns).limit(200)
-      if (!anyRes.error && anyRes.data?.length) {
-        allSources = anyRes.data
-      }
-    }
-
-    if (!allSources?.length) {
-      return await demoRecommendedSourceMetas(limit)
-    }
-
     let excludeHandles: string[] = []
     if (userId) {
       excludeHandles = await getUserSubscribedHandles(userId)
     }
+    const excludeHandleSet = buildExcludeHandleSet(excludeHandles)
 
-    const unsubscribed = allSources.filter(
-      (s: any) => !excludeHandles.map((h) => h.toLowerCase()).includes(String(s.handle || '').toLowerCase())
-    )
+    const poolSources = await db
+      .select(recCols)
+      .from(sources)
+      .where(eq(sources.inRecommendationPool, true))
 
-    const pool: typeof allSources =
-      unsubscribed.length > 0 ? unsubscribed : allSources
+    if (poolSources.length === 0) {
+      return await demoRecommendedSourceMetas(limit, excludeHandles)
+    }
 
-    const handles = pool
-      .map((s: any) => s.handle)
-      .filter((h: unknown): h is string => typeof h === 'string' && h.length > 0)
+    const pool = filterOutExcludedHandles(poolSources, excludeHandleSet)
 
-    if (handles.length === 0) {
-      return await demoRecommendedSourceMetas(limit)
+    const poolHandles = pool
+      .map(s => s.handle)
+      .filter((h): h is string => typeof h === 'string' && h.length > 0)
+
+    if (poolHandles.length === 0) {
+      return await demoRecommendedSourceMetas(limit, excludeHandles)
     }
 
     const feedSinceRec = getFeedPublishedAtGte()
-    const { data: postCounts, error: countError } = await supabase
-      .from('news_items')
-      .select('source_handle')
-      .in('source_handle', handles)
-      .gte('published_at', feedSinceRec)
-
-    if (countError) {
-      console.error('Recommended sources: postCounts query failed', countError)
+    let countMap = new Map<string, SourcePostStats>()
+    try {
+      countMap = await getSourcePostStatsByHandle(poolHandles, feedSinceRec)
+    } catch (err) {
+      console.warn('Recommended sources: postCounts query failed', err)
     }
 
-    const countMap = new Map<string, number>()
-    for (const item of postCounts || []) {
-      const key = (item.source_handle as string).toLowerCase()
-      countMap.set(key, (countMap.get(key) || 0) + 1)
-    }
-
-    const mapped = pool.map((s: any) => ({
-      id: String(s.id),
-      handle: s.handle,
-      name: s.name,
-      avatar: resolveSourceAvatarUrl(s.handle, s.avatar, s.platform),
-      description: s.description,
-      postCount: countMap.get(String(s.handle || '').toLowerCase()) || 0,
-      sourceType: s.source_type,
-    })) as SourceMeta[]
+    const mapped = pool.map((s) =>
+      withResolvedSourceProfile({
+        id: String(s.id),
+        handle: s.handle,
+        name: s.name,
+        url: s.url,
+        avatar: s.avatar,
+        description: s.description,
+        platform: s.platform,
+        postCount: countMap.get(normalizeSourceHandle(s.handle))?.count || 0,
+        totalPostCount: countMap.get(normalizeSourceHandle(s.handle))?.total || 0,
+        sourceType: s.sourceType,
+      })
+    )
 
     let candidates = mapped
     const exIds = options?.excludeSourceIds?.filter(Boolean) ?? []
     if (exIds.length > 0) {
       const ex = new Set(exIds.map(String))
-      const filtered = mapped.filter((c) => !ex.has(String(c.id)))
-      candidates = filtered.length > 0 ? filtered : mapped
+      candidates = candidates.filter((c) => !ex.has(String(c.id)))
+    }
+
+    const exDisplayHandles = buildExcludeHandleSet(options?.excludeHandles ?? [])
+    if (exDisplayHandles.size > 0) {
+      candidates = candidates.filter(
+        (c) => !exDisplayHandles.has(normalizeSourceHandle(c.handle))
+      )
     }
 
     if (candidates.length === 0) {
-      return await demoRecommendedSourceMetas(limit)
-    }
-
-    if (options?.pickRandom) {
-      shuffleInPlace(candidates)
-      const picked = candidates.slice(0, limit)
-      if (picked.length === 0) {
-        return await demoRecommendedSourceMetas(limit)
+      const retryPool = mapped.filter(
+        (c) => !exDisplayHandles.has(normalizeSourceHandle(c.handle))
+      )
+      if (retryPool.length > 0) {
+        const pickedRetry = pickRecommendedSourceMetas(retryPool, limit, !!options?.pickRandom)
+        if (pickedRetry.length > 0) return pickedRetry
       }
-      return picked
+      return await demoRecommendedSourceMetas(limit, [
+        ...excludeHandles,
+        ...(options?.excludeHandles ?? []),
+      ])
     }
 
-    const ranked = [...candidates]
-      .sort((a, b) => b.postCount - a.postCount)
-      .slice(0, limit)
-
-    if (ranked.length === 0) {
-      return await demoRecommendedSourceMetas(limit)
+    const picked = pickRecommendedSourceMetas(candidates, limit, !!options?.pickRandom)
+    if (picked.length === 0) {
+      return await demoRecommendedSourceMetas(limit, excludeHandles)
     }
 
-    return ranked
+    return picked
   } catch (error) {
-    console.error('Failed to get recommended sources:', error)
-    return await demoRecommendedSourceMetas(limit)
+    console.warn('Failed to get recommended sources:', error)
+    const excludeHandles = userId ? await getUserSubscribedHandles(userId).catch(() => []) : []
+    return await demoRecommendedSourceMetas(limit, excludeHandles)
   }
 }
 
@@ -788,48 +990,41 @@ export async function getRecommendedSources(
  * 获取精选推荐文章（用于未登录或无订阅用户的首页 feed）
  * 按 importance_score 降序取最重要的文章
  */
-export async function getTopRecommendedPosts(limit = 30): Promise<NewsItem[]> {
+export async function getTopRecommendedPosts(limit = 30, userId?: string | null): Promise<NewsItem[]> {
   const demoFallbackHandles = DEFAULT_GUEST_HANDLES
   try {
     const feedSinceTop = getFeedPublishedAtGte()
-    const { data, error } = await supabase
-      .from('news_items')
-      .select(NEWS_ITEMS_FEED_COLUMNS)
-      .not('importance_score', 'is', null)
-      .gte('published_at', feedSinceTop)
-      .order('importance_score', { ascending: false })
-      .order('published_at', { ascending: false })
-      .limit(limit)
+    const minScore = getFeedMinImportanceScore()
+    const hiddenIdsPromise = userId ? getUserPassedPostIdsForUser(userId) : Promise.resolve([])
+    const [data, hiddenIds] = await Promise.all([
+      db
+        .select(NEWS_ITEMS_FEED_COLUMNS)
+        .from(newsItems)
+        .where(and(
+          EXCLUDE_PLACEHOLDER_NEWS,
+          isNotNull(newsItems.importanceScore),
+          gte(newsItems.importanceScore, minScore),
+          gte(newsItems.publishedAt, feedSinceTop),
+        ))
+        .orderBy(desc(newsItems.importanceScore), desc(newsItems.publishedAt))
+        .limit(limit),
+      hiddenIdsPromise,
+    ])
 
-    if (error) {
-      console.error('Failed to get top recommended posts:', error)
-      return mergeDemoPostsIfFeedEmpty([], demoFallbackHandles)
+    const hiddenIdSet = userId ? new Set(hiddenIds) : null
+    const mapped = diversifyNewsItemsBySource(dedupeNewsItemsForDisplay(
+      filterPostsForPublicFeed(
+        data
+          .map(mapRowToNewsItem)
+          .filter((item) => !hiddenIdSet?.has(item.id))
+      )
+    ))
+    if (mapped.length === 0) {
+      scheduleStaleSourceFetches(demoFallbackHandles)
     }
-
-    const mapped = (data || []).map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      summary: row.summary,
-      content: row.content,
-      source: {
-        platform: row.source_platform,
-        name: row.source_name,
-        handle: row.source_handle,
-        url: row.source_url,
-      },
-      category: row.category,
-      publishedAt: row.published_at,
-      originalText: row.original_text,
-      createdAt: row.created_at,
-      importanceScore: row.importance_score,
-      mediaUrls: mediaUrlsFromDbJson(row.media_urls),
-      socialEngagement: socialEngagementFromDbJson(row.social_engagement),
-      referencedPost: referencedPostFromDbJson(row.referenced_post),
-    })) as NewsItem[]
-
     return mergeDemoPostsIfFeedEmpty(mapped, demoFallbackHandles)
   } catch (error) {
-    console.error('Failed to get top recommended posts:', error)
+    console.warn('Failed to get top recommended posts:', error)
     return mergeDemoPostsIfFeedEmpty([], demoFallbackHandles)
   }
 }

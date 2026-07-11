@@ -1,12 +1,12 @@
 import { BaseParser } from './base-parser';
 import { ParsedContent } from '../types';
-import { extractReferencedPostFromTweet } from '@/lib/x';
+import {
+  fetchTweetById,
+  fetchXArticleByTweetId,
+  hasXArticleEntity,
+  type XArticle,
+} from '@/lib/x';
 
-/**
- * X / Twitter 解析器
- * 负责从 X / Twitter 抓取推文内容
- * 使用 TwitterAPI.io 服务获取推文数据
- */
 export class XParser implements BaseParser {
   canParse(url: string): boolean {
     try {
@@ -24,85 +24,52 @@ export class XParser implements BaseParser {
   }
 
   async parse(url: string, externalId: string): Promise<ParsedContent> {
-    // 从 URL 中提取用户名
     const urlObj = new URL(url);
-    const pathParts = urlObj.pathname.split('/').filter(p => p);
-    const username = pathParts[0];
+    const pathParts = urlObj.pathname.split('/').filter(Boolean);
+    const username = pathParts[0] || 'unknown';
 
-    // 使用 TwitterAPI.io 获取推文数据
-    const tweetData = await this.fetchTweetFromAPI(externalId, username);
+    const tweetData = await fetchTweetById(externalId, username);
+    const article = await this.fetchArticleIfPresent(
+      externalId,
+      tweetData.raw,
+      tweetData.post_url || url,
+    );
+    const handle = (article?.authorHandle || tweetData.handle || username).replace(/^@/, '');
+    const mediaUrls = [
+      ...(tweetData.media_urls ?? []),
+      ...(article?.mediaUrls ?? []),
+    ].filter((value, index, all) => value && all.indexOf(value) === index);
 
     return {
       externalId,
-      content: tweetData.text,
+      ...(article?.title ? { title: article.title } : {}),
+      content: article?.text ? `${article.title}\n\n${article.text}` : tweetData.post_text,
       author: {
-        name: tweetData.authorName || username,
-        handle: `@${username}`,
-        url: `https://x.com/${username}`,
+        name: article?.authorName || tweetData.author_name || handle,
+        handle: `@${handle}`,
+        url: `https://x.com/${handle}`,
       },
-      publishedAt: tweetData.createdAt,
-      url,
+      publishedAt: article?.createdAt || tweetData.posted_at,
+      url: tweetData.post_url || url,
       platform: 'X',
-      rawData: tweetData,
+      rawData: { tweet: tweetData, ...(article ? { article } : {}) },
+      ...(tweetData.urls && tweetData.urls.length > 0 ? { urls: tweetData.urls } : {}),
+      ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
       ...(tweetData.referencedPost ? { referencedPost: tweetData.referencedPost } : {}),
+      ...(article ? { xArticle: article } : {}),
     };
   }
 
-  /**
-   * 使用 TwitterAPI.io 获取推文数据
-   */
-  private async fetchTweetFromAPI(
+  private async fetchArticleIfPresent(
     tweetId: string,
-    username: string
-  ): Promise<{
-    text: string;
-    authorName: string;
-    createdAt: string;
-    referencedPost?: import('@/lib/types').XReferencedPost;
-  }> {
-    const apiKey = process.env.TWITTERAPI_IO_KEY;
+    rawTweet?: Record<string, unknown>,
+    fallbackUrl?: string,
+  ): Promise<XArticle | undefined> {
+    if (!rawTweet || !hasXArticleEntity(rawTweet)) return undefined;
 
-    if (!apiKey) {
-      throw new Error('TWITTERAPI_IO_KEY not configured');
-    }
-
-    // TwitterAPI.io 的推文详情接口
-    const url = `https://api.twitterapi.io/twitter/tweet?tweetId=${tweetId}`;
-
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'X-API-Key': apiKey,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`TwitterAPI.io request failed: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      // 提取推文数据
-      const tweet = data?.data?.tweet;
-
-      if (!tweet) {
-        throw new Error('Tweet not found in API response');
-      }
-
-      const t = tweet as Record<string, unknown>;
-      const referencedPost = extractReferencedPostFromTweet(t);
-
-      return {
-        text: tweet.text || '',
-        authorName: tweet.user?.name || username,
-        createdAt: tweet.createdAt || tweet.created_at || new Date().toISOString(),
-        ...(referencedPost ? { referencedPost } : {}),
-      };
-    } catch (error) {
-      console.error(`Error fetching tweet ${tweetId}:`, error);
-      throw error;
-    }
+    return fetchXArticleByTweetId(tweetId, fallbackUrl).catch((error) => {
+      console.warn(`Error fetching X article ${tweetId}:`, error);
+      return undefined;
+    });
   }
-
 }

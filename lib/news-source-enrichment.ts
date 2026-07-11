@@ -1,8 +1,11 @@
 import 'server-only'
 
+import { inArray } from 'drizzle-orm'
 import type { NewsItem } from './types'
-import { expandHandleQueryVariants, resolveSourceAvatarUrl } from './source-avatar'
-import { supabase } from './supabase'
+import { expandHandleQueryVariants } from './source-avatar'
+import { resolveSourceProfile } from './source-profile'
+import { db } from '@/lib/db/drizzle'
+import { sources } from '@/lib/db/schema'
 
 export type SourceProfileRow = {
   name: string
@@ -21,25 +24,38 @@ export async function fetchSourceProfilesByHandles(
   if (normalized.length === 0) return new Map()
 
   const variants = expandHandleQueryVariants(normalized)
-  const { data, error } = await supabase
-    .from('sources')
-    .select('handle, name, avatar, description, platform')
-    .in('handle', variants)
 
-  if (error) {
-    console.error('fetchSourceProfilesByHandles:', error.message)
+  let data: { handle: string; name: string; avatar: string | null; description: string | null; platform: string | null }[]
+  try {
+    data = await db
+      .select({
+        handle: sources.handle,
+        name: sources.name,
+        avatar: sources.avatar,
+        description: sources.description,
+        platform: sources.platform,
+      })
+      .from(sources)
+      .where(inArray(sources.handle, variants))
+  } catch (err: any) {
+    console.warn('fetchSourceProfilesByHandles:', err.message)
     return new Map()
   }
 
   const map = new Map<string, SourceProfileRow>()
-  for (const row of data || []) {
+  for (const row of data) {
     const key = String(row.handle).toLowerCase()
     const platform = row.platform != null ? String(row.platform) : null
-    const dbAvatar = row.avatar ? String(row.avatar) : undefined
+    const profile = resolveSourceProfile({
+      handle: row.handle,
+      platform,
+      avatar: row.avatar,
+      description: row.description,
+    })
     map.set(key, {
       name: String(row.name ?? ''),
-      avatar: resolveSourceAvatarUrl(row.handle, dbAvatar, platform),
-      description: row.description ? String(row.description) : undefined,
+      avatar: profile.avatar,
+      description: profile.description,
       platform,
     })
   }
@@ -54,23 +70,25 @@ export function mergeSourceProfilesIntoPosts(
     const key = p.source?.handle?.toLowerCase()
     if (!key) return p
     const prof = profiles.get(key)
-    const mergedAvatar = prof
-      ? prof.avatar
-      : resolveSourceAvatarUrl(p.source?.handle, p.source?.avatar, p.source?.platform)
+    const profile = prof
+      ? { avatar: prof.avatar, description: prof.description }
+      : resolveSourceProfile({
+          handle: p.source?.handle ?? '',
+          platform: p.source?.platform ?? 'X',
+          avatar: p.source?.avatar,
+          description: p.source?.description,
+        })
 
-    if (!prof) {
-      if (!mergedAvatar) return p
-      return { ...p, source: { ...p.source, avatar: mergedAvatar } }
-    }
+    if (!prof && !profile.avatar && !profile.description) return p
 
-    const name = prof.name?.trim()
+    const name = prof?.name?.trim()
     return {
       ...p,
       source: {
         ...p.source,
-        name: name || p.source.name,
-        avatar: mergedAvatar ?? p.source.avatar,
-        description: prof.description ?? p.source.description,
+        name: p.source.name || name || p.source.handle,
+        avatar: profile.avatar || p.source.avatar,
+        description: profile.description || p.source.description,
       },
     }
   })

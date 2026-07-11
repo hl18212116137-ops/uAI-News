@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import AppModalShell from "@/components/AppModalShell";
+import { useOpenLogin } from "@/hooks/useOpenLogin";
 
 type AuthPromptModalProps = {
   isOpen: boolean;
@@ -14,11 +14,11 @@ export default function AuthPromptModal({
   onClose,
   message = "使用此功能需要先登录。",
 }: AuthPromptModalProps) {
-  const router = useRouter();
+  const openLogin = useOpenLogin();
 
   const handleGoLogin = () => {
     onClose();
-    router.push("/login");
+    openLogin();
   };
 
   return (

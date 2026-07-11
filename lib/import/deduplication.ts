@@ -1,5 +1,7 @@
 import { getPostByUrl, getPostById } from '../db';
 import { NewsItem } from '../types';
+import { canonicalNewsIdForPlatform } from '@/lib/news-dedupe';
+import { canonicalizeExternalUrlForDedupe } from '@/lib/news-post-url';
 
 /**
  * 去重检查器
@@ -24,10 +26,11 @@ export async function checkDuplication(
   externalId: string,
   platform: string
 ): Promise<DuplicationCheckResult> {
-  const compositeId = `${platform.toLowerCase()}-${externalId}`;
+  const compositeId = canonicalNewsIdForPlatform(platform, externalId);
+  const canonicalUrl = canonicalizeExternalUrlForDedupe(url);
 
   const [existingByUrl, existingById] = await Promise.all([
-    getPostByUrl(url),
+    getPostByUrl(canonicalUrl),
     getPostById(compositeId),
   ]);
 

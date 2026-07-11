@@ -1,9 +1,12 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo } from "react";
 import { NewsItem } from "@/lib/types";
-import { isNewPost, formatTypography } from "@/lib/utils";
+import { resolveNewsPostUrl } from "@/lib/news-post-url";
+import { cleanNewsTitle } from "@/lib/news-title-cleanup";
+import { formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
+import BookmarkGlyph from "@/components/BookmarkGlyph";
 import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
 
 function formatDateZH(dateString: string): string {
@@ -23,33 +26,19 @@ function formatTimeLocalHM(dateString: string): string {
 }
 
 function getCategoryTag(category: NewsItem["category"]) {
-  switch (category) {
-    case "Model Update":
-      return "模型";
-    case "Company News":
-      return "行业";
-    case "Funding":
-      return "融资";
-    case "Policy":
-      return "政策";
-    case "Research":
-      return "研究";
-    case "Product Update":
-      return "产品";
-    case "Open Source":
-      return "开源";
-    case "Other":
-    default:
-      return "其他";
-  }
+  return category || "行业";
 }
 
 type NewsCardProps = {
   post: NewsItem;
   variant?: "default" | "compact";
   isBookmarked?: boolean;
-  onBookmarkToggle?: (id: string) => void;
+  bookmarkPending?: boolean;
+  onBookmarkToggle?: (id: string, post: NewsItem) => void;
+  passPending?: boolean;
+  onPassPost?: (post: NewsItem) => void;
   readonly?: boolean;
+  showNewBadge?: boolean;
   analysisActive?: boolean;
   onAnalysisToggle?: (postId: string) => void;
 };
@@ -60,30 +49,30 @@ function NewsCard({
   post,
   variant = "default",
   isBookmarked = false,
+  bookmarkPending = false,
   onBookmarkToggle,
+  passPending = false,
+  onPassPost,
   readonly = false,
+  showNewBadge = false,
   analysisActive = false,
   onAnalysisToggle,
 }: NewsCardProps) {
   const sourceName = post.source?.name || "未知来源";
-  const sourceUrl = post.source?.url || "#";
-  /** isNewPost 依赖 sessionStorage，SSR 与首帧客户端必须一致，故挂载后再算 */
-  const [showNewBadge, setShowNewBadge] = useState(false);
-  useEffect(() => {
-    setShowNewBadge(isNewPost(post.createdAt));
-  }, [post.createdAt]);
-
+  const sourceUrl = resolveNewsPostUrl(post);
+  const displayTitle = cleanNewsTitle(post.title);
   const articlePad =
     variant === "compact"
       ? "pt-10 pb-12"
       : "pt-8 pb-12 sm:pt-[40px] sm:pb-14 lg:pt-[48px] lg:pb-[64px]";
+  const showAnalysisAction = !readonly && Boolean(onAnalysisToggle);
 
   return (
     <article
       data-name="Article"
       data-node-id="37:4741"
       className={[
-        "relative flex w-full shrink-0 flex-col items-start gap-[32px] rounded-[2px]",
+        "group/card relative flex w-full shrink-0 flex-col items-start gap-[32px] rounded-[2px]",
         analysisActive ? "bg-[rgba(255,178,36,0.02)]" : "bg-white",
         articlePad,
       ].join(" ")}
@@ -96,45 +85,30 @@ function NewsCard({
           className="absolute right-3 top-8 z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]"
           aria-hidden
         >
-          <svg
+          <BookmarkGlyph
             className={`h-4 w-4 ${isBookmarked ? "text-[#d7a220]" : "text-[#99a1af]"}`}
-            fill={isBookmarked ? "currentColor" : "none"}
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-            />
-          </svg>
+            filled={isBookmarked}
+          />
         </div>
       ) : onBookmarkToggle ? (
-        <Tooltip content={isBookmarked ? "取消收藏" : "收藏这篇文章"}>
+        <Tooltip content={bookmarkPending ? "正在同步收藏状态" : isBookmarked ? "取消收藏" : "收藏这篇文章"}>
           <button
             type="button"
-            className="absolute right-3 top-8 z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04] sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]"
+            className="absolute right-3 top-8 z-[1] flex h-6 w-6 items-center justify-center rounded-[10px] transition-colors hover:bg-black/[0.04] disabled:cursor-wait disabled:opacity-70 sm:right-6 sm:top-10 lg:right-[32px] lg:top-[48px]"
             aria-label={isBookmarked ? "取消收藏" : "收藏"}
+            aria-pressed={isBookmarked}
+            aria-busy={bookmarkPending}
+            disabled={bookmarkPending}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onBookmarkToggle(post.id);
+              onBookmarkToggle(post.id, post);
             }}
           >
-            <svg
+            <BookmarkGlyph
               className={`h-4 w-4 transition-colors ${isBookmarked ? "text-[#d7a220]" : "text-[#99a1af]"}`}
-              fill={isBookmarked ? "currentColor" : "none"}
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-              />
-            </svg>
+              filled={isBookmarked}
+            />
           </button>
         </Tooltip>
       ) : null}
@@ -146,56 +120,95 @@ function NewsCard({
           className="flex min-w-0 w-full flex-wrap items-center gap-[4px]"
         >
             <span
-              className="flex h-[17px] shrink-0 items-center font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#05f]"
+              className="flex min-h-[18px] shrink-0 items-center font-mono text-[12px] font-bold uppercase leading-[18px] tracking-[0.08em] text-[#05f]"
               data-node-id="37:4744"
             >
               # {getCategoryTag(post.category)}
             </span>
+            {post.longform ? (
+              <>
+                <span
+                  className="flex min-h-[18px] items-center font-mono text-[12px] font-normal uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]"
+                  aria-hidden
+                >
+                  /
+                </span>
+                <span className="flex min-h-[18px] shrink-0 items-center font-mono text-[12px] font-bold leading-[18px] tracking-[0.02em] text-[#d7a220]">
+                  【优质长文】
+                </span>
+              </>
+            ) : null}
             <span
-              className="flex h-[17px] items-center font-mono text-[11px] font-normal uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]"
+              className="flex min-h-[18px] items-center font-mono text-[12px] font-normal uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]"
               data-node-id="37:4746"
             >
               /
             </span>
             <span
-              className="flex min-h-[17px] min-w-0 items-center font-mono text-[11px] font-normal leading-[16.5px] tracking-[1.1px] text-[#8a8a93]"
+              className="flex min-h-[18px] min-w-0 items-center font-mono text-[12px] font-normal leading-[18px] tracking-[0.02em] text-[#8a8a93]"
               data-node-id="37:4742-author"
             >
               {formatTypography(sourceName)}
             </span>
             <span
-              className="flex h-[17px] items-center font-mono text-[11px] font-normal uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]"
+              className="flex min-h-[18px] items-center font-mono text-[12px] font-normal uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]"
               aria-hidden
             >
               /
             </span>
             <span
-              className="flex min-h-[17px] min-w-0 items-center tabular-nums font-mono text-[11px] font-normal leading-[16.5px] tracking-[1.1px] text-[#8a8a93]"
+              className="flex min-h-[18px] min-w-0 items-center tabular-nums font-mono text-[12px] font-normal leading-[18px] tracking-[0.02em] text-[#8a8a93]"
               data-node-id="37:4748"
             >
               {formatDateZH(post.publishedAt)}
             </span>
             <span
-              className="flex h-[17px] items-center font-mono text-[11px] font-normal uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]"
+              className="flex min-h-[18px] items-center font-mono text-[12px] font-normal uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]"
               data-node-id="37:4750"
             >
               /
             </span>
             <span
-              className="flex h-[17px] items-center tabular-nums font-mono text-[11px] font-normal leading-[16.5px] tracking-[1.1px] text-[#8a8a93]"
+              className="flex min-h-[18px] items-center tabular-nums font-mono text-[12px] font-normal leading-[18px] tracking-[0.02em] text-[#8a8a93]"
               data-node-id="37:4752"
             >
               {formatTimeLocalHM(post.publishedAt)}
             </span>
             {showNewBadge ? (
               <>
-                <span className="flex h-[17px] items-center font-mono text-[11px] uppercase leading-[16.5px] tracking-[1.1px] text-[rgba(161,161,170,0.5)]">
+                <span className="flex min-h-[18px] items-center font-mono text-[12px] uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]">
                   /
                 </span>
-                <span className="flex h-[17px] items-center font-mono text-[11px] font-bold uppercase leading-[16.5px] tracking-[1.1px] text-[#fb2c36]">
+                <span className="flex min-h-[18px] items-center font-mono text-[12px] font-bold uppercase leading-[18px] tracking-[0.08em] text-[#fb2c36]">
                   新
                 </span>
               </>
+            ) : null}
+            {!readonly && onPassPost ? (
+              <span className="group inline-flex min-h-[18px] shrink-0 items-center gap-[4px]">
+                <span className="flex min-h-[18px] items-center font-mono text-[12px] uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]">
+                  /
+                </span>
+                <Tooltip content={passPending ? "正在记录 PASS" : "PASS 这条，后续少推荐类似内容"}>
+                  <button
+                    type="button"
+                    className="btn-press inline-flex min-h-[18px] shrink-0 items-center gap-1 rounded-[3px] bg-transparent px-1.5 font-mono text-[10px] font-bold uppercase leading-[14px] tracking-[0.06em] text-[#99a1af] opacity-[0.65] transition-[background-color,color,opacity] hover:bg-primary-50 hover:text-primary-600 hover:opacity-100 focus-visible:bg-primary-50 focus-visible:text-primary-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 disabled:cursor-wait disabled:opacity-70 sm:opacity-[0.45] sm:group-hover/card:opacity-75"
+                    aria-label="PASS 这条推文，后续少推荐类似内容"
+                    aria-busy={passPending}
+                    disabled={passPending}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onPassPost(post);
+                    }}
+                  >
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                    PASS
+                  </button>
+                </Tooltip>
+              </span>
             ) : null}
         </div>
 
@@ -207,43 +220,45 @@ function NewsCard({
           <h2
             data-name="Heading 1"
             data-node-id="37:4754"
-            className="m-0 min-w-0 font-sans text-[20px] font-bold leading-[27.5px] tracking-[-0.5px] text-[#18181b]"
+            className="m-0 min-w-0 break-words font-sans text-[22px] font-bold leading-[30px] tracking-[-0.5px] text-[#18181b]"
           >
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="motion-layout-ease transition-colors hover:text-primary-600"
-            >
-              {formatTypography(post.title)}
-            </a>
+            {sourceUrl && /^https:\/\//i.test(sourceUrl) ? (
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="motion-layout-ease transition-colors hover:text-primary-600"
+              >
+                {formatTypography(displayTitle)}
+              </a>
+            ) : (
+              <span>{formatTypography(displayTitle)}</span>
+            )}
           </h2>
           <p
             data-name="Container"
             data-node-id="37:4756"
-            className="m-0 line-clamp-2 font-sans text-[14px] font-normal leading-[22px] text-[#52525b]"
+            className="m-0 line-clamp-2 break-words font-sans text-[14px] font-normal leading-[22px] text-[#52525b]"
           >
             {formatTypography(post.summary)}
           </p>
         </div>
       </div>
 
-      {!readonly && onAnalysisToggle ? (
+      {showAnalysisAction ? (
         <div
-          className="absolute bottom-4 right-3 z-[1] sm:bottom-5 sm:right-5 lg:bottom-[24.5px] lg:right-[32px]"
-          data-name={analysisActive ? "Overlay+Border+Shadow" : "Background+Border"}
-          data-node-id={analysisActive ? "37:4759" : "37:4781"}
+          className="z-[1] self-end sm:absolute sm:bottom-5 sm:right-5 lg:bottom-[24.5px] lg:right-[32px]"
         >
           <button
             type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onAnalysisToggle(post.id);
+              onAnalysisToggle?.(post.id);
             }}
             aria-pressed={analysisActive}
             className={[
-              "motion-layout-ease flex items-center gap-[8px] rounded-[2px] px-[15px] py-[7px] font-sans text-[10px] font-bold uppercase leading-[10px] tracking-[0.8px] transition-opacity hover:opacity-90",
+              "motion-layout-ease flex items-center gap-[8px] rounded-[2px] px-[15px] py-2 font-sans text-[12px] font-bold uppercase leading-none tracking-[0.06em] transition-opacity hover:opacity-90",
               analysisActive
                 ? "border border-solid border-[#ffb224] bg-[rgba(255,178,36,0.1)] text-[#ffb224] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
                 : "border border-solid border-[#e5e7eb] bg-white text-[#8a8a93]",

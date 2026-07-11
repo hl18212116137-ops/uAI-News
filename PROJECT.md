@@ -7,7 +7,7 @@
 
 ## 一、项目概述
 
-**uAI News（ainews-v2）** 是一个 AI 驱动的新闻聚合网站，自动抓取 X（Twitter）、RSS、Blog 等平台的 AI 领域资讯，经 AI 处理（标题生成、摘要、分类、重要性评分）后展示给用户。
+**uAI News** 是一个 AI 驱动的新闻聚合网站，自动抓取 X（Twitter）、RSS、Blog 等平台的 AI 领域资讯，经 AI 处理（标题生成、摘要、分类、重要性评分）后展示给用户。
 
 - **正式网站**：部署在 Vercel（`main` 分支触发）
 - **GitHub 仓库**：`hl18212116137-ops/uAI-News`
@@ -19,7 +19,7 @@
 
 | 层 | 技术 | 版本 |
 |---|---|---|
-| 框架 | Next.js App Router | 14.2.0 |
+| 框架 | Next.js App Router | 15.5.19 |
 | 语言 | TypeScript | 5.x |
 | 样式 | Tailwind CSS | 3.4.0 |
 | UI | React 函数组件 | 18.x |
@@ -105,7 +105,7 @@ AI 处理完成后自动删除，不需要手动维护。
 ## 五、目录结构
 
 ```
-ainews-v2/
+uAI News/
 ├── app/
 │   ├── page.tsx              # 首页（Server Component，revalidate=0）
 │   ├── layout.tsx            # 根布局
@@ -118,13 +118,12 @@ ainews-v2/
 │       ├── sources/route.ts          # 信息源 CRUD
 │       ├── task-status/route.ts      # 轮询任务进度
 │       └── import-from-url/route.ts  # 手动导入单条 URL
-├── components/               # 19 个组件，全部扁平结构
+├── components/               # 全部扁平结构
 │   ├── MainContent.tsx       # ⭐ 核心：所有客户端状态在这里
 │   ├── NewsCard.tsx          # 新闻卡片
 │   ├── NewsList.tsx          # 新闻列表
 │   ├── SourcesList.tsx       # 左侧信息源列表
 │   ├── CategoryFilter.tsx    # 分类筛选标签栏
-│   ├── FilterPanel.tsx       # 活动筛选器面板
 │   ├── SiteHeader.tsx        # 顶部栏（含刷新按钮）
 │   ├── RefreshButton.tsx     # 刷新进度条（每1秒轮询）
 │   ├── TopImportantNews.tsx  # 重要新闻置顶区
@@ -245,7 +244,7 @@ git reset --hard <commit-hash>
 | 修复 URL 去重 | `lib/db.ts`, `app/api/refresh/fetch/route.ts` | addPost 加 source_url 查重；fetch 路由加双重去重 |
 | ID 规范化 | `lib/db.ts` | `x_` 前缀统一改为 `x-`，防止同一推文重复入库 |
 | 禁用页面缓存 | `app/page.tsx` | `export const revalidate = 0`，确保 Vercel 不缓存旧数据 |
-| 统一筛选架构 | `MainContent.tsx`, `FilterPanel.tsx`, `SourcesList.tsx` | 所有筛选改为 URL 参数驱动，客户端 useMemo 过滤 |
+| 统一筛选架构 | `MainContent.tsx`, `SourcesList.tsx` | 所有筛选由客户端状态和 useMemo 过滤驱动 |
 
 ---
 
@@ -253,10 +252,10 @@ git reset --hard <commit-hash>
 
 | 优先级 | 任务 | 涉及文件 | 预期效果 |
 |--------|------|---------|---------|
-| 🔴 高 | NewsCard/NewsList 加 React.memo | `components/NewsCard.tsx`, `components/NewsList.tsx` | FilterPanel 切换不卡顿 |
+| 🔴 高 | NewsCard/NewsList 加 React.memo | `components/NewsCard.tsx`, `components/NewsList.tsx` | 筛选切换不卡顿 |
 | 🔴 高 | process 路由改并发处理 | `app/api/refresh/process/route.ts` | 刷新速度提升 3-5 倍 |
 | 🟡 中 | 处理上限 50→100 条 | `app/api/refresh/process/route.ts` | 减少多次手动触发 |
-| 🟡 中 | 改为服务端过滤 | `app/page.tsx`, `lib/news.ts` | 数据量大时初始负载小 |
+| 🟡 中 | 改为服务端过滤 | `app/page.tsx`, `lib/subscriptions.ts` | 数据量大时初始负载小 |
 | 🟢 低 | 用户系统（Clerk） | `middleware.ts`, `SiteHeader.tsx`, API routes | 管理员鉴权 |
 
 ---

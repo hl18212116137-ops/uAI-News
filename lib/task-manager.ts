@@ -6,6 +6,31 @@
 // 任务状态
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+/** 单次刷新任务在抓取 / 处理各阶段的计数（供面板透明展示） */
+export type FetchPipelineTelemetry = {
+  /** 从各源 API 拉到的帖/条数（含已与库重复的） */
+  rawFetchedTotal?: number;
+  /** 因 raw id 或 URL 已在库而跳过写入 */
+  rawSkippedDuplicate?: number;
+  /** 因当前用户自定义去重/预筛规则跳过写入 raw */
+  rawSkippedUserRule?: number;
+  /** 本 run 新写入 raw_posts 的条数 */
+  rawInserted?: number;
+  sourcesProcessed?: number;
+  sourcesTotal?: number;
+  /** 用户已订阅但当前抓取开关关闭的源数量 */
+  sourcesSkippedDisabled?: number;
+  /** 进入 AI 处理路径的条数（含低信号/不重要/错误） */
+  processAttempted?: number;
+  /** 成功写入 news_items */
+  processSuccess?: number;
+  droppedLowSignal?: number;
+  droppedUnimportant?: number;
+  processErrors?: number;
+  /** 处理阶段非重要错误样例（最多几条） */
+  errorsSample?: string[];
+};
+
 // 任务信息
 export interface Task {
   id: string;
@@ -15,6 +40,7 @@ export interface Task {
   result?: {
     totalPosts?: number;
     processedPosts?: number;
+    pipeline?: FetchPipelineTelemetry;
   };
   error?: string;
   createdAt: number;
@@ -30,13 +56,17 @@ export interface Task {
  */
 class TaskManager {
   private tasks: Map<string, Task> = new Map();
-  private cleanupInterval: NodeJS.Timeout;
+  private cleanupInterval: ReturnType<typeof setInterval>;
 
   constructor() {
     // 每 10 分钟清理 1 小时前的任务
-    this.cleanupInterval = setInterval(() => {
+    const cleanupInterval = setInterval(() => {
       this.cleanupOldTasks();
     }, 10 * 60 * 1000);
+    this.cleanupInterval = cleanupInterval;
+
+    const maybeNodeInterval = cleanupInterval as unknown as { unref?: () => void };
+    maybeNodeInterval.unref?.();
   }
 
   /**
@@ -135,4 +165,22 @@ export const taskManager = globalForTaskManager.taskManager ?? new TaskManager()
 // 保存到全局变量
 if (!globalForTaskManager.taskManager) {
   globalForTaskManager.taskManager = taskManager;
+}
+
+/**
+ * 合并刷新流水线的遥测字段（保留 result 上其它键）
+ */
+export function mergePipelineTelemetryToTask(
+  taskId: string,
+  patch: Partial<FetchPipelineTelemetry>
+): void {
+  const task = taskManager.getTask(taskId);
+  if (!task) return;
+  const prevPipeline = task.result?.pipeline ?? {};
+  taskManager.updateTask(taskId, {
+    result: {
+      ...task.result,
+      pipeline: { ...prevPipeline, ...patch },
+    },
+  });
 }

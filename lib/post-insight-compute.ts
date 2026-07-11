@@ -7,7 +7,6 @@ import { isMostlyChinese, needsTranslateToChineseForInsight } from "@/lib/text-l
 import { DEFAULT_INSIGHT_PERSONA } from "@/lib/insight-defaults";
 import {
   filterInsightReviewEcho,
-  sanitizeInsightContextEcho,
 } from "@/lib/insight-echo-guard";
 import type { InsightAnalysisPayload } from "@/lib/types";
 
@@ -34,20 +33,6 @@ async function ensureChineseInsightReview(
     }),
   );
   return mapped;
-}
-
-async function ensureChineseInsightContext(
-  ai: TranslateSvc,
-  contextMatch: string | null,
-): Promise<string | null> {
-  if (contextMatch == null || !String(contextMatch).trim()) return contextMatch;
-  if (!needsTranslateToChineseForInsight(contextMatch)) return contextMatch;
-  try {
-    const zh = await ai.translateContent(contextMatch);
-    return zh?.trim() ? zh.trim() : contextMatch;
-  } catch {
-    return contextMatch;
-  }
 }
 
 /**
@@ -83,13 +68,6 @@ export async function computeInsightAnalysis(args: {
 
   const reliability = typeof analyzed.noveltyScore === "number" ? analyzed.noveltyScore : null;
 
-  let contextMatch: string | null =
-    analyzed.relevance && analyzed.relevance.trim() !== ""
-      ? analyzed.relevance.trim()
-      : analyzed.canonicalSummary?.trim()
-        ? analyzed.canonicalSummary.trim()
-        : null;
-
   let review =
     analyzed.highlights && analyzed.highlights.length > 0
       ? analyzed.highlights
@@ -98,7 +76,6 @@ export async function computeInsightAnalysis(args: {
         : null;
 
   review = filterInsightReviewEcho(post, review);
-  contextMatch = sanitizeInsightContextEcho(post, contextMatch);
 
   let originalTranslation: string | null =
     typeof analyzed.translatedText === "string" && analyzed.translatedText.trim() !== ""
@@ -127,23 +104,12 @@ export async function computeInsightAnalysis(args: {
     originalTranslationReferenced = refText;
   }
 
-  const sameSummaryForBoth =
-    review != null &&
-    review.length === 1 &&
-    contextMatch != null &&
-    review[0] === contextMatch;
-
   const reviewZh = await ensureChineseInsightReview(aiService, review);
-
-  const contextZh = sameSummaryForBoth
-    ? reviewZh?.[0] ?? contextMatch
-    : await ensureChineseInsightContext(aiService, contextMatch);
 
   return {
     scores,
     reliability,
     review: reviewZh,
-    contextMatch: contextZh,
     originalTranslation,
     originalTranslationReferenced,
   };

@@ -30,15 +30,17 @@
     }
   },
   "include": [
-    "next-env.d.ts",
-    "global.d.ts",
-    "next-server-js.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next-dev/types/**/*.ts",
+    ".next/types/**/*.ts",
+    "global.d.ts",
+    "next-env.d.ts",
+    "next-server-js.d.ts"
   ],
   "exclude": [
     "node_modules",
+    "mobile-app",
     "scripts",
     "test-db-validation.ts"
   ]

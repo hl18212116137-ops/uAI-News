@@ -3,9 +3,15 @@
 import { Suspense, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { signIn } from "next-auth/react";
+import { mapSignInError } from "@/lib/auth-errors";
 
-function LoginPanelInner() {
+type LoginPanelProps = {
+  /** 首页受控弹窗：登录成功后整页刷新以同步 RSC Session */
+  hardRedirectAfterLogin?: boolean;
+};
+
+function LoginPanelInner({ hardRedirectAfterLogin }: LoginPanelProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,7 +20,6 @@ function LoginPanelInner() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") ?? "/";
 
-  /** 仅允许站内路径，防止 open redirect */
   function safeRedirectPath(raw: string): string {
     if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
     return raw;
@@ -25,40 +30,29 @@ function LoginPanelInner() {
     setError("");
     setIsLoading(true);
 
-    const networkErrorHint =
-      "无法连接认证服务。请检查网络，或在 .env.local 中将 NEXT_PUBLIC_SUPABASE_URL 设为 Supabase 控制台 Settings → API 中的「Project URL」（域名必须能解析）。";
-
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+      const result = await signIn("credentials", {
+        email: email.trim().toLowerCase(),
         password,
+        redirect: false,
       });
 
-      if (authError) {
-        const msg = authError.message || "";
-        const looksNetwork =
-          msg === "Failed to fetch" ||
-          /network|fetch failed|load failed/i.test(msg);
-        setError(
-          looksNetwork
-            ? networkErrorHint
-            : authError.message === "Invalid login credentials"
-              ? "邮箱或密码错误，请重试。"
-              : authError.message
-        );
+      if (!result || result.error || result.ok === false) {
+        setError(mapSignInError(result?.error));
         return;
       }
 
-      router.push(redirectTo);
+      const target = safeRedirectPath(redirectTo);
+      if (hardRedirectAfterLogin) {
+        window.location.assign(target);
+        return;
+      }
+      router.push(target);
       router.refresh();
     } catch (unknownErr) {
       const err = unknownErr instanceof Error ? unknownErr : new Error(String(unknownErr));
-      const looksNetwork =
-        err.message === "Failed to fetch" || err.name === "TypeError";
-      setError(looksNetwork ? networkErrorHint : err.message);
+      setError(err.message || "登录失败，请稍后重试");
     } finally {
-      /** 成功时原先未 reset：拦截路由下 router.push 可能不立刻卸载弹窗，会永远停在 Signing in… */
       setIsLoading(false);
     }
   };
@@ -102,7 +96,7 @@ function LoginPanelInner() {
             htmlFor="login-password"
             className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]"
           >
-            Password
+            密码
           </label>
           <input
             id="login-password"
@@ -133,12 +127,12 @@ function LoginPanelInner() {
 
       <p className="mt-6 text-center text-sm font-normal text-[#99a1af]">
         还没有账号？{" "}
-        <Link
+        <a
           href="/register"
           className="font-medium text-[#101828] underline-offset-2 hover:underline"
         >
           立即注册
-        </Link>
+        </a>
       </p>
     </>
   );
@@ -152,10 +146,10 @@ function LoginPanelFallback() {
   );
 }
 
-export default function LoginPanel() {
+export default function LoginPanel({ hardRedirectAfterLogin }: LoginPanelProps = {}) {
   return (
     <Suspense fallback={<LoginPanelFallback />}>
-      <LoginPanelInner />
+      <LoginPanelInner hardRedirectAfterLogin={hardRedirectAfterLogin} />
     </Suspense>
   );
 }

@@ -1,24 +1,10 @@
 export type NewsCategory =
-  | 'Model Update'
-  | 'Product Update'
-  | 'Research'
-  | 'Company News'
-  | 'Funding'
-  | 'Policy'
-  | 'Open Source'
-  | 'Other';
-
-/** 分类英文→中文映射表（全项目共享，请从此处 import） */
-export const CATEGORY_ZH_MAP: Record<NewsCategory, string> = {
-  'Model Update':   '模型更新',
-  'Product Update': '产品发布',
-  'Research':       '研究进展',
-  'Company News':   '行业动态',
-  'Funding':        '融资',
-  'Policy':         '政策',
-  'Open Source':    '开源',
-  'Other':          '其他',
-};
+  | '模型'
+  | '产品'
+  | '研究'
+  | '行业'
+  | '政策'
+  | '观点线索';
 
 export type NewsSource = {
   platform: 'X' | 'RSS' | 'Blog' | 'YouTube' | 'Reddit';  // 扩展支持多个平台
@@ -50,7 +36,38 @@ export type XReferencedPost = {
   text: string;
   userName?: string;
   name?: string;
+  urls?: string[];
   mediaUrls?: string[];
+};
+
+export type LongformDiscoveryMethod =
+  | 'url'
+  | 'image-search'
+  | 'text-search'
+  | 'x-article'
+  | 'x-long-post'
+  | 'x-thread'
+  | 'reply-chain'
+  | 'image-ocr'
+  | 'video-transcript';
+
+export type LongformArticle = {
+  url: string;
+  resolvedUrl: string;
+  title: string;
+  sourceName: string;
+  authorName?: string;
+  excerpt: string;
+  digestSummary?: string;
+  digestPoints?: string[];
+  translatedTitle?: string;
+  translatedContent: string;
+  isPreview?: boolean;
+  originalWordCount: number;
+  fetchedAt: string;
+  discoveryMethod?: LongformDiscoveryMethod;
+  confidence?: number;
+  discoverySourceImageUrl?: string;
 };
 
 export type NewsItem = {
@@ -63,6 +80,8 @@ export type NewsItem = {
   publishedAt: string;
   originalText: string;
   createdAt: string;
+  /** 手动从 PASS 恢复的时间；用于标记恢复状态，默认时间线仍按 publishedAt 排序。 */
+  promotedAt?: string;
   importanceScore?: number; // 0-100，AI评估的重要性评分
   /** X 等媒体 URL（仅 https），INSIGHT 内展示用 */
   mediaUrls?: string[];
@@ -70,6 +89,8 @@ export type NewsItem = {
   socialEngagement?: SocialEngagement;
   /** 被转发 / 被引用的内层推文（仅 X） */
   referencedPost?: XReferencedPost;
+  /** 推文外链或 RSS/Blog 对应的优质长文译文 */
+  longform?: LongformArticle;
 };
 
 /**
@@ -89,8 +110,6 @@ export interface PostAnalysis {
   translatedTextReferenced?: string;
   /** KEY POINTS：最多 3 条口语短句；每条最多一处 **关键词** 加粗；解析失败时可缺省 */
   highlights?: string[];
-  /** 单句：只说明与这位用户（画像/订阅）的关系；约 35 字内；可选一处 **关键词** 加粗 */
-  relevance?: string;
 }
 
 /**
@@ -132,7 +151,6 @@ export type InsightAnalysisPayload = {
   scores: number | null;
   reliability: number | null;
   review: string[] | null;
-  contextMatch: string | null;
   originalTranslation: string | null;
   /** 嵌套推文正文的中文译文（无嵌套时为 null） */
   originalTranslationReferenced: string | null;

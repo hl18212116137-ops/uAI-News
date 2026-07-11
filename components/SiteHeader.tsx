@@ -48,7 +48,7 @@ export default function SiteHeader({ stats }: SiteHeaderProps) {
         data-node-id="37:4690"
         className="box-border flex h-[64px] max-h-[64px] min-h-[64px] w-full shrink-0 flex-col overflow-hidden pt-[24px]"
       >
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <StatsCards {...stats} />
         </div>
       </div>

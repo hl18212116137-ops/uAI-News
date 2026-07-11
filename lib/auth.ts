@@ -1,26 +1,23 @@
-import { createSupabaseServerClient } from '@/lib/supabase/server'
-import type { User } from '@supabase/supabase-js'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-options'
 
-type AuthSuccess = { user: User; errorResponse: null }
+export interface AuthUser {
+  id: string
+  email: string
+  name?: string | null
+}
+
+type AuthSuccess = { user: AuthUser; errorResponse: null }
 type AuthFailure = { user: null; errorResponse: Response }
 
 /**
  * API Route 鉴权工具函数
  * 在需要登录的 API handler 开头调用，未登录时返回 401
- *
- * 用法：
- *   const { user, errorResponse } = await requireAuth()
- *   if (errorResponse) return errorResponse
- *   // 继续业务逻辑，user 已确认存在
  */
 export async function requireAuth(): Promise<AuthSuccess | AuthFailure> {
-  const supabase = createSupabaseServerClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
+  const session = await getServerSession(authOptions)
 
-  if (error || !user) {
+  if (!session?.user) {
     return {
       user: null,
       errorResponse: Response.json(
@@ -30,5 +27,25 @@ export async function requireAuth(): Promise<AuthSuccess | AuthFailure> {
     }
   }
 
+  const user: AuthUser = {
+    id: session.user.id,
+    email: session.user.email!,
+    name: session.user.name,
+  }
+
   return { user, errorResponse: null }
+}
+
+/**
+ * 在 Server Component 中获取当前用户（不抛 401，返回 null 表示未登录）
+ */
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return null
+
+  return {
+    id: session.user.id,
+    email: session.user.email!,
+    name: session.user.name,
+  }
 }

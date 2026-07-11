@@ -1,15 +1,16 @@
 import 'server-only'
 
-import { supabase } from '@/lib/supabase'
+import { eq, and } from 'drizzle-orm'
+import { db } from '@/lib/db/drizzle'
+import { userSourceSubscriptions } from '@/lib/db/schema'
 
 export async function listUserSubscribedSourceIds(userId: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('user_source_subscriptions')
-    .select('source_id')
-    .eq('user_id', userId)
+  const rows = await db
+    .select({ sourceId: userSourceSubscriptions.sourceId })
+    .from(userSourceSubscriptions)
+    .where(eq(userSourceSubscriptions.userId, userId))
 
-  if (error) throw error
-  return (data || []).map((r: { source_id: string }) => r.source_id)
+  return rows.map((r) => r.sourceId)
 }
 
 export async function insertUserSourceSubscription(
@@ -17,22 +18,23 @@ export async function insertUserSourceSubscription(
   sourceId: string,
   sourceHandle: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('user_source_subscriptions')
-    .insert({ user_id: userId, source_id: sourceId, source_handle: sourceHandle })
-
-  if (error && error.code !== '23505') throw error
+  try {
+    await db.insert(userSourceSubscriptions).values({ userId, sourceId, sourceHandle })
+  } catch (e: any) {
+    if (e?.code !== '23505') throw e
+  }
 }
 
 export async function deleteUserSourceSubscription(
   userId: string,
   sourceId: string
 ): Promise<void> {
-  const { error } = await supabase
-    .from('user_source_subscriptions')
-    .delete()
-    .eq('user_id', userId)
-    .eq('source_id', sourceId)
-
-  if (error) throw error
+  await db
+    .delete(userSourceSubscriptions)
+    .where(
+      and(
+        eq(userSourceSubscriptions.userId, userId),
+        eq(userSourceSubscriptions.sourceId, sourceId)
+      )
+    )
 }

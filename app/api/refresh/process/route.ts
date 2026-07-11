@@ -1,4 +1,5 @@
 import { runRefreshProcessRawQueue } from '@/lib/services/process-service'
+import { revalidateHomeFeedCaches } from '@/lib/home-cache-invalidation'
 
 export const maxDuration = 60
 
@@ -10,6 +11,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
     const data = await runRefreshProcessRawQueue(body)
+    if (data?.success) {
+      revalidateHomeFeedCaches()
+    }
     return Response.json(data)
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '处理失败'

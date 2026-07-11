@@ -31,8 +31,8 @@ export async function addSourceFromUrlWithBackgroundFetch(params: {
 
   const sourceData = await extractSourceFromUrl(url)
 
-  const source: Source = {
-    id: sourceData.id!,
+  const source = await addSource({
+    id: '',
     sourceType: sourceData.sourceType!,
     platform: sourceData.platform!,
     handle: sourceData.handle!,
@@ -40,12 +40,10 @@ export async function addSourceFromUrlWithBackgroundFetch(params: {
     url: sourceData.url!,
     avatar: sourceData.avatar,
     description: sourceData.description,
-    enabled: sourceData.enabled!,
-    addedAt: sourceData.addedAt!,
+    enabled: sourceData.enabled ?? true,
+    addedAt: sourceData.addedAt ?? new Date().toISOString(),
     fetchConfig: sourceData.fetchConfig,
-  }
-
-  await addSource(source)
+  })
 
   if (user) {
     await subscribeSource(user.id, source.id, source.handle)
@@ -61,7 +59,7 @@ export async function addSourceFromUrlWithBackgroundFetch(params: {
     remainingTime: 120,
   })
 
-  fetchAndProcessPostsInBackground(source, taskId).catch(error => {
+  fetchAndProcessPostsInBackground(source, taskId, user?.id).catch(error => {
     console.error(`[后台任务] 抓取 @${source.handle} 失败:`, error)
     taskManager.updateTask(taskId, {
       status: 'failed',
@@ -137,7 +135,7 @@ export async function startFetchForSubscribedSource(
     remainingTime: 120,
   })
 
-  fetchAndProcessPostsInBackground(source, taskId).catch((error) => {
+  fetchAndProcessPostsInBackground(source, taskId, userId).catch((error) => {
     console.error(`[sources/fetch] 抓取 @${source.handle} 失败:`, error)
     taskManager.updateTask(taskId, {
       status: 'failed',

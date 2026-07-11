@@ -1,21 +1,23 @@
-import 'dotenv/config'
-import { createClient } from '@supabase/supabase-js'
-import { enrichSourcesMissingProfile } from '../lib/enrich-source-profiles'
+import * as nextEnv from '@next/env'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error(
-    'Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY'
-  )
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+nextEnv.loadEnvConfig(process.cwd(), true)
 
 async function updateSourceAvatars() {
-  console.log('开始批量更新信息源头像与简介（X 平台，缺 avatar 或 description）...\n')
-  const result = await enrichSourcesMissingProfile(supabase, { delayMs: 1000 })
+  const { enrichSourcesMissingProfile } = await import('../lib/enrich-source-profiles')
+  const handles = process.argv.slice(2).map((h) => h.trim()).filter(Boolean)
+  const delayMsRaw = process.env.FETCH_USER_INFO_DELAY_MS
+  const delayMs = delayMsRaw ? Math.max(0, parseInt(delayMsRaw, 10) || 0) : 1000
+
+  console.log(
+    handles.length
+      ? `开始更新指定信息源头像与简介：${handles.join(', ')}\n`
+      : '开始批量更新信息源头像与简介（X 平台，缺真实 avatar 或缺 description）...\n'
+  )
+
+  const result = await enrichSourcesMissingProfile({
+    handles: handles.length ? handles : undefined,
+    delayMs,
+  })
   console.log('\n批量更新完成:', result)
 }
 

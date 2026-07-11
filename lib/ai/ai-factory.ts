@@ -1,10 +1,11 @@
-import { AIService, AIProcessedContent, PostInsightContext } from './ai-service';
+import { AIService, AIProcessedContent, LongformDigestDraft, LongformDigestInput, PostInsightContext } from './ai-service';
 import { NewsCategory } from '../types';
 import { MinimaxService } from './minimax-service';
 import { ClaudeService } from './claude-service';
+import { DeepSeekService } from './deepseek-service';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
 
-export type AIProvider = 'minimax' | 'claude';
+export type AIProvider = 'minimax' | 'claude' | 'deepseek';
 
 /**
  * AI 服务工厂
@@ -17,16 +18,18 @@ export class AIServiceFactory {
    * @returns AIService 实例
    */
   static create(provider?: AIProvider): AIService {
-    const selectedProvider = provider || (process.env.AI_PROVIDER as AIProvider) || 'minimax';
+    const selectedProvider = provider || (process.env.AI_PROVIDER as AIProvider) || 'deepseek';
 
     switch (selectedProvider) {
+      case 'deepseek':
+        return new DeepSeekService();
       case 'claude':
         return new ClaudeService();
       case 'minimax':
         return new MinimaxService();
       default:
-        console.warn(`Unknown AI provider: ${selectedProvider}, falling back to minimax`);
-        return new MinimaxService();
+        console.warn(`Unknown AI provider: ${selectedProvider}, falling back to deepseek`);
+        return new DeepSeekService();
     }
   }
 
@@ -41,8 +44,8 @@ export class AIServiceFactory {
     primaryProvider?: AIProvider,
     fallbackProvider?: AIProvider
   ): AIService {
-    const primary = primaryProvider || (process.env.AI_PROVIDER as AIProvider) || 'minimax';
-    const fallback = fallbackProvider || (primary === 'minimax' ? 'claude' : 'minimax');
+    const primary = primaryProvider || (process.env.AI_PROVIDER as AIProvider) || 'deepseek';
+    const fallback = fallbackProvider || (primary === 'deepseek' ? 'minimax' : 'deepseek');
 
     const primaryService = this.create(primary);
     try {
@@ -70,11 +73,12 @@ class AIServiceWithFallback implements AIService {
   async processNews(
     text: string,
     authorName: string,
-    authorHandle: string
+    authorHandle: string,
+    filterLearningContext?: string
   ): Promise<AIProcessedContent> {
     try {
       return await this.retryWithExponentialBackoff(
-        () => this.primaryService.processNews(text, authorName, authorHandle),
+        () => this.primaryService.processNews(text, authorName, authorHandle, filterLearningContext),
         3 // 最多重试 3 次
       );
     } catch (primaryError) {
@@ -85,7 +89,7 @@ class AIServiceWithFallback implements AIService {
 
       try {
         return await this.retryWithExponentialBackoff(
-          () => this.fallbackService.processNews(text, authorName, authorHandle),
+          () => this.fallbackService.processNews(text, authorName, authorHandle, filterLearningContext),
           2 // 备用服务重试 2 次
         );
       } catch (fallbackError) {
@@ -115,6 +119,30 @@ class AIServiceWithFallback implements AIService {
       } catch (fallbackError) {
         console.error('Both AI services failed:', { primaryError, fallbackError });
         throw new Error('All AI services failed');
+      }
+    }
+  }
+
+  async summarizeLongform(input: LongformDigestInput): Promise<LongformDigestDraft> {
+    try {
+      return await this.retryWithExponentialBackoff(
+        () => this.primaryService.summarizeLongform(input),
+        3
+      );
+    } catch (primaryError) {
+      console.warn(
+        `Primary AI service (${this.primaryService.getProviderName()}) failed, falling back to ${this.fallbackService.getProviderName()}`,
+        primaryError
+      );
+
+      try {
+        return await this.retryWithExponentialBackoff(
+          () => this.fallbackService.summarizeLongform(input),
+          2
+        );
+      } catch (fallbackError) {
+        console.error('Both AI services failed:', { primaryError, fallbackError });
+        throw fallbackError;
       }
     }
   }
@@ -276,7 +304,6 @@ class AIServiceWithFallback implements AIService {
           translatedText: undefined,
           translatedTextReferenced: undefined,
           highlights: undefined,
-          relevance: undefined,
         };
       }
     }
