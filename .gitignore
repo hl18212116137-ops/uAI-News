@@ -22,7 +22,8 @@ list-posts.ts
 test-ai-service.ts
 test-db-validation.ts
 verify-posts.ts
-data/
+data/*
+!data/sources.json
 *.tsbuildinfo
 next-env.d.ts
 mobile-app/
