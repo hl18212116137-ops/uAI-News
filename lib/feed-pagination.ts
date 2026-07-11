@@ -25,6 +25,9 @@ export function stripLongformPosts(posts: NewsItem[]) {
 }
 
 export function clampFeedPageLimit(value: unknown, fallback = HOME_FEED_PAGE_SIZE) {
+  if (value == null || (typeof value === "string" && value.trim() === "")) {
+    return fallback;
+  }
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(Math.max(Math.trunc(parsed), 1), 40);

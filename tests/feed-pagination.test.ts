@@ -11,6 +11,8 @@ import { makeNewsItem } from "./test-helpers";
 test("clamps feed pagination inputs to stable bounds", () => {
   assert.equal(LONGFORM_FEED_PAGE_SIZE, 12);
   assert.equal(clampFeedPageLimit(undefined, LONGFORM_FEED_PAGE_SIZE), 12);
+  assert.equal(clampFeedPageLimit(null, LONGFORM_FEED_PAGE_SIZE), 12);
+  assert.equal(clampFeedPageLimit("", LONGFORM_FEED_PAGE_SIZE), 12);
   assert.equal(clampFeedPageLimit(0), 1);
   assert.equal(clampFeedPageLimit(99), 40);
   assert.equal(clampFeedPageOffset(-10), 0);
