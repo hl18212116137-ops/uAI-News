@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-**ainews-v2** is a Next.js 14 news aggregation app using the App Router.
+**uAI News** is a Next.js 15 news aggregation app using the App Router.
 
-- **Framework:** Next.js 14.2.0 (App Router)
+- **Framework:** Next.js 15.5.19 (App Router)
 - **Language:** TypeScript 5
 - **Styling:** Tailwind CSS 3.4.0 (utility-first, no CSS Modules or styled-components)
 - **UI Library:** React 18 (functional components only)
@@ -231,7 +231,7 @@ When implementing Figma designs with images:
 ## 6. Project Structure
 
 ```
-ainews-v2/
+uAI News/
 ├── app/
 │   ├── api/           # Next.js API routes (refresh, sources, task-status, import-from-url)
 │   ├── news/          # News detail page (news/[id]/page.tsx)

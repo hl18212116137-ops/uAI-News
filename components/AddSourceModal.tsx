@@ -47,23 +47,33 @@ export default function AddSourceModal({
   const [isRefreshingRecommended, setIsRefreshingRecommended] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const recommendedRequestRef = useRef<Promise<RecommendSourceRow[] | null> | null>(null);
   const router = useRouter();
 
   useEffect(() => {
     if (!isOpen || recommendedSources.length > 0) return;
-    let cancelled = false;
-    void fetch(`/api/recommended-sources?limit=${RECOMMENDED_SIDEBAR_LIMIT}`, {
-      cache: "no-store",
-      credentials: "same-origin",
-    })
-      .then((res) => res.json())
-      .then((data: { success?: boolean; sources?: RecommendSourceRow[] }) => {
-        if (cancelled || !data.success || !Array.isArray(data.sources)) return;
-        onRecommendedChange?.(data.sources);
+    let active = true;
+    if (!recommendedRequestRef.current) {
+      recommendedRequestRef.current = fetch(`/api/recommended-sources?limit=${RECOMMENDED_SIDEBAR_LIMIT}`, {
+        cache: "no-store",
+        credentials: "same-origin",
       })
-      .catch(() => {});
+        .then((res) => res.json())
+        .then((data: { success?: boolean; sources?: RecommendSourceRow[] }) =>
+          data.success && Array.isArray(data.sources) ? data.sources : null
+        )
+        .catch(() => null)
+        .finally(() => {
+          recommendedRequestRef.current = null;
+        });
+    }
+    void recommendedRequestRef.current.then((sources) => {
+      if (active && sources) {
+        onRecommendedChange?.(sources);
+      }
+    });
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, [isOpen, recommendedSources.length, onRecommendedChange]);
 

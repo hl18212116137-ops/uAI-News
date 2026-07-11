@@ -1,4 +1,4 @@
--- ainews-v2 初始化建表脚本
+-- uAI News 初始化建表脚本
 -- 用于阿里云 ECS PostgreSQL 一键建库
 -- 执行方式: psql -U ainews -d ainews -f init.sql
 
@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS raw_posts (
     CHECK (status IN ('new', 'queued', 'processing', 'done', 'failed')),
   error_message text,
   updated_at timestamptz NOT NULL DEFAULT now(),
+  urls jsonb,
   media_urls jsonb,
   social_engagement jsonb,
   referenced_post jsonb
@@ -56,6 +57,8 @@ CREATE TABLE IF NOT EXISTS raw_posts (
 
 CREATE INDEX IF NOT EXISTS raw_posts_source_id_idx ON raw_posts (source_id) WHERE source_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS raw_posts_status_idx ON raw_posts (status) WHERE status = 'new';
+CREATE INDEX IF NOT EXISTS raw_posts_processable_queue_idx ON raw_posts (status, created_at ASC) WHERE status IN ('new', 'queued');
+ALTER TABLE raw_posts ADD COLUMN IF NOT EXISTS urls jsonb;
 
 -- ─── news_items（新闻条目） ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS news_items (
@@ -89,6 +92,9 @@ CREATE INDEX IF NOT EXISTS news_items_source_handle_idx ON news_items (source_ha
 CREATE INDEX IF NOT EXISTS news_items_importance_score_idx ON news_items (importance_score DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS news_items_raw_post_id_idx ON news_items (raw_post_id) WHERE raw_post_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS news_items_longform_json_idx ON news_items ((longform_json->>'resolvedUrl')) WHERE longform_json IS NOT NULL;
+CREATE INDEX IF NOT EXISTS news_items_recommended_feed_idx ON news_items (importance_score DESC, published_at DESC) WHERE importance_score IS NOT NULL;
+CREATE INDEX IF NOT EXISTS news_items_source_feed_idx ON news_items (source_handle, published_at DESC, created_at DESC) WHERE source_handle IS NOT NULL;
+CREATE INDEX IF NOT EXISTS news_items_longform_published_idx ON news_items (published_at DESC) WHERE longform_json IS NOT NULL;
 
 -- ─── user_source_subscriptions（用户订阅） ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS user_source_subscriptions (
@@ -155,6 +161,7 @@ CREATE TABLE IF NOT EXISTS processing_jobs (
 CREATE INDEX IF NOT EXISTS processing_jobs_status_pending_idx ON processing_jobs (status) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS processing_jobs_raw_post_id_idx ON processing_jobs (raw_post_id) WHERE raw_post_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS processing_jobs_created_at_idx ON processing_jobs (created_at DESC);
+CREATE INDEX IF NOT EXISTS processing_jobs_pending_created_at_idx ON processing_jobs (created_at ASC) WHERE status = 'pending';
 
 -- ─── passed_posts（PASS 审计记录）────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS passed_posts (
@@ -168,7 +175,7 @@ CREATE TABLE IF NOT EXISTS passed_posts (
   summary text,
   category text,
   pass_type text NOT NULL
-    CHECK (pass_type IN ('low_signal', 'ai_unimportant', 'user_pass')),
+    CHECK (pass_type IN ('low_signal', 'ai_unimportant', 'user_pass', 'duplicate', 'processing_failed')),
   pass_reason text NOT NULL DEFAULT '',
   published_at timestamptz,
   media_urls jsonb,

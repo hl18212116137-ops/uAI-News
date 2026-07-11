@@ -16,6 +16,7 @@ import { composeTextForAiProcessing } from '@/lib/x';
 import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese';
 import { canonicalNewsIdForPlatform } from '@/lib/news-dedupe';
 import { ensureChineseBody, ensureChineseTitleSummary } from '@/lib/translation-guard';
+import { maybeAttachAutoLongform } from '@/lib/longform-auto';
 
 /**
  * 统一导入服务
@@ -115,6 +116,9 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
           url: parsedContent.url,
           published_at: parsedContent.publishedAt,
           fetched_at: new Date().toISOString(),
+          ...(parsedContent.urls && parsedContent.urls.length > 0
+            ? { urls: parsedContent.urls }
+            : {}),
           ...(parsedContent.mediaUrls && parsedContent.mediaUrls.length > 0
             ? { media_urls: parsedContent.mediaUrls }
             : {}),
@@ -229,7 +233,7 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       ),
     ])
     const translatedContent = await ensureChineseBody(aiService, translatedRaw)
-    return {
+    const newsItem: NewsItem = {
       id,
       title: aiResult.title,
       summary: aiResult.summary,
@@ -247,6 +251,23 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
       ...(parsed.mediaUrls && parsed.mediaUrls.length > 0 ? { mediaUrls: parsed.mediaUrls } : {}),
       ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
     };
+
+    return maybeAttachAutoLongform(
+      newsItem,
+      {
+        platform: parsed.platform,
+        text: parsed.content,
+        sourceUrl: parsed.url,
+        authorName: parsed.author.name,
+        authorHandle: parsed.author.handle || parsed.author.name,
+        urls: parsed.urls,
+        mediaUrls: parsed.mediaUrls,
+        referencedPost: parsed.referencedPost,
+        xArticle: parsed.xArticle,
+      },
+      aiService,
+      { remaining: 1 },
+    );
   } catch (error) {
     console.error('AI processing failed, using fallback:', error);
 

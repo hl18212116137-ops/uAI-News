@@ -3,6 +3,9 @@ import 'server-only'
 const FEED_VISIBLE_DAYS_DEFAULT = 7
 const FEED_VISIBLE_DAYS_MAX = 90
 const FEED_VISIBLE_DAYS_MIN = 1
+const FEED_RECENTLY_FETCHED_HOURS_DEFAULT = 24
+const FEED_RECENTLY_FETCHED_HOURS_MAX = 168
+const FEED_RECENTLY_FETCHED_HOURS_MIN = 1
 
 /** 全站列表 / 访客 feed 使用的可见天数（与 FEED_VISIBLE_DAYS 一致，1–90） */
 export function getFeedVisibleDaysEffective(): number {
@@ -26,4 +29,18 @@ export function getRecommendationFeedPublishedAtGte(userVisibleDays: number | nu
   const n =
     userVisibleDays == null ? site : Math.min(site, Math.max(1, Math.floor(userVisibleDays)))
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000)
+}
+
+/** 新抓取/新入库内容的短期置顶窗口；用 created_at 突破 published_at 可见窗口。 */
+export function getRecentlyFetchedFeedCreatedAtGte(): Date {
+  const raw = parseInt(
+    process.env.NEXT_PUBLIC_FEED_RECENTLY_FETCHED_HOURS ||
+      process.env.FEED_RECENTLY_FETCHED_HOURS ||
+      String(FEED_RECENTLY_FETCHED_HOURS_DEFAULT),
+    10
+  )
+  const hours = Number.isFinite(raw)
+    ? Math.min(FEED_RECENTLY_FETCHED_HOURS_MAX, Math.max(FEED_RECENTLY_FETCHED_HOURS_MIN, raw))
+    : FEED_RECENTLY_FETCHED_HOURS_DEFAULT
+  return new Date(Date.now() - hours * 60 * 60 * 1000)
 }

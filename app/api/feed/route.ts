@@ -7,6 +7,7 @@ import {
 import {
   clampFeedPageLimit,
   clampFeedPageOffset,
+  type FeedPageFilters,
   HOME_FEED_PAGE_SIZE,
 } from "@/lib/feed-pagination";
 import { getUserSubscribedHandles } from "@/lib/subscriptions";
@@ -19,6 +20,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const offset = clampFeedPageOffset(searchParams.get("offset"));
     const limit = clampFeedPageLimit(searchParams.get("limit"), HOME_FEED_PAGE_SIZE);
+    const filters: FeedPageFilters = {
+      sourceHandle: searchParams.get("source") || undefined,
+      category: searchParams.get("category") || undefined,
+      searchQuery: searchParams.get("q") || undefined,
+    };
+    const prioritizeRecentlyFetched = searchParams.get("fresh") === "1";
 
     if (user) {
       const subscribedHandles = await getUserSubscribedHandles(user.id);
@@ -27,7 +34,9 @@ export async function GET(request: NextRequest) {
           user.id,
           offset,
           limit,
-          subscribedHandles
+          subscribedHandles,
+          filters,
+          { prioritizeRecentlyFetched }
         );
         return NextResponse.json({
           success: true,
@@ -37,7 +46,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const page = await getCachedHomeRecommendedPostPage(offset, limit, user?.id ?? null);
+    const page = await getCachedHomeRecommendedPostPage(offset, limit, user?.id ?? null, filters);
     return NextResponse.json({
       success: true,
       feedType: "recommended",

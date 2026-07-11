@@ -7,6 +7,7 @@ import {
 import {
   clampFeedPageLimit,
   clampFeedPageOffset,
+  type FeedPageFilters,
   HOME_FEED_PAGE_SIZE,
 } from "@/lib/feed-pagination";
 
@@ -21,7 +22,19 @@ export async function GET(request: NextRequest) {
     if (hasPaging) {
       const offset = clampFeedPageOffset(searchParams.get("offset"));
       const limit = clampFeedPageLimit(searchParams.get("limit"), HOME_FEED_PAGE_SIZE);
-      const page = await getCachedUserSubscribedFeedPage(user.id, offset, limit);
+      const filters: FeedPageFilters = {
+        sourceHandle: searchParams.get("source") || undefined,
+        category: searchParams.get("category") || undefined,
+        searchQuery: searchParams.get("q") || undefined,
+      };
+      const page = await getCachedUserSubscribedFeedPage(
+        user.id,
+        offset,
+        limit,
+        undefined,
+        filters,
+        { prioritizeRecentlyFetched: searchParams.get("fresh") === "1" }
+      );
       return NextResponse.json({ success: true, ...page });
     }
 

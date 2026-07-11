@@ -1,9 +1,13 @@
 "use client";
 
 import type { AuthUser } from "@/lib/auth";
+import dynamic from "next/dynamic";
 import TopBar from "@/components/TopBar";
-import LoginModalShell from "@/components/LoginModalShell";
 import { HomeLayoutProvider, useOptionalHomeLayout } from "@/components/HomeLayoutContext";
+
+const LoginModalShell = dynamic(() => import("@/components/LoginModalShell"), {
+  ssr: false,
+});
 
 function HomePageShellInner({
   user,
@@ -41,10 +45,9 @@ function HomePageShellInner({
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
 
-      <LoginModalShell
-        controlledOpen={layout.isLoginModalOpen}
-        onControlledClose={layout.closeLoginModal}
-      />
+      {layout.isLoginModalOpen ? (
+        <LoginModalShell controlledOpen onControlledClose={layout.closeLoginModal} />
+      ) : null}
     </div>
   );
 }

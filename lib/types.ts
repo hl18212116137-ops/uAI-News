@@ -3,7 +3,8 @@ export type NewsCategory =
   | '产品'
   | '研究'
   | '行业'
-  | '政策';
+  | '政策'
+  | '观点线索';
 
 export type NewsSource = {
   platform: 'X' | 'RSS' | 'Blog' | 'YouTube' | 'Reddit';  // 扩展支持多个平台
@@ -35,8 +36,20 @@ export type XReferencedPost = {
   text: string;
   userName?: string;
   name?: string;
+  urls?: string[];
   mediaUrls?: string[];
 };
+
+export type LongformDiscoveryMethod =
+  | 'url'
+  | 'image-search'
+  | 'text-search'
+  | 'x-article'
+  | 'x-long-post'
+  | 'x-thread'
+  | 'reply-chain'
+  | 'image-ocr'
+  | 'video-transcript';
 
 export type LongformArticle = {
   url: string;
@@ -49,9 +62,10 @@ export type LongformArticle = {
   digestPoints?: string[];
   translatedTitle?: string;
   translatedContent: string;
+  isPreview?: boolean;
   originalWordCount: number;
   fetchedAt: string;
-  discoveryMethod?: 'url' | 'image-search' | 'text-search' | 'x-article';
+  discoveryMethod?: LongformDiscoveryMethod;
   confidence?: number;
   discoverySourceImageUrl?: string;
 };
@@ -66,7 +80,7 @@ export type NewsItem = {
   publishedAt: string;
   originalText: string;
   createdAt: string;
-  /** 手动从 PASS 恢复的时间；排序用，展示仍以原推文 publishedAt 为准。 */
+  /** 手动从 PASS 恢复的时间；用于标记恢复状态，默认时间线仍按 publishedAt 排序。 */
   promotedAt?: string;
   importanceScore?: number; // 0-100，AI评估的重要性评分
   /** X 等媒体 URL（仅 https），INSIGHT 内展示用 */

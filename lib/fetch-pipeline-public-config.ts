@@ -42,7 +42,7 @@ function buildStages(): FetchPipelineStageDescription[] {
       key: 'ai',
       title: 'AI 结构化与筛选',
       detail:
-        '模型生成标题、摘要、分类，并判定是否与 AI 资讯相关；不重要的内容不会进入首页资讯流。',
+        '模型生成标题、摘要、分类，并判定是否与 AI 资讯相关；硬新闻之外，高价值观点/线索也可进入资讯流。',
     },
     {
       key: 'feed',
@@ -69,7 +69,7 @@ export async function getFetchPipelinePublicConfigPayload(
     processingJobsEnabled: isProcessingJobsPipelineEnabled(),
     stages: buildStages(),
     aiRulesSummary: [
-      '分类维度包括：模型更新、产品动态、研究、公司、融资、政策、开源等。',
+      '分类维度包括：模型更新、产品动态、研究、公司、融资、政策、开源、观点线索等。',
       '「重要 / 不重要」由模型结合内容与账号语境判断；不重要条目会删除 raw，不写入 news_items。',
       '重要性分数在入库后单独计算，用于排序与展示权重。',
     ],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AuthUser } from "@/lib/auth";
 type User = AuthUser;
 import AppModalShell from "@/components/AppModalShell";
@@ -39,7 +39,7 @@ type PassedPostLogRow = {
   title: string | null;
   summary: string | null;
   category: string | null;
-  passType: "low_signal" | "ai_unimportant" | "user_pass";
+  passType: "low_signal" | "ai_unimportant" | "user_pass" | "duplicate" | "processing_failed";
   passReason: string;
   publishedAt: string | null;
   updatedAt: string;
@@ -54,6 +54,36 @@ type FetchPipelinePanelProps = {
   /** 打开「添加信息源」侧栏流程 */
   onRequestAddSource?: () => void;
 };
+
+const pipelineConfigRequests = new Map<string, Promise<FetchPipelinePublicConfig>>();
+
+function readPipelineConfig(user: User | null, userCacheKey: string) {
+  const requestKey = `${user ? "me" : "public"}:${userCacheKey}`;
+  const current = pipelineConfigRequests.get(requestKey);
+  if (current) return current;
+
+  const request = fetch(user ? "/api/me/fetch-pipeline-config" : "/api/fetch-pipeline-config", {
+    cache: "no-store",
+    credentials: "same-origin",
+  })
+    .then(async (res) => {
+      const data = (await res.json()) as {
+        success?: boolean;
+        config?: FetchPipelinePublicConfig;
+        error?: string;
+      };
+      if (!res.ok || !data.success || !data.config) {
+        throw new Error(data.error || "加载失败");
+      }
+      return data.config;
+    })
+    .finally(() => {
+      pipelineConfigRequests.delete(requestKey);
+    });
+
+  pipelineConfigRequests.set(requestKey, request);
+  return request;
+}
 
 type PipelineRuleModuleKey =
   | "sources"
@@ -115,6 +145,8 @@ function formatRulePayload(ruleType: string, payload: Record<string, unknown>): 
 
 function passTypeLabel(passType: PassedPostLogRow["passType"]): string {
   if (passType === "user_pass") return "用户 PASS";
+  if (passType === "duplicate") return "重复";
+  if (passType === "processing_failed") return "处理失败";
   return passType === "low_signal" ? "低信号" : "AI PASS";
 }
 
@@ -555,106 +587,153 @@ export default function FetchPipelinePanel({
   const [passLogsLoaded, setPassLogsLoaded] = useState(false);
   const [passLogsError, setPassLogsError] = useState<string | null>(null);
   const userCacheKey = user?.id ?? "guest";
+  const activeUserCacheKeyRef = useRef(userCacheKey);
+  const configRequestRef = useRef<Promise<void> | null>(null);
+  const subsRequestRef = useRef<Promise<void> | null>(null);
+  const rulesRequestRef = useRef<Promise<void> | null>(null);
+  const passLogsRequestRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
+    activeUserCacheKeyRef.current = userCacheKey;
+    configRequestRef.current = null;
+    subsRequestRef.current = null;
+    rulesRequestRef.current = null;
+    passLogsRequestRef.current = null;
     setConfig(null);
     setConfigError(null);
     setConfigLoaded(false);
+    setConfigLoading(false);
     setSubscribedSources([]);
     setSubsError(null);
     setSubsLoaded(false);
+    setSubsLoading(false);
     setRulesAll([]);
     setRulesErr(null);
     setRulesLoaded(false);
+    setRulesLoading(false);
     setPassLogs([]);
     setPassLogsError(null);
     setPassLogsLoaded(false);
+    setPassLogsLoading(false);
   }, [userCacheKey]);
 
-  const loadPipelineSnapshot = useCallback(async () => {
-    setConfigLoading(true);
-    setConfigError(null);
-    try {
-      const url = user ? "/api/me/fetch-pipeline-config" : "/api/fetch-pipeline-config";
-      const res = await fetch(url, {
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      const data = (await res.json()) as {
-        success?: boolean;
-        config?: FetchPipelinePublicConfig;
-        error?: string;
-      };
-      if (!res.ok || !data.success || !data.config) {
-        throw new Error(data.error || "加载失败");
+  const loadPipelineSnapshot = useCallback(() => {
+    if (configRequestRef.current) return configRequestRef.current;
+    const requestUserCacheKey = userCacheKey;
+    const request = (async () => {
+      setConfigLoading(true);
+      setConfigError(null);
+      try {
+        const nextConfig = await readPipelineConfig(user, requestUserCacheKey);
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setConfig(nextConfig);
+        setConfigLoaded(true);
+      } catch (e) {
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setConfig(null);
+        setConfigError(e instanceof Error ? e.message : "加载失败");
+      } finally {
+        if (activeUserCacheKeyRef.current === requestUserCacheKey) {
+          setConfigLoading(false);
+        }
       }
-      setConfig(data.config);
-      setConfigLoaded(true);
-    } catch (e) {
-      setConfig(null);
-      setConfigError(e instanceof Error ? e.message : "加载失败");
-    } finally {
-      setConfigLoading(false);
-    }
-  }, [user]);
-
-  const loadSubscriptions = useCallback(async () => {
-    if (!user) return;
-    setSubsLoading(true);
-    setSubsError(null);
-    try {
-      const res = await fetch("/api/me/subscribed-sources", {
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      const data = (await res.json()) as {
-        success?: boolean;
-        sources?: SubscribedSourceRow[];
-        error?: string;
-      };
-      if (!res.ok || !data.success || !data.sources) throw new Error(data.error || "加载订阅失败");
-      setSubscribedSources(data.sources);
-      setSubsLoaded(true);
-    } catch (e) {
-      setSubscribedSources([]);
-      setSubsError(e instanceof Error ? e.message : "加载订阅失败");
-    } finally {
-      setSubsLoading(false);
-    }
-  }, [user]);
-
-  const loadUserRules = useCallback(async () => {
-    if (!user) return;
-    setRulesLoading(true);
-    setRulesErr(null);
-    try {
-      const res = await fetch("/api/me/pipeline-rules?module=all", {
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      const data = (await res.json()) as {
-        success?: boolean;
-        rules?: UserPipelineRuleRow[];
-        error?: string;
-      };
-      if (!res.ok || !data.success) throw new Error(data.error || "规则加载失败");
-      const list = data.rules || [];
-      setRulesAll(list);
-      setRulesLoaded(true);
-      const visibleDaysRule = list.find(
-        (r) => getRuleModule(r) === "recommendation" && getRuleType(r) === "recommendation_visible_days"
-      );
-      if (visibleDaysRule && typeof visibleDaysRule.payload?.days === "number") {
-        setRecDays(String(visibleDaysRule.payload.days));
+    })();
+    configRequestRef.current = request;
+    void request.finally(() => {
+      if (configRequestRef.current === request) {
+        configRequestRef.current = null;
       }
-    } catch (e) {
-      setRulesErr(e instanceof Error ? e.message : "规则加载失败");
-    } finally {
-      setRulesLoading(false);
-    }
-  }, [user]);
+    });
+    return request;
+  }, [user, userCacheKey]);
 
-  const loadPassLogs = useCallback(async () => {
+  const loadSubscriptions = useCallback(() => {
+    if (!user) return;
+    if (subsRequestRef.current) return subsRequestRef.current;
+    const requestUserCacheKey = userCacheKey;
+    const request = (async () => {
+      setSubsLoading(true);
+      setSubsError(null);
+      try {
+        const res = await fetch("/api/me/subscribed-sources", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const data = (await res.json()) as {
+          success?: boolean;
+          sources?: SubscribedSourceRow[];
+          error?: string;
+        };
+        if (!res.ok || !data.success || !data.sources) throw new Error(data.error || "加载订阅失败");
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setSubscribedSources(data.sources);
+        setSubsLoaded(true);
+      } catch (e) {
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setSubscribedSources([]);
+        setSubsError(e instanceof Error ? e.message : "加载订阅失败");
+      } finally {
+        if (activeUserCacheKeyRef.current === requestUserCacheKey) {
+          setSubsLoading(false);
+        }
+      }
+    })();
+    subsRequestRef.current = request;
+    void request.finally(() => {
+      if (subsRequestRef.current === request) {
+        subsRequestRef.current = null;
+      }
+    });
+    return request;
+  }, [user, userCacheKey]);
+
+  const loadUserRules = useCallback(() => {
+    if (!user) return;
+    if (rulesRequestRef.current) return rulesRequestRef.current;
+    const requestUserCacheKey = userCacheKey;
+    const request = (async () => {
+      setRulesLoading(true);
+      setRulesErr(null);
+      try {
+        const res = await fetch("/api/me/pipeline-rules?module=all", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const data = (await res.json()) as {
+          success?: boolean;
+          rules?: UserPipelineRuleRow[];
+          error?: string;
+        };
+        if (!res.ok || !data.success) throw new Error(data.error || "规则加载失败");
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        const list = data.rules || [];
+        setRulesAll(list);
+        setRulesLoaded(true);
+        const visibleDaysRule = list.find(
+          (r) => getRuleModule(r) === "recommendation" && getRuleType(r) === "recommendation_visible_days"
+        );
+        if (visibleDaysRule && typeof visibleDaysRule.payload?.days === "number") {
+          setRecDays(String(visibleDaysRule.payload.days));
+        }
+      } catch (e) {
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setRulesErr(e instanceof Error ? e.message : "规则加载失败");
+      } finally {
+        if (activeUserCacheKeyRef.current === requestUserCacheKey) {
+          setRulesLoading(false);
+        }
+      }
+    })();
+    rulesRequestRef.current = request;
+    void request.finally(() => {
+      if (rulesRequestRef.current === request) {
+        rulesRequestRef.current = null;
+      }
+    });
+    return request;
+  }, [user, userCacheKey]);
+
+  const loadPassLogs = useCallback(() => {
     if (!user) {
       setPassLogs([]);
       setPassLogsLoaded(true);
@@ -662,28 +741,43 @@ export default function FetchPipelinePanel({
       return;
     }
 
-    setPassLogsLoading(true);
-    setPassLogsError(null);
-    try {
-      const res = await fetch("/api/me/pass-logs?limit=60", {
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      const data = (await res.json()) as {
-        success?: boolean;
-        logs?: PassedPostLogRow[];
-        error?: string;
-      };
-      if (!res.ok || !data.success) throw new Error(data.error || "加载 PASS 明细失败");
-      setPassLogs(data.logs ?? []);
-      setPassLogsLoaded(true);
-    } catch (e) {
-      setPassLogs([]);
-      setPassLogsError(e instanceof Error ? e.message : "加载 PASS 明细失败");
-    } finally {
-      setPassLogsLoading(false);
-    }
-  }, [user]);
+    if (passLogsRequestRef.current) return passLogsRequestRef.current;
+    const requestUserCacheKey = userCacheKey;
+    const request = (async () => {
+      setPassLogsLoading(true);
+      setPassLogsError(null);
+      try {
+        const res = await fetch("/api/me/pass-logs?limit=60", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const data = (await res.json()) as {
+          success?: boolean;
+          logs?: PassedPostLogRow[];
+          error?: string;
+        };
+        if (!res.ok || !data.success) throw new Error(data.error || "加载 PASS 明细失败");
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setPassLogs(data.logs ?? []);
+        setPassLogsLoaded(true);
+      } catch (e) {
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setPassLogs([]);
+        setPassLogsError(e instanceof Error ? e.message : "加载 PASS 明细失败");
+      } finally {
+        if (activeUserCacheKeyRef.current === requestUserCacheKey) {
+          setPassLogsLoading(false);
+        }
+      }
+    })();
+    passLogsRequestRef.current = request;
+    void request.finally(() => {
+      if (passLogsRequestRef.current === request) {
+        passLogsRequestRef.current = null;
+      }
+    });
+    return request;
+  }, [user, userCacheKey]);
 
   const togglePassLogs = useCallback(() => {
     if (passLogsOpen) {

@@ -24,6 +24,7 @@ export interface ParsedContent {
   url: string;
   platform: PlatformType;
   rawData?: any;
+  urls?: string[];
   mediaUrls?: string[];
   referencedPost?: XReferencedPost;
   xArticle?: XArticle;

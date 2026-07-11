@@ -1,10 +1,10 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo } from "react";
 import { NewsItem } from "@/lib/types";
 import { resolveNewsPostUrl } from "@/lib/news-post-url";
 import { cleanNewsTitle } from "@/lib/news-title-cleanup";
-import { isNewPost, formatTypography } from "@/lib/utils";
+import { formatTypography } from "@/lib/utils";
 import Tooltip from "./Tooltip";
 import BookmarkGlyph from "@/components/BookmarkGlyph";
 import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
@@ -38,6 +38,7 @@ type NewsCardProps = {
   passPending?: boolean;
   onPassPost?: (post: NewsItem) => void;
   readonly?: boolean;
+  showNewBadge?: boolean;
   analysisActive?: boolean;
   onAnalysisToggle?: (postId: string) => void;
 };
@@ -53,18 +54,13 @@ function NewsCard({
   passPending = false,
   onPassPost,
   readonly = false,
+  showNewBadge = false,
   analysisActive = false,
   onAnalysisToggle,
 }: NewsCardProps) {
   const sourceName = post.source?.name || "未知来源";
   const sourceUrl = resolveNewsPostUrl(post);
   const displayTitle = cleanNewsTitle(post.title);
-  /** isNewPost 依赖 sessionStorage，SSR 与首帧客户端必须一致，故挂载后再算 */
-  const [showNewBadge, setShowNewBadge] = useState(false);
-  useEffect(() => {
-    setShowNewBadge(isNewPost(post.createdAt));
-  }, [post.createdAt]);
-
   const articlePad =
     variant === "compact"
       ? "pt-10 pb-12"
@@ -76,7 +72,7 @@ function NewsCard({
       data-name="Article"
       data-node-id="37:4741"
       className={[
-        "relative flex w-full shrink-0 flex-col items-start gap-[32px] rounded-[2px]",
+        "group/card relative flex w-full shrink-0 flex-col items-start gap-[32px] rounded-[2px]",
         analysisActive ? "bg-[rgba(255,178,36,0.02)]" : "bg-white",
         articlePad,
       ].join(" ")}
@@ -189,14 +185,14 @@ function NewsCard({
               </>
             ) : null}
             {!readonly && onPassPost ? (
-              <span className="group inline-flex min-h-[18px] w-[64px] shrink-0 items-center gap-[4px]">
-                <span className="flex min-h-[18px] items-center font-mono text-[12px] uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+              <span className="group inline-flex min-h-[18px] shrink-0 items-center gap-[4px]">
+                <span className="flex min-h-[18px] items-center font-mono text-[12px] uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]">
                   /
                 </span>
                 <Tooltip content={passPending ? "正在记录 PASS" : "PASS 这条，后续少推荐类似内容"}>
                   <button
                     type="button"
-                    className="btn-press inline-flex min-h-[18px] shrink-0 items-center gap-1 rounded-[3px] bg-transparent px-1.5 font-mono text-[10px] font-bold uppercase leading-[14px] tracking-[0.06em] text-[#6a7282] opacity-0 transition-[background-color,color,opacity] hover:bg-primary-50 hover:text-primary-600 hover:opacity-100 focus-visible:bg-primary-50 focus-visible:text-primary-600 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 disabled:cursor-wait disabled:opacity-70"
+                    className="btn-press inline-flex min-h-[18px] shrink-0 items-center gap-1 rounded-[3px] bg-transparent px-1.5 font-mono text-[10px] font-bold uppercase leading-[14px] tracking-[0.06em] text-[#99a1af] opacity-[0.65] transition-[background-color,color,opacity] hover:bg-primary-50 hover:text-primary-600 hover:opacity-100 focus-visible:bg-primary-50 focus-visible:text-primary-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 disabled:cursor-wait disabled:opacity-70 sm:opacity-[0.45] sm:group-hover/card:opacity-75"
                     aria-label="PASS 这条推文，后续少推荐类似内容"
                     aria-busy={passPending}
                     disabled={passPending}

@@ -53,6 +53,7 @@ export class XParser implements BaseParser {
       url: tweetData.post_url || url,
       platform: 'X',
       rawData: { tweet: tweetData, ...(article ? { article } : {}) },
+      ...(tweetData.urls && tweetData.urls.length > 0 ? { urls: tweetData.urls } : {}),
       ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
       ...(tweetData.referencedPost ? { referencedPost: tweetData.referencedPost } : {}),
       ...(article ? { xArticle: article } : {}),

@@ -7,8 +7,22 @@ import { sanitizeInsightPayloadForPost } from '@/lib/insight-echo-guard'
 import { canonicalizeExternalUrlForDedupe, canonicalizeNewsSourceUrl } from '@/lib/news-post-url'
 import { cleanNewsTitle } from '@/lib/news-title-cleanup'
 import { isLongformPreviewPost } from '@/lib/longform-post-utils'
+import { isUsableLongformArticle } from '@/lib/longform-quality'
 import { areNewsItemsNearDuplicate, canonicalNewsIdForRawPost, newsItemContentFingerprint } from '@/lib/news-dedupe'
-import type { InsightAnalysisPayload, LongformArticle, NewsItem, SocialEngagement, XReferencedPost } from '@/lib/types'
+import {
+  clampFeedPageLimit,
+  clampFeedPageOffset,
+  LONGFORM_FEED_PAGE_SIZE,
+  type FeedPage,
+} from '@/lib/feed-pagination'
+import type {
+  InsightAnalysisPayload,
+  LongformArticle,
+  LongformDiscoveryMethod,
+  NewsItem,
+  SocialEngagement,
+  XReferencedPost,
+} from '@/lib/types'
 
 /** 读取/返回前修正 X 推文 status 链接（避免 profile 或错误 url 导致无法跳转原文） */
 export function withCanonicalPostSourceUrl(item: NewsItem): NewsItem {
@@ -84,6 +98,13 @@ export function referencedPostFromDbJson(value: unknown): XReferencedPost | unde
   const id = typeof o.id === 'string' ? o.id : undefined
   const userName = typeof o.userName === 'string' ? o.userName : undefined
   const name = typeof o.name === 'string' ? o.name : undefined
+  const urls = Array.isArray(o.urls)
+    ? Array.from(new Set(
+        o.urls
+          .map((u) => (typeof u === 'string' ? u.trim() : ''))
+          .filter((u) => /^https?:\/\//i.test(u)),
+      ))
+    : undefined
   const mediaUrls = mediaUrlsFromDbJson(o.mediaUrls)
   return {
     kind,
@@ -91,6 +112,7 @@ export function referencedPostFromDbJson(value: unknown): XReferencedPost | unde
     ...(id ? { id } : {}),
     ...(userName ? { userName } : {}),
     ...(name ? { name } : {}),
+    ...(urls && urls.length > 0 ? { urls } : {}),
     ...(mediaUrls ? { mediaUrls } : {}),
   }
 }
@@ -187,6 +209,12 @@ export type AddPostOptions = {
   refreshExisting?: boolean
 }
 
+export type AddPostResult =
+  | { status: 'inserted'; id: string }
+  | { status: 'updated'; id: string }
+  | { status: 'duplicate_exact'; id: string }
+  | { status: 'duplicate_content'; id: string }
+
 export async function getRecentLongformPosts(limit = 40): Promise<NewsItem[]> {
   try {
     const data = await db
@@ -196,14 +224,31 @@ export async function getRecentLongformPosts(limit = 40): Promise<NewsItem[]> {
       .orderBy(desc(newsItems.publishedAt))
       .limit(limit)
 
-    return data.map(mapNewsRowToItem).filter((post) => !isLongformPreviewPost(post))
+    return data
+      .map(mapNewsRowToItem)
+      .filter((post) => Boolean(post.longform?.translatedContent) && !isLongformPreviewPost(post))
   } catch (error) {
     console.error('Failed to fetch longform posts:', error)
     return []
   }
 }
 
-const LONGFORM_LIST_CONTENT_PREVIEW_CHARS = 1600
+const LONGFORM_LIST_CONTENT_PREVIEW_CHARS = 320
+const LONGFORM_DISCOVERY_METHODS = new Set<LongformDiscoveryMethod>([
+  'url',
+  'image-search',
+  'text-search',
+  'x-article',
+  'x-long-post',
+  'x-thread',
+  'reply-chain',
+  'image-ocr',
+  'video-transcript',
+])
+
+function isLongformDiscoveryMethod(value: unknown): value is LongformDiscoveryMethod {
+  return typeof value === 'string' && LONGFORM_DISCOVERY_METHODS.has(value as LongformDiscoveryMethod)
+}
 
 type LongformPreviewRow = {
   id: string
@@ -258,6 +303,7 @@ function mapLongformPreviewRowToItem(row: LongformPreviewRow): NewsItem | null {
     title: row.longformTitle.trim() || resolvedUrl,
     sourceName: row.sourceNameLongform.trim(),
     translatedContent,
+    isPreview: true,
     originalWordCount: Math.max(0, Math.floor(numberFromText(row.originalWordCount) ?? 0)),
     fetchedAt: row.fetchedAt,
     excerpt: row.excerpt.trim() || translatedContent.slice(0, 260),
@@ -269,18 +315,14 @@ function mapLongformPreviewRowToItem(row: LongformPreviewRow): NewsItem | null {
     : []
   if (digestPoints.length > 0) longform.digestPoints = digestPoints
   if (row.translatedTitle.trim()) longform.translatedTitle = row.translatedTitle.trim()
-  if (
-    discoveryMethod === 'url' ||
-    discoveryMethod === 'image-search' ||
-    discoveryMethod === 'text-search' ||
-    discoveryMethod === 'x-article'
-  ) {
+  if (isLongformDiscoveryMethod(discoveryMethod)) {
     longform.discoveryMethod = discoveryMethod
   }
   if (confidence != null) longform.confidence = confidence
   if (row.discoverySourceImageUrl.trim()) {
     longform.discoverySourceImageUrl = row.discoverySourceImageUrl.trim()
   }
+  if (!isUsableLongformArticle(longform)) return null
 
   return withCanonicalPostSourceUrl({
     id: row.id,
@@ -303,50 +345,75 @@ function mapLongformPreviewRowToItem(row: LongformPreviewRow): NewsItem | null {
 }
 
 export async function getRecentLongformPostPreviews(limit = 40): Promise<NewsItem[]> {
-  try {
-    const previewLength = Math.max(400, Math.min(4000, Math.floor(LONGFORM_LIST_CONTENT_PREVIEW_CHARS)))
-    const data = await db
-      .select({
-        id: newsItems.id,
-        title: newsItems.title,
-        summary: newsItems.summary,
-        contentPreview: sql<string>`substring(coalesce(${newsItems.content}, '') from 1 for 360)`,
-        sourcePlatform: newsItems.sourcePlatform,
-        sourceName: newsItems.sourceName,
-        sourceHandle: newsItems.sourceHandle,
-        sourceUrl: newsItems.sourceUrl,
-        category: newsItems.category,
-        publishedAt: newsItems.publishedAt,
-        createdAt: newsItems.createdAt,
-        importanceScore: newsItems.importanceScore,
-        url: sql<string>`coalesce(${newsItems.longformJson}->>'url', '')`,
-        resolvedUrl: sql<string>`coalesce(${newsItems.longformJson}->>'resolvedUrl', ${newsItems.longformJson}->>'url', '')`,
-        longformTitle: sql<string>`coalesce(${newsItems.longformJson}->>'title', '')`,
-        sourceNameLongform: sql<string>`coalesce(${newsItems.longformJson}->>'sourceName', '')`,
-        authorName: sql<string>`coalesce(${newsItems.longformJson}->>'authorName', '')`,
-        excerpt: sql<string>`coalesce(${newsItems.longformJson}->>'excerpt', '')`,
-        digestSummary: sql<string>`coalesce(${newsItems.longformJson}->>'digestSummary', '')`,
-        digestPoints: sql<unknown>`${newsItems.longformJson}->'digestPoints'`,
-        translatedTitle: sql<string>`coalesce(${newsItems.longformJson}->>'translatedTitle', '')`,
-        translatedContentPreview: sql<string>`substring(coalesce(${newsItems.longformJson}->>'translatedContent', '') from 1 for ${previewLength})`,
-        originalWordCount: sql<string>`coalesce(${newsItems.longformJson}->>'originalWordCount', '')`,
-        fetchedAt: sql<string>`coalesce(${newsItems.longformJson}->>'fetchedAt', '')`,
-        discoveryMethod: sql<string>`coalesce(${newsItems.longformJson}->>'discoveryMethod', '')`,
-        confidence: sql<string>`coalesce(${newsItems.longformJson}->>'confidence', '')`,
-        discoverySourceImageUrl: sql<string>`coalesce(${newsItems.longformJson}->>'discoverySourceImageUrl', '')`,
-      })
-      .from(newsItems)
-      .where(isNotNull(newsItems.longformJson))
-      .orderBy(desc(newsItems.publishedAt))
-      .limit(limit)
+  return (await getRecentLongformPostPreviewPage(0, limit)).posts
+}
 
-    return data
+export async function getRecentLongformPostPreviewPage(
+  offset = 0,
+  limit = LONGFORM_FEED_PAGE_SIZE,
+): Promise<FeedPage> {
+  try {
+    const start = clampFeedPageOffset(offset)
+    const pageSize = clampFeedPageLimit(limit, LONGFORM_FEED_PAGE_SIZE)
+    const previewLength = Math.max(360, Math.min(800, Math.floor(LONGFORM_LIST_CONTENT_PREVIEW_CHARS)))
+    const [countRows, data] = await Promise.all([
+      db
+        .select({ count: sql<string>`count(*)::text` })
+        .from(newsItems)
+        .where(isNotNull(newsItems.longformJson)),
+      db
+        .select({
+          id: newsItems.id,
+          title: newsItems.title,
+          summary: newsItems.summary,
+          contentPreview: sql<string>`substring(coalesce(${newsItems.content}, '') from 1 for 360)`,
+          sourcePlatform: newsItems.sourcePlatform,
+          sourceName: newsItems.sourceName,
+          sourceHandle: newsItems.sourceHandle,
+          sourceUrl: newsItems.sourceUrl,
+          category: newsItems.category,
+          publishedAt: newsItems.publishedAt,
+          createdAt: newsItems.createdAt,
+          importanceScore: newsItems.importanceScore,
+          url: sql<string>`coalesce(${newsItems.longformJson}->>'url', '')`,
+          resolvedUrl: sql<string>`coalesce(${newsItems.longformJson}->>'resolvedUrl', ${newsItems.longformJson}->>'url', '')`,
+          longformTitle: sql<string>`coalesce(${newsItems.longformJson}->>'title', '')`,
+          sourceNameLongform: sql<string>`coalesce(${newsItems.longformJson}->>'sourceName', '')`,
+          authorName: sql<string>`coalesce(${newsItems.longformJson}->>'authorName', '')`,
+          excerpt: sql<string>`coalesce(${newsItems.longformJson}->>'excerpt', '')`,
+          digestSummary: sql<string>`coalesce(${newsItems.longformJson}->>'digestSummary', '')`,
+          digestPoints: sql<unknown>`${newsItems.longformJson}->'digestPoints'`,
+          translatedTitle: sql<string>`coalesce(${newsItems.longformJson}->>'translatedTitle', '')`,
+          translatedContentPreview: sql<string>`substring(coalesce(${newsItems.longformJson}->>'translatedContent', '') from 1 for ${previewLength})`,
+          originalWordCount: sql<string>`coalesce(${newsItems.longformJson}->>'originalWordCount', '')`,
+          fetchedAt: sql<string>`coalesce(${newsItems.longformJson}->>'fetchedAt', '')`,
+          discoveryMethod: sql<string>`coalesce(${newsItems.longformJson}->>'discoveryMethod', '')`,
+          confidence: sql<string>`coalesce(${newsItems.longformJson}->>'confidence', '')`,
+          discoverySourceImageUrl: sql<string>`coalesce(${newsItems.longformJson}->>'discoverySourceImageUrl', '')`,
+        })
+        .from(newsItems)
+        .where(isNotNull(newsItems.longformJson))
+        .orderBy(desc(newsItems.publishedAt))
+        .limit(pageSize)
+        .offset(start),
+    ])
+
+    const posts = data
       .map(mapLongformPreviewRowToItem)
       .filter((post): post is NewsItem => Boolean(post))
       .filter((post) => !isLongformPreviewPost(post))
+
+    const total = Number(countRows[0]?.count ?? posts.length)
+    const nextOffset = start + data.length
+    return {
+      posts,
+      total,
+      nextOffset,
+      hasMore: nextOffset < total,
+    }
   } catch (error) {
     console.error('Failed to fetch longform post previews:', error)
-    return []
+    return { posts: [], total: 0, nextOffset: 0, hasMore: false }
   }
 }
 
@@ -389,12 +456,7 @@ export function longformArticleFromDbJson(value: unknown): LongformArticle | und
     const digestPoints = o.digestPoints.map((point) => String(point).trim()).filter(Boolean).slice(0, 3)
     if (digestPoints.length > 0) article.digestPoints = digestPoints
   }
-  if (
-    o.discoveryMethod === 'url' ||
-    o.discoveryMethod === 'image-search' ||
-    o.discoveryMethod === 'text-search' ||
-    o.discoveryMethod === 'x-article'
-  ) {
+  if (isLongformDiscoveryMethod(o.discoveryMethod)) {
     article.discoveryMethod = o.discoveryMethod
   }
   if (typeof o.confidence === 'number' && Number.isFinite(o.confidence)) {
@@ -403,7 +465,7 @@ export function longformArticleFromDbJson(value: unknown): LongformArticle | und
   if (typeof o.discoverySourceImageUrl === 'string' && o.discoverySourceImageUrl.startsWith('https://')) {
     article.discoverySourceImageUrl = o.discoverySourceImageUrl
   }
-  return article
+  return isUsableLongformArticle(article) ? article : undefined
 }
 
 function toDatabaseDate(value: unknown, fallback: Date): Date {
@@ -424,7 +486,7 @@ function toDatabaseDate(value: unknown, fallback: Date): Date {
 /**
  * 添加新闻项到数据库（按 source_url 去重，防止同一推文重复入库）
  */
-export async function addPost(post: NewsItem, options?: AddPostOptions): Promise<void> {
+export async function addPost(post: NewsItem, options?: AddPostOptions): Promise<AddPostResult> {
   try {
     const cleanedPost: NewsItem = { ...post, title: cleanNewsTitle(post.title) }
     const rawInputId = normalizeNewsItemId(post.id)
@@ -479,8 +541,9 @@ export async function addPost(post: NewsItem, options?: AddPostOptions): Promise
           .update(newsItems)
           .set(patch)
           .where(eq(newsItems.id, existing[0].id))
+        return { status: 'updated', id: existing[0].id }
       }
-      return
+      return { status: 'duplicate_exact', id: existing[0].id }
     }
 
     const candidatePost: NewsItem = {
@@ -516,7 +579,7 @@ export async function addPost(post: NewsItem, options?: AddPostOptions): Promise
       })
 
       if (hasContentDuplicate) {
-        return
+        return { status: 'duplicate_content', id: normalizedId }
       }
     }
 
@@ -549,6 +612,7 @@ export async function addPost(post: NewsItem, options?: AddPostOptions): Promise
       target: newsItems.id,
       set: row,
     })
+    return { status: 'inserted', id: normalizedId }
   } catch (error) {
     console.error('Failed to add post:', error)
     throw error

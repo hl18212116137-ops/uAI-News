@@ -16,6 +16,8 @@ import {
 } from '@/lib/db/pass-logs'
 import type { AIProcessedContent } from '@/lib/ai/ai-service'
 import { revalidateHomeFeedCaches } from '@/lib/home-cache-invalidation'
+import { createLongformAutoBudget, maybeAttachAutoLongform } from '@/lib/longform-auto'
+import type { NewsItem } from '@/lib/types'
 
 /**
  * 后台抓取并处理单源推文（与 POST /api/sources 添加源后的任务共用）
@@ -61,6 +63,7 @@ export async function fetchAndProcessPostsInBackground(
       minNestedRt: pipelineRt.rawMinNestedCharsRetweet,
     }
     const filterLearningContext = await getFilterLearningContextForUser(userId, source.handle)
+    const longformAutoBudget = createLongformAutoBudget()
 
     const CONCURRENCY = 5
 
@@ -157,7 +160,7 @@ export async function fetchAndProcessPostsInBackground(
               // keep default
             }
 
-            await addPost({
+            const newsItem: NewsItem = {
               id: canonicalNewsIdForPlatform('X', post.post_id),
               title: aiResult.title,
               summary: aiResult.summary,
@@ -180,11 +183,63 @@ export async function fetchAndProcessPostsInBackground(
                 ? { socialEngagement: post.social_engagement }
                 : {}),
               ...(zhOriginal.referencedPost ? { referencedPost: zhOriginal.referencedPost } : {}),
-            })
+            }
+
+            const newsItemWithLongform = await maybeAttachAutoLongform(
+              newsItem,
+              {
+                platform: 'X',
+                text: post.post_text,
+                sourceUrl: post.post_url,
+                authorName: source.name,
+                authorHandle: source.handle,
+                urls: post.urls,
+                mediaUrls: post.media_urls,
+                referencedPost: post.referencedPost,
+              },
+              aiService,
+              longformAutoBudget,
+            )
+
+            const addResult = await addPost(newsItemWithLongform)
+
+            if (addResult.status === 'duplicate_content') {
+              await recordPassedPostSafely({
+                id: canonicalNewsIdForPlatform('X', post.post_id),
+                url: post.post_url,
+                sourcePlatform: 'X',
+                sourceName: source.name,
+                sourceHandle: source.handle,
+                content: post.post_text,
+                title: newsItemWithLongform.title,
+                summary: newsItemWithLongform.summary,
+                category: newsItemWithLongform.category,
+                passType: 'duplicate',
+                passReason: '已有相似事件入库，为避免同一事件重复展示，未再次收录。',
+                publishedAt: post.posted_at,
+                mediaUrls: post.media_urls,
+                socialEngagement: post.social_engagement,
+                referencedPost: post.referencedPost,
+              })
+            }
 
             return { outcome: 'success' as const, postId: post.post_id }
           } catch (error) {
             console.error(`[后台任务] 处理推文 ${post.post_id} 失败:`, error)
+            await recordPassedPostSafely({
+              id: canonicalNewsIdForPlatform('X', post.post_id),
+              url: post.post_url,
+              sourcePlatform: 'X',
+              sourceName: source.name,
+              sourceHandle: source.handle,
+              content: post.post_text,
+              passType: 'processing_failed',
+              passReason: `处理失败：${error instanceof Error ? error.message : String(error)}`,
+              publishedAt: post.posted_at,
+              mediaUrls: post.media_urls,
+              socialEngagement: post.social_engagement,
+              referencedPost: post.referencedPost,
+            })
             return { outcome: 'error' as const, postId: post.post_id, error }
           }
         })

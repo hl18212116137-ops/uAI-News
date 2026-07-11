@@ -958,10 +958,13 @@ function isLikelySectionHeading(paragraph: string, index: number): boolean {
 }
 
 const BODY_STOP_HEADING_RE =
-  /^(参考文献|参考资料|参考与引用|引用与参考|延伸阅读|相关阅读|引用|注释|脚注|致谢|附录|作者信息|版权|声明|References?|Bibliography|Citations?|Notes?|Footnotes?|Acknowledg(e)?ments?|Appendix|Author information|Copyright|Related reading)$/i;
+  /^(参考文献|参考资料|参考与引用|引用与参考|延伸阅读|相关阅读|引用|注释|脚注|致谢|附录|作者信息|版权|声明|加载更多|授权与转载|数字产品|新闻稿|隐藏字幕|更正|关于\s*CNBC|实习机会|网站地图|职业机会|新闻爆料|CNBC\s*新闻通讯|广告合作|广告选择|隐私选择|加州用户须知|服务条款|References?|Bibliography|Citations?|Notes?|Footnotes?|Acknowledg(e)?ments?|Appendix|Author information|Copyright|Related reading)$/i;
 
 const BODY_NOISE_RE =
-  /(跳至主内容|帮助\s*[|｜]\s*高级搜索|高级搜索|快速链接|帮助页面|查看\s*PDF|HTML\s*[（(]实验性[）)]|所有字段|期刊参考文献|ACM\s*分类|MSC\s*分类|报告编号|arXiv\s*标识符|ORCID|作者\s*ID|帮助页面|全文|执行|提交于|计算机科学\s*>\s*人工智能|西蒙斯基金会|所有贡献者|捐赠|版权所有|保留所有权利|未经许可|转载请|免责声明|隐私政策|Cookie|扫码|二维码|关注我们|欢迎关注|点赞|点个赞|收藏一下|收藏|转发|评论区|分享本文|点击阅读原文|原文链接|下载 PDF|订阅|登录后|注册后|邮箱地址|如果看不完|如果你觉得|感谢|All rights reserved|copyright|subscribe|sign up|sign in|log in|follow us|share this|cookie policy|privacy policy|read more|download pdf)/i;
+  /(跳至主内容|跳过导航|帮助\s*[|｜]\s*高级搜索|高级搜索|快速链接|帮助页面|查看\s*PDF|HTML\s*[（(]实验性[）)]|所有字段|期刊参考文献|ACM\s*分类|MSC\s*分类|报告编号|arXiv\s*标识符|ORCID|作者\s*ID|帮助页面|全文|执行|提交于|计算机科学\s*>\s*人工智能|西蒙斯基金会|所有贡献者|捐赠|版权所有|保留所有权利|未经许可|转载请|免责声明|隐私政策|Cookie|扫码|二维码|关注我们|欢迎关注|点赞|点个赞|收藏一下|收藏|转发|评论区|分享本文|分享\s+通过|点击阅读原文|原文链接|下载 PDF|订阅|登录后|注册后|邮箱地址|如果看不完|如果你觉得|感谢|赞助方|赞助商|广告合作|广告选择|隐私选择|服务条款|数据为实时快照|全球商业与财经新闻|搜索股票、新闻与视频|最新视频|热门视频|会议视频|All rights reserved|copyright|sponsored by|subscribe|sign up|sign in|log in|follow us|share this|cookie policy|privacy policy|read more|download pdf)/i;
+
+const BODY_TRAILING_CHROME_RE =
+  /^(本视频中|视频|视频\s+\d{1,2}:\d{2}|\d{1,2}:\d{2}|\d+\s*(?:秒|分钟|小时|天)前|加载更多|授权与转载|数字产品|新闻稿|隐藏字幕|更正|关于\s*CNBC|实习机会|网站地图|职业机会|新闻爆料|CNBC\s*新闻通讯|广告合作|广告选择|隐私选择|加州用户须知|服务条款|数据为实时快照|全球商业与财经新闻)/i;
 
 const BODY_METADATA_RE =
   /^(作者|来源|发布时间|发布日期|更新日期|提交于|编辑|责任编辑|译者|校对|标题|原文|原文链接|链接|DOI|doi|arXiv|关键词|关键字|标签|分类|Citation|Cite|Author|Authors|Source|Published|Submitted|Updated|Title|Keywords|Tags)\s*[:：\[]/i;
@@ -1081,7 +1084,11 @@ function buildDefaultBodyBlocks(paragraphs: string[], title: string): ReadingCon
 
 function shouldStopLongformBody(paragraph: string, index: number): boolean {
   const clean = cleanLongformBodyParagraph(paragraph).replace(/[：:]+$/g, "");
-  return index > 0 && clean.length <= 48 && BODY_STOP_HEADING_RE.test(clean);
+  return (
+    index > 0 &&
+    clean.length <= 64 &&
+    (BODY_STOP_HEADING_RE.test(clean) || BODY_TRAILING_CHROME_RE.test(clean))
+  );
 }
 
 function isLongformBodyNoise(paragraph: string, title: string): boolean {
@@ -1112,6 +1119,14 @@ function isLikelyFrontMatterLine(paragraph: string): boolean {
   );
 }
 
+function isLikelyInitialTitleParagraph(paragraph: string, index: number): boolean {
+  const clean = cleanLongformBodyParagraph(paragraph);
+  if (index !== 0 || !clean || clean.length > 90) return false;
+  if (/[。！？!?]$/.test(clean)) return false;
+  if (!/[\p{Script=Han}A-Za-z]/u.test(clean)) return false;
+  return /[：:|｜-]|[A-Z][A-Za-z]+/.test(clean);
+}
+
 function getCleanBodyParagraphs(paragraphs: string[], title: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -1119,16 +1134,20 @@ function getCleanBodyParagraphs(paragraphs: string[], title: string): string[] {
 
   for (let index = 0; index < paragraphs.length; index += 1) {
     const paragraph = paragraphs[index];
-    if (shouldStopLongformBody(paragraph, index)) break;
-
     const clean = cleanLongformBodyParagraph(paragraph);
     if (inLikelyFrontMatter) {
-      if (isLikelyFrontMatterLine(clean) || isLongformBodyNoise(clean, title)) {
+      if (
+        isLikelyInitialTitleParagraph(clean, index) ||
+        isLikelyFrontMatterLine(clean) ||
+        isLongformBodyNoise(clean, title) ||
+        shouldStopLongformBody(clean, index)
+      ) {
         continue;
       }
       inLikelyFrontMatter = false;
     }
 
+    if (shouldStopLongformBody(clean, index)) break;
     if (isLongformBodyNoise(clean, title)) continue;
 
     const key = sentenceFingerprint(clean);
@@ -1138,9 +1157,21 @@ function getCleanBodyParagraphs(paragraphs: string[], title: string): string[] {
     out.push(clean);
   }
 
-  return out.length > 0
-    ? out
-    : paragraphs.map(cleanLongformBodyParagraph).filter(Boolean);
+  if (out.length > 0) return out;
+
+  return paragraphs
+    .map((paragraph, index) => ({
+      clean: cleanLongformBodyParagraph(paragraph),
+      index,
+    }))
+    .filter(({ clean, index }) => (
+      clean &&
+      !isLikelyInitialTitleParagraph(clean, index) &&
+      !isLikelyFrontMatterLine(clean) &&
+      !isLongformBodyNoise(clean, title) &&
+      !shouldStopLongformBody(clean, index)
+    ))
+    .map(({ clean }) => clean);
 }
 
 function PlusGlyph({ className }: { className?: string }) {
@@ -1173,9 +1204,10 @@ function AddArticleButton({ onClick }: { onClick?: () => void }) {
         type="button"
         onClick={onClick}
         aria-label="添加文章"
-        className="btn-press inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-[#0055FF] transition-colors hover:bg-[#f5f7ff] hover:text-[#0046d5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30"
+        className="btn-press inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md bg-transparent px-2.5 text-[#0055FF] transition-colors hover:bg-[#f5f7ff] hover:text-[#0046d5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30"
       >
-        <PlusGlyph className="block size-5" />
+        <PlusGlyph className="block size-4" />
+        <span className="text-[13px] font-semibold leading-none">添加</span>
       </button>
     </Tooltip>
   );

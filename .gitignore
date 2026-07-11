@@ -28,3 +28,5 @@ next-env.d.ts
 mobile-app/
 c\357\200\272ainews-v2.env.local
 c\357\200\272ainews-v2libconfig-check.ts
+
+.vercel/

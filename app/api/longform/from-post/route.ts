@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { getDefaultAIService } from '@/lib/ai/ai-factory'
 import { getPostById, normalizeNewsItemId, updateNewsItemLongform } from '@/lib/db/news'
-import { extractLongformForRawPost } from '@/lib/longform'
+import {
+  discoverLongformForPost,
+  formatLongformDiscoveryFailure,
+} from '@/lib/longform-discovery'
 import { enrichLongformArticle, precomputeLongformInsight } from '@/lib/longform-enrichment'
 import type { NewsItem } from '@/lib/types'
 
 export const runtime = 'nodejs'
-
-const NO_LONGFORM_MESSAGE = '没有长文存在：这条推文里没有识别到可抓取的文章链接或论文截图'
 
 export async function POST(request: Request) {
   try {
@@ -54,27 +55,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, post: existing, alreadyExists: true })
     }
 
-    const extracted = await extractLongformForRawPost(
-      {
-        platform: existing.source.platform,
-        text: existing.originalText || existing.content || existing.summary,
-        sourceUrl: existing.source.url,
-        authorName: existing.source.name,
-        authorHandle: existing.source.handle,
-        mediaUrls: existing.mediaUrls,
-        referencedPost: existing.referencedPost,
-      },
-      (text) => aiService.translateContent(text),
-    )
+    const discovery = await discoverLongformForPost({
+      post: existing,
+      translate: (text) => aiService.translateContent(text),
+    })
 
-    if (!extracted?.translatedContent) {
+    if (!discovery.article?.translatedContent) {
+      if (discovery.error) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'VIDEO_TRANSCRIPT_FAILED',
+            error: `视频转写失败：${discovery.error.message}`,
+            attempts: discovery.attempts,
+          },
+          { status: 502 },
+        )
+      }
+
       return NextResponse.json(
-        { success: false, code: 'NO_LONGFORM', error: NO_LONGFORM_MESSAGE },
+        {
+          success: false,
+          code: 'NO_LONGFORM',
+          error: formatLongformDiscoveryFailure(discovery.attempts),
+          attempts: discovery.attempts,
+        },
         { status: 404 },
       )
     }
 
-    const longform = await enrichLongformArticle(extracted, aiService)
+    const longform = await enrichLongformArticle(discovery.article, aiService)
     const saved = await updateNewsItemLongform(existing.id, longform)
     if (!saved.ok) {
       return NextResponse.json(
@@ -92,7 +102,7 @@ export async function POST(request: Request) {
 
     revalidatePath('/')
     const post: NewsItem = { ...existing, longform }
-    return NextResponse.json({ success: true, post })
+    return NextResponse.json({ success: true, post, attempts: discovery.attempts })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '长文抓取失败'
     console.error('[longform from post] failed:', error)

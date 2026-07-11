@@ -27,6 +27,11 @@ type SetRecommended = Dispatch<SetStateAction<SubscribedSourceRow[]>>;
 type SetPosts = Dispatch<SetStateAction<NewsItem[]>>;
 type SetFetchingIds = Dispatch<SetStateAction<Set<string>>>;
 
+type RefreshSubscribedClientStateOptions = {
+  notifyFeedPostsSynced?: boolean;
+  prioritizeRecentlyFetched?: boolean;
+};
+
 export type SourceFetchEvent = {
   sourceId: string;
   sourceHandle?: string;
@@ -44,11 +49,13 @@ export function useSubscribedFeedSync(
   setPosts: SetPosts,
   setFetchingSourceIds: SetFetchingIds,
   onSourceFetchEvent?: (event: SourceFetchEvent) => void,
-  onFeedPageSynced?: (page: Pick<FeedPage, "nextOffset" | "total" | "hasMore">) => void
+  onFeedPageSynced?: (page: Pick<FeedPage, "nextOffset" | "total" | "hasMore">) => void,
+  onFeedPostsSynced?: (page: FeedPage) => void
 ) {
   const fetchPollsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   const onSourceFetchEventRef = useRef(onSourceFetchEvent);
   const onFeedPageSyncedRef = useRef(onFeedPageSynced);
+  const onFeedPostsSyncedRef = useRef(onFeedPostsSynced);
 
   useEffect(() => {
     onSourceFetchEventRef.current = onSourceFetchEvent;
@@ -58,6 +65,10 @@ export function useSubscribedFeedSync(
     onFeedPageSyncedRef.current = onFeedPageSynced;
   }, [onFeedPageSynced]);
 
+  useEffect(() => {
+    onFeedPostsSyncedRef.current = onFeedPostsSynced;
+  }, [onFeedPostsSynced]);
+
   useEffect(
     () => () => {
       fetchPollsRef.current.forEach((id) => clearInterval(id));
@@ -66,36 +77,55 @@ export function useSubscribedFeedSync(
     []
   );
 
-  const refreshSubscribedClientState = useCallback(async () => {
-    if (!user) return;
-    try {
-      const [metaRes, recRes, feedRes] = await Promise.all([
-        fetch("/api/me/subscribed-sources", { cache: "no-store", credentials: "same-origin" }),
-        fetch(`/api/recommended-sources?limit=${RECOMMENDED_SIDEBAR_LIMIT}&random=1`, {
-          cache: "no-store",
-          credentials: "same-origin",
-        }),
-        fetch(`/api/feed?offset=0&limit=${HOME_FEED_PAGE_SIZE}`, {
-          cache: "no-store",
-          credentials: "same-origin",
-        }),
-      ]);
-      const [meta, rec, feed] = await Promise.all([metaRes.json(), recRes.json(), feedRes.json()]);
-      if (meta.success && Array.isArray(meta.sources)) setSourcesState(meta.sources);
-      if (rec.success && Array.isArray(rec.sources)) setRecommendedState(rec.sources);
-      if (feed.success && Array.isArray(feed.posts)) {
-        setPosts(feed.posts);
-        onFeedPageSyncedRef.current?.({
-          nextOffset:
-            typeof feed.nextOffset === "number" ? feed.nextOffset : feed.posts.length,
-          total: typeof feed.total === "number" ? feed.total : feed.posts.length,
-          hasMore: Boolean(feed.hasMore),
+  const refreshSubscribedClientState = useCallback(
+    async (options?: RefreshSubscribedClientStateOptions): Promise<FeedPage | null> => {
+      if (!user) return null;
+      try {
+        const feedParams = new URLSearchParams({
+          offset: "0",
+          limit: String(HOME_FEED_PAGE_SIZE),
         });
+        if (options?.prioritizeRecentlyFetched) {
+          feedParams.set("fresh", "1");
+        }
+        const [metaRes, recRes, feedRes] = await Promise.all([
+          fetch("/api/me/subscribed-sources", { cache: "no-store", credentials: "same-origin" }),
+          fetch(`/api/recommended-sources?limit=${RECOMMENDED_SIDEBAR_LIMIT}&random=1`, {
+            cache: "no-store",
+            credentials: "same-origin",
+          }),
+          fetch(`/api/feed?${feedParams.toString()}`, {
+            cache: "no-store",
+            credentials: "same-origin",
+          }),
+        ]);
+        const [meta, rec, feed] = await Promise.all([metaRes.json(), recRes.json(), feedRes.json()]);
+        if (meta.success && Array.isArray(meta.sources)) setSourcesState(meta.sources);
+        if (rec.success && Array.isArray(rec.sources)) setRecommendedState(rec.sources);
+        let syncedFeedPage: FeedPage | null = null;
+        if (feed.success && Array.isArray(feed.posts)) {
+          const feedPosts = feed.posts as NewsItem[];
+          syncedFeedPage = {
+            posts: feedPosts,
+            nextOffset:
+              typeof feed.nextOffset === "number" ? feed.nextOffset : feedPosts.length,
+            total: typeof feed.total === "number" ? feed.total : feedPosts.length,
+            hasMore: Boolean(feed.hasMore),
+          };
+          setPosts(syncedFeedPage.posts);
+          onFeedPageSyncedRef.current?.(syncedFeedPage);
+          if (options?.notifyFeedPostsSynced !== false) {
+            onFeedPostsSyncedRef.current?.(syncedFeedPage);
+          }
+        }
+        return syncedFeedPage;
+      } catch (e) {
+        console.error("[useSubscribedFeedSync] refreshSubscribedClientState", e);
+        return null;
       }
-    } catch (e) {
-      console.error("[useSubscribedFeedSync] refreshSubscribedClientState", e);
-    }
-  }, [user, setSourcesState, setRecommendedState, setPosts]);
+    },
+    [user, setSourcesState, setRecommendedState, setPosts]
+  );
 
   const startSourceFetchPolling = useCallback(
     (sourceId: string, taskId: string, sourceHandle?: string) => {
@@ -132,7 +162,7 @@ export function useSubscribedFeedSync(
               status: t.status,
             });
             if (t.status === "completed") {
-              void refreshSubscribedClientState();
+              void refreshSubscribedClientState({ prioritizeRecentlyFetched: true });
             }
           }
         } catch {
@@ -156,7 +186,7 @@ export function useSubscribedFeedSync(
         const fetchSourceId = payload.resolvedSourceId || payload.sourceId;
         startSourceFetchPolling(fetchSourceId, payload.fetchTaskId, payload.sourceHandle);
       }
-      await refreshSubscribedClientState();
+      await refreshSubscribedClientState({ notifyFeedPostsSynced: false });
     },
     [user, refreshSubscribedClientState, startSourceFetchPolling]
   );

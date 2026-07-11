@@ -4,7 +4,7 @@ import { recordUserPassedPost } from '@/lib/db/pass-logs'
 import { revalidateHomeFeedCaches } from '@/lib/home-cache-invalidation'
 import type { NewsCategory, NewsItem, NewsSource, SocialEngagement, XReferencedPost } from '@/lib/types'
 
-const VALID_CATEGORIES = new Set<NewsCategory>(['模型', '产品', '研究', '行业', '政策'])
+const VALID_CATEGORIES = new Set<NewsCategory>(['模型', '产品', '研究', '行业', '政策', '观点线索'])
 const VALID_PLATFORMS = new Set<NewsSource['platform']>(['X', 'RSS', 'Blog', 'YouTube', 'Reddit'])
 
 function stringValue(value: unknown, maxLength = 5000): string {

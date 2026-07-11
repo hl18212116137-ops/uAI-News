@@ -73,6 +73,7 @@ export const rawPosts = pgTable('raw_posts', {
   status: text('status').notNull().default('new'),
   errorMessage: text('error_message'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  urls: jsonb('urls'),
   mediaUrls: jsonb('media_urls'),
   socialEngagement: jsonb('social_engagement'),
   referencedPost: jsonb('referenced_post'),

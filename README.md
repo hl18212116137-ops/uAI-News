@@ -1,4 +1,4 @@
-# AI News Aggregator (ainews-v2)
+# uAI News
 
 AI 资讯聚合：订阅信息源、中文摘要与 INSIGHT 解读。生产数据在 **Supabase (PostgreSQL)**，AI 主力为 **Minimax**，可降级 **Claude**。
 
@@ -6,7 +6,7 @@ AI 资讯聚合：订阅信息源、中文摘要与 INSIGHT 解读。生产数�
 
 ## Tech Stack
 
-- Next.js 14 (App Router)
+- Next.js 15.5.19 (App Router)
 - Tailwind CSS
 - Supabase (Auth + PostgreSQL)
 - Minimax / Anthropic Claude（可配置）

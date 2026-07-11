@@ -7,7 +7,7 @@
 
 ## 一、项目概述
 
-**uAI News（ainews-v2）** 是一个 AI 驱动的新闻聚合网站，自动抓取 X（Twitter）、RSS、Blog 等平台的 AI 领域资讯，经 AI 处理（标题生成、摘要、分类、重要性评分）后展示给用户。
+**uAI News** 是一个 AI 驱动的新闻聚合网站，自动抓取 X（Twitter）、RSS、Blog 等平台的 AI 领域资讯，经 AI 处理（标题生成、摘要、分类、重要性评分）后展示给用户。
 
 - **正式网站**：部署在 Vercel（`main` 分支触发）
 - **GitHub 仓库**：`hl18212116137-ops/uAI-News`
@@ -19,7 +19,7 @@
 
 | 层 | 技术 | 版本 |
 |---|---|---|
-| 框架 | Next.js App Router | 14.2.0 |
+| 框架 | Next.js App Router | 15.5.19 |
 | 语言 | TypeScript | 5.x |
 | 样式 | Tailwind CSS | 3.4.0 |
 | UI | React 函数组件 | 18.x |
@@ -105,7 +105,7 @@ AI 处理完成后自动删除，不需要手动维护。
 ## 五、目录结构
 
 ```
-ainews-v2/
+uAI News/
 ├── app/
 │   ├── page.tsx              # 首页（Server Component，revalidate=0）
 │   ├── layout.tsx            # 根布局

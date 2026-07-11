@@ -2,7 +2,7 @@ import 'server-only'
 
 import { db } from '@/lib/db/drizzle'
 import { rawPosts, newsItems } from '@/lib/db/schema'
-import { eq, inArray, sql } from 'drizzle-orm'
+import { asc, eq, inArray, sql } from 'drizzle-orm'
 import { fetchRawPostIdsWithActiveJobs } from '@/lib/db/processing-jobs'
 import { canonicalizeExternalUrlForDedupe, parseXStatusUrl } from '@/lib/news-post-url'
 import {
@@ -10,6 +10,7 @@ import {
   rawPostContentFingerprint,
   rawPostDedupeKeys,
 } from '@/lib/news-dedupe'
+import { RAW_POST_PROCESSABLE_STATUS_VALUES } from '@/lib/raw-post-queue'
 
 /** ingest / import 旧字段 → drizzle schema；process 读取时再还原为 legacy 形态 */
 export function normalizeRawPostRowForWrite(row: Record<string, unknown>): typeof rawPosts.$inferInsert {
@@ -48,6 +49,7 @@ export function normalizeRawPostRowForWrite(row: Record<string, unknown>): typeo
     contentHash: contentHash || undefined,
     status: typeof row.status === 'string' ? row.status : 'new',
     errorMessage: typeof row.error_message === 'string' ? row.error_message : undefined,
+    urls: row.urls ?? row.link_urls ?? row.linkUrls,
     mediaUrls: row.media_urls ?? row.mediaUrls,
     socialEngagement: row.social_engagement ?? row.socialEngagement,
     referencedPost: row.referenced_post ?? row.referencedPost,
@@ -70,6 +72,7 @@ export function normalizeRawPostRowForProcess(row: Record<string, unknown>): Rec
     handle,
     platform: row.platform ?? 'X',
     published_at: publishedAt,
+    urls: row.urls ?? row.link_urls ?? row.linkUrls,
     media_urls: row.media_urls ?? row.mediaUrls,
     social_engagement: row.social_engagement ?? row.socialEngagement,
     referenced_post: row.referenced_post ?? row.referencedPost,
@@ -159,6 +162,7 @@ export async function upsertRawPosts(rows: Record<string, unknown>[]): Promise<v
         status: sql`excluded.status`,
         errorMessage: sql`excluded.error_message`,
         updatedAt: sql`excluded.updated_at`,
+        urls: sql`excluded.urls`,
         mediaUrls: sql`excluded.media_urls`,
         socialEngagement: sql`excluded.social_engagement`,
         referencedPost: sql`excluded.referenced_post`,
@@ -167,7 +171,12 @@ export async function upsertRawPosts(rows: Record<string, unknown>[]): Promise<v
 }
 
 export async function fetchRawPostsBatch(limit: number): Promise<Record<string, unknown>[]> {
-  const rows = await db.select().from(rawPosts).limit(limit)
+  const rows = await db
+    .select()
+    .from(rawPosts)
+    .where(inArray(rawPosts.status, RAW_POST_PROCESSABLE_STATUS_VALUES))
+    .orderBy(asc(rawPosts.createdAt))
+    .limit(limit)
   return (rows as unknown as Record<string, unknown>[]).map(normalizeRawPostRowForProcess)
 }
 
@@ -196,7 +205,12 @@ export async function fetchRawPostsExcludingActiveJobs(
   )
 ): Promise<Record<string, unknown>[]> {
   const block = await fetchRawPostIdsWithActiveJobs()
-  const rows = await db.select().from(rawPosts).limit(scanCap)
+  const rows = await db
+    .select()
+    .from(rawPosts)
+    .where(inArray(rawPosts.status, RAW_POST_PROCESSABLE_STATUS_VALUES))
+    .orderBy(asc(rawPosts.createdAt))
+    .limit(scanCap)
   const list = (rows as unknown as Record<string, unknown>[])
     .map(normalizeRawPostRowForProcess)
     .filter(r => !block.has(r.id as string))

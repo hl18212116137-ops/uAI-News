@@ -12,6 +12,7 @@ import {
   getCachedHomeRecommendedPosts,
   getCachedUserBookmarkedIds,
   getCachedUserSubscribedFeed,
+  getCachedUserSubscribedFeedPage,
   getCachedUserSubscribedSourceIds,
   getCachedUserSubscribedSourcesMeta,
 } from "@/lib/home-data-cache";
@@ -89,9 +90,14 @@ export default async function HomeMainContentBlock({
 
     const stats = getStatsFromSubscribedFeed(subFeed, subSourcesMeta);
     const feedPosts = stripLongformPosts(subFeed);
-    const initialPage = isGuestPersonalFeed
-      ? makeFeedPage(feedPosts, 0, 5)
-      : makeFeedPage(feedPosts, 0, HOME_FEED_PAGE_SIZE);
+    const initialPage = user && !isGuestPersonalFeed
+      ? await getCachedUserSubscribedFeedPage(
+          user.id,
+          0,
+          HOME_FEED_PAGE_SIZE,
+          subscribedHandles
+        )
+      : makeFeedPage(feedPosts, 0, 5);
     perf.logTotal();
 
     return (

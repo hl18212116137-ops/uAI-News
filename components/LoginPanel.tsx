@@ -3,7 +3,7 @@
 import { Suspense, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { getSession, signIn, useSession } from "next-auth/react";
+import { signIn } from "next-auth/react";
 import { mapSignInError } from "@/lib/auth-errors";
 
 type LoginPanelProps = {
@@ -17,7 +17,6 @@ function LoginPanelInner({ hardRedirectAfterLogin }: LoginPanelProps) {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const { update: updateSession } = useSession();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") ?? "/";
 
@@ -43,8 +42,6 @@ function LoginPanelInner({ hardRedirectAfterLogin }: LoginPanelProps) {
         return;
       }
 
-      await updateSession();
-      await getSession();
       const target = safeRedirectPath(redirectTo);
       if (hardRedirectAfterLogin) {
         window.location.assign(target);

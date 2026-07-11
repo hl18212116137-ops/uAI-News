@@ -154,10 +154,14 @@ export async function runRefreshFetchFromEnabledSources(body: {
               platform: 'X',
               handle: source.handle,
               author_name: source.name,
+              source_id: source.id,
               text: post.post_text,
               url: post.post_url,
               published_at: post.posted_at,
               fetched_at: new Date().toISOString(),
+              ...(post.urls && post.urls.length > 0
+                ? { urls: post.urls }
+                : {}),
               ...(post.media_urls && post.media_urls.length > 0
                 ? { media_urls: post.media_urls }
                 : {}),
@@ -190,6 +194,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
             author_name: source.name,
             text: rssText,
             url: articleUrl,
+            urls: articleUrl ? [articleUrl] : [],
             published_at: article.publishedAt,
             fetched_at: new Date().toISOString(),
           }

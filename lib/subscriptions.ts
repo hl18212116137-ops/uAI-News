@@ -16,10 +16,16 @@ import { fetchSourceProfilesByHandles, mergeSourceProfilesIntoPosts } from './ne
 import { expandHandleQueryVariants, normalizeSourceHandle } from './source-avatar'
 import { resolveSourceHomeUrl } from './source-home-url'
 import { resolveSourceProfile } from './source-profile'
-import { getFeedPublishedAtGte, getRecommendationFeedPublishedAtGte } from './feed-window'
+import {
+  getFeedPublishedAtGte,
+  getRecommendationFeedPublishedAtGte,
+  getRecentlyFetchedFeedCreatedAtGte,
+} from './feed-window'
 import { cleanNewsTitle } from '@/lib/news-title-cleanup'
 import { applyRecommendationToPosts, getUserRecommendationVisibleDays } from '@/lib/user-pipeline-rules'
 import { dedupeNewsItemsForDisplay } from '@/lib/news-dedupe'
+import { diversifyNewsItemsBySource } from '@/lib/feed-diversity'
+import { compareNewsItemsForFeedDisplay } from '@/lib/feed-sort'
 import {
   filterPostsForPublicFeed,
   getFeedMinImportanceScore,
@@ -96,12 +102,6 @@ function mapRowToNewsItem(row: NewsFeedRow): NewsItem {
   })
 }
 
-function feedDisplaySortTime(item: NewsItem): number {
-  const promotedAt = item.promotedAt ? new Date(item.promotedAt).getTime() : NaN
-  if (Number.isFinite(promotedAt)) return promotedAt
-  return new Date(item.publishedAt).getTime()
-}
-
 export type SourceMeta = {
   id: string
   handle: string
@@ -111,12 +111,14 @@ export type SourceMeta = {
   description: string
   enabled?: boolean
   postCount: number
+  totalPostCount?: number
   latestPostTime?: string
   sourceType?: SourceType
 }
 
 type SourcePostStats = {
   count: number
+  total: number
   latest?: string
 }
 
@@ -134,18 +136,20 @@ function mergeSourcePostStats(
   map: Map<string, SourcePostStats>,
   handle: string | null | undefined,
   count: unknown,
+  total: unknown,
   latest: unknown
 ) {
   const key = normalizeSourceHandle(handle)
   if (!key) return
 
   const latestIso = dateToIso(latest)
-  const prev = map.get(key) ?? { count: 0, latest: undefined }
+  const prev = map.get(key) ?? { count: 0, total: 0, latest: undefined }
   const nextLatest =
     latestIso && (!prev.latest || latestIso > prev.latest) ? latestIso : prev.latest
 
   map.set(key, {
     count: prev.count + Number(count ?? 0),
+    total: prev.total + Number(total ?? 0),
     latest: nextLatest,
   })
 }
@@ -160,22 +164,22 @@ async function getSourcePostStatsByHandle(
   const rows = await db
     .select({
       sourceHandle: newsItems.sourceHandle,
-      postCount: sql<number>`count(*)::int`,
+      postCount: sql<number>`sum(case when ${newsItems.publishedAt} >= ${since} then 1 else 0 end)::int`,
+      totalPostCount: sql<number>`count(*)::int`,
       latestPostTime: sql<Date | string | null>`max(${newsItems.publishedAt})`,
     })
     .from(newsItems)
     .where(
       and(
         EXCLUDE_PLACEHOLDER_NEWS,
-        inArray(newsItems.sourceHandle, variants),
-        gte(newsItems.publishedAt, since)
+        inArray(newsItems.sourceHandle, variants)
       )
     )
     .groupBy(newsItems.sourceHandle)
 
   const out = new Map<string, SourcePostStats>()
   for (const row of rows) {
-    mergeSourcePostStats(out, row.sourceHandle, row.postCount, row.latestPostTime)
+    mergeSourcePostStats(out, row.sourceHandle, row.postCount, row.totalPostCount, row.latestPostTime)
   }
   return out
 }
@@ -191,6 +195,7 @@ function withResolvedSourceProfile(row: {
   platform?: string | null
   enabled?: boolean
   postCount: number
+  totalPostCount?: number
   latestPostTime?: string
   sourceType?: string
 }): SourceMeta {
@@ -420,7 +425,9 @@ export async function getFeedByHandles(handles: string[], limit = 40): Promise<N
 
     const mapped = data.map(mapRowToNewsItem)
     const enriched = mergeSourceProfilesIntoPosts(mapped, profiles)
-    const curated = dedupeNewsItemsForDisplay(filterPostsForPublicFeed(enriched))
+    const curated = diversifyNewsItemsBySource(
+      dedupeNewsItemsForDisplay(filterPostsForPublicFeed(enriched))
+    )
     if (curated.length === 0) {
       scheduleStaleSourceFetches(normalized)
     }
@@ -504,7 +511,7 @@ export async function getSubscribedSourcesMetaByHandles(handles: string[]): Prom
     for (const h of normalized) {
       const key = normalizeSourceHandle(h)
       const src = handleToSource.get(key)
-      const meta = countMap.get(key) || { count: 0, latest: undefined }
+      const meta = countMap.get(key) || { count: 0, total: 0, latest: undefined }
       if (src) {
         out.push(
           withResolvedSourceProfile({
@@ -517,6 +524,7 @@ export async function getSubscribedSourcesMetaByHandles(handles: string[]): Prom
             platform: src.platform,
             enabled: src.enabled,
             postCount: meta.count,
+            totalPostCount: meta.total,
             latestPostTime: meta.latest,
             sourceType: normalizeSourceType(src.sourceType),
           })
@@ -604,13 +612,18 @@ export async function getSubscribedFeed(
       getUserPassedPostIdsForUser(userId),
     ])
     const feedSinceSub = getRecommendationFeedPublishedAtGte(userRecDays)
+    const recentlyFetchedSince = getRecentlyFetchedFeedCreatedAtGte()
     const handleVariants = expandHandleQueryVariants(handles)
     const promotedAtById = new Map(promotedRefs.map((ref) => [ref.id, ref.promotedAt]))
     const promotedIds = promotedRefs.map((ref) => ref.id)
+    const baseVisibilityClause = or(
+      gte(newsItems.publishedAt, feedSinceSub),
+      gte(newsItems.createdAt, recentlyFetchedSince)
+    )
     const visibilityClause =
       promotedIds.length > 0
-        ? or(gte(newsItems.publishedAt, feedSinceSub), inArray(newsItems.id, promotedIds))
-        : gte(newsItems.publishedAt, feedSinceSub)
+        ? or(baseVisibilityClause, inArray(newsItems.id, promotedIds))
+        : baseVisibilityClause
     const [data, profiles] = await Promise.all([
       db
         .select(NEWS_ITEMS_FEED_COLUMNS)
@@ -620,7 +633,7 @@ export async function getSubscribedFeed(
           inArray(newsItems.sourceHandle, handleVariants),
           visibilityClause,
         ))
-        .orderBy(desc(newsItems.publishedAt)),
+        .orderBy(desc(newsItems.createdAt), desc(newsItems.publishedAt)),
       profilesPromise,
     ])
 
@@ -634,7 +647,7 @@ export async function getSubscribedFeed(
     const enriched = mergeSourceProfilesIntoPosts(mapped, profiles)
     const qualityPosts = filterPostsForPublicFeed(
       await applyRecommendationToPosts(userId, enriched),
-    ).sort((a, b) => feedDisplaySortTime(b) - feedDisplaySortTime(a))
+    ).sort((a, b) => compareNewsItemsForFeedDisplay(a, b))
     const curated = dedupeNewsItemsForDisplay(qualityPosts)
     if (curated.length === 0) {
       scheduleStaleSourceFetches(handles)
@@ -714,7 +727,7 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
       const s = idToSource.get(String(sub.sourceId))
       if (!s) continue
       const h = normalizeSourceHandle(sub.sourceHandle || s.handle || '')
-      const stats = countMap.get(h) || { count: 0 }
+      const stats = countMap.get(h) || { count: 0, total: 0 }
       ordered.push(
         withResolvedSourceProfile({
           id: s.id,
@@ -726,6 +739,7 @@ export async function getSubscribedSourcesMeta(userId: string): Promise<Subscrib
           platform: s.platform,
           enabled: s.enabled,
           postCount: stats.count,
+          totalPostCount: stats.total,
           latestPostTime: stats.latest,
           sourceType: normalizeSourceType(s.sourceType),
         })
@@ -926,6 +940,7 @@ export async function getRecommendedSources(
         description: s.description,
         platform: s.platform,
         postCount: countMap.get(normalizeSourceHandle(s.handle))?.count || 0,
+        totalPostCount: countMap.get(normalizeSourceHandle(s.handle))?.total || 0,
         sourceType: s.sourceType,
       })
     )
@@ -997,13 +1012,13 @@ export async function getTopRecommendedPosts(limit = 30, userId?: string | null)
     ])
 
     const hiddenIdSet = userId ? new Set(hiddenIds) : null
-    const mapped = dedupeNewsItemsForDisplay(
+    const mapped = diversifyNewsItemsBySource(dedupeNewsItemsForDisplay(
       filterPostsForPublicFeed(
         data
           .map(mapRowToNewsItem)
           .filter((item) => !hiddenIdSet?.has(item.id))
       )
-    )
+    ))
     if (mapped.length === 0) {
       scheduleStaleSourceFetches(demoFallbackHandles)
     }

@@ -10,10 +10,13 @@ import {
   getUserSubscribedSourceIds,
 } from "@/lib/subscriptions";
 import {
+  type FeedPageFilters,
   HOME_RECOMMENDED_PREFETCH_LIMIT,
-  makeFeedPage,
+  makeFilteredFeedPage,
   stripLongformPosts,
 } from "@/lib/feed-pagination";
+import { compareNewsItemsForFeedDisplay } from "@/lib/feed-sort";
+import { getRecentlyFetchedFeedCreatedAtGte } from "@/lib/feed-window";
 
 const USER_HOME_CACHE_SECONDS = 15;
 
@@ -34,7 +37,7 @@ const getCachedSubscribedFeedByHandles = unstable_cache(
   async (userId: string, handlesKey: string) => {
     return getSubscribedFeed(userId, handlesFromCacheKey(handlesKey));
   },
-  ["home-user-subscribed-feed-v1"],
+  ["home-user-subscribed-feed-v4"],
   { revalidate: USER_HOME_CACHE_SECONDS, tags: [HOME_USER_FEED_CACHE_TAG] }
 );
 
@@ -60,7 +63,7 @@ const getCachedTopRecommendedPostsByUser = unstable_cache(
   async (limit: number, userKey: string) => {
     return getTopRecommendedPosts(limit, userKey === "guest" ? null : userKey);
   },
-  ["home-top-recommended-posts-v1"],
+  ["home-top-recommended-posts-v3"],
   { revalidate: USER_HOME_CACHE_SECONDS, tags: [HOME_RECOMMENDED_POSTS_CACHE_TAG] }
 );
 
@@ -76,10 +79,24 @@ export async function getCachedUserSubscribedFeedPage(
   userId: string,
   offset: number,
   limit: number,
-  subscribedHandles?: string[]
+  subscribedHandles?: string[],
+  filters?: FeedPageFilters,
+  options?: { prioritizeRecentlyFetched?: boolean }
 ) {
-  const posts = stripLongformPosts(await getCachedUserSubscribedFeed(userId, subscribedHandles));
-  return makeFeedPage(posts, offset, limit);
+  const posts = stripLongformPosts(
+    options?.prioritizeRecentlyFetched
+      ? await getSubscribedFeed(userId, subscribedHandles)
+      : await getCachedUserSubscribedFeed(userId, subscribedHandles)
+  );
+  const pagePosts = options?.prioritizeRecentlyFetched
+    ? [...posts].sort((a, b) =>
+        compareNewsItemsForFeedDisplay(a, b, {
+          prioritizeRecentlyFetched: true,
+          recentlyFetchedSinceMs: getRecentlyFetchedFeedCreatedAtGte().getTime(),
+        })
+      )
+    : posts;
+  return makeFilteredFeedPage(pagePosts, offset, limit, filters);
 }
 
 export async function getCachedUserSubscribedSourcesMeta(
@@ -105,9 +122,16 @@ export async function getCachedHomeRecommendedPosts(limit: number, userId?: stri
 export async function getCachedHomeRecommendedPostPage(
   offset: number,
   limit: number,
-  userId?: string | null
+  userId?: string | null,
+  filters?: FeedPageFilters
 ) {
-  const fetchLimit = Math.max(HOME_RECOMMENDED_PREFETCH_LIMIT, offset + limit);
+  const hasFilters =
+    Boolean(filters?.sourceHandle?.trim()) ||
+    Boolean(filters?.category?.trim()) ||
+    Boolean(filters?.searchQuery?.trim());
+  const fetchLimit = hasFilters
+    ? Math.max(HOME_RECOMMENDED_PREFETCH_LIMIT, offset + limit, 500)
+    : Math.max(HOME_RECOMMENDED_PREFETCH_LIMIT, offset + limit);
   const posts = stripLongformPosts(await getCachedHomeRecommendedPosts(fetchLimit, userId));
-  return makeFeedPage(posts, offset, limit);
+  return makeFilteredFeedPage(posts, offset, limit, filters);
 }

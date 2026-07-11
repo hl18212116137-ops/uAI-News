@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { signOut } from "next-auth/react";
 import { TopBarProfileGlyph } from "@/components/top-bar-icons";
 
 type UserMenuUser = {
@@ -41,6 +40,7 @@ export default function UserMenu({
 
   const handleSignOut = async () => {
     setIsLoggingOut(true);
+    const { signOut } = await import("next-auth/react");
     await signOut({ redirect: false });
     setIsOpen(false);
     window.location.assign("/");

@@ -1,5 +1,26 @@
 import { NextResponse } from 'next/server'
 import { pool } from '@/lib/db/drizzle'
+import { RAW_POST_PROCESSABLE_STATUS_VALUES } from '@/lib/raw-post-queue'
+
+type CountRow = {
+  count: string
+}
+
+type QueueMetricRow = CountRow & {
+  oldest_at: string | Date | null
+}
+
+type FeedHealthCheck = {
+  ok: boolean
+  detail?: string
+}
+
+type FeedQueueHealth = {
+  rawQueuePending: number
+  processingJobsPending: number
+  totalPending: number
+  oldestPendingAgeMinutes: number | null
+}
 
 function aiKeyConfigured(): boolean {
   const provider = (process.env.AI_PROVIDER || 'deepseek').toLowerCase()
@@ -8,76 +29,153 @@ function aiKeyConfigured(): boolean {
   return Boolean(process.env.DEEPSEEK_API_KEY?.trim() || process.env.MINIMAX_API_KEY?.trim())
 }
 
-/**
- * GET /api/health/feed
- * 诊断信息流：X API、AI 密钥、库内真实推文数量
- */
+function countValue(row: CountRow | undefined): number {
+  const n = Number(row?.count ?? 0)
+  return Number.isFinite(n) ? n : 0
+}
+
+function ageMinutes(value: string | Date | null | undefined): number | null {
+  if (!value) return null
+  const ms = value instanceof Date ? value.getTime() : new Date(value).getTime()
+  if (!Number.isFinite(ms)) return null
+  return Math.max(0, Math.round((Date.now() - ms) / 60000))
+}
+
+function combineOldestAge(
+  rawOldest: string | Date | null | undefined,
+  jobOldest: string | Date | null | undefined
+): number | null {
+  const rawAge = ageMinutes(rawOldest)
+  const jobAge = ageMinutes(jobOldest)
+  if (rawAge == null) return jobAge
+  if (jobAge == null) return rawAge
+  return Math.max(rawAge, jobAge)
+}
+
+function emptyQueue(): FeedQueueHealth {
+  return {
+    rawQueuePending: 0,
+    processingJobsPending: 0,
+    totalPending: 0,
+    oldestPendingAgeMinutes: null,
+  }
+}
+
 export async function GET() {
-  const checks: Record<string, { ok: boolean; detail?: string }> = {}
+  const checks: Record<string, FeedHealthCheck> = {}
 
   checks.twitter_api = {
     ok: Boolean(process.env.TWITTERAPI_IO_KEY?.trim()),
     detail: process.env.TWITTERAPI_IO_KEY?.trim()
       ? undefined
-      : '未设置 TWITTERAPI_IO_KEY，无法抓取 X 推文',
+      : '未配置 TWITTERAPI_IO_KEY，无法抓取 X 推文',
   }
 
   checks.ai_provider = {
     ok: aiKeyConfigured(),
     detail: aiKeyConfigured()
       ? `AI_PROVIDER=${process.env.AI_PROVIDER || 'deepseek'}`
-      : '未配置 AI 密钥（DEEPSEEK_API_KEY / MINIMAX_API_KEY / ANTHROPIC_API_KEY），无法生成中文标题摘要',
+      : '未配置 AI 密钥，无法生成中文标题摘要',
   }
 
-  if (process.env.DATABASE_URL) {
-    try {
-      const [sourcesRes, postsRes, rawRes] = await Promise.all([
-        pool.query<{ count: string }>(
-          "SELECT count(*)::text AS count FROM sources WHERE enabled = true"
-        ),
-        pool.query<{ count: string }>(
-          "SELECT count(*)::text AS count FROM news_items WHERE id LIKE 'x-%'"
-        ),
-        pool.query<{ count: string }>(
-          "SELECT count(*)::text AS count FROM raw_posts WHERE status IN ('new', 'pending')"
-        ),
-      ])
-      const sourceCount = sourcesRes.rows[0]?.count ?? '0'
-      const realPosts = postsRes.rows[0]?.count ?? '0'
-      const pendingRaw = rawRes.rows[0]?.count ?? '0'
-      checks.database_sources = { ok: Number(sourceCount) > 0, detail: `已启用信息源 ${sourceCount} 个` }
-      checks.database_real_posts = {
-        ok: Number(realPosts) > 0,
-        detail:
-          Number(realPosts) > 0
-            ? `真实推文（x-*）${realPosts} 条`
-            : '尚无真实推文，请登录后点「抓取更新」或等待自动补抓',
-      }
-      checks.raw_queue = {
-        ok: true,
-        detail: `待 AI 处理的 raw_posts：${pendingRaw} 条`,
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      checks.database_feed = { ok: false, detail: message }
+  if (!process.env.DATABASE_URL) {
+    checks.database_feed = { ok: false, detail: '缺少 DATABASE_URL' }
+    return NextResponse.json(
+      {
+        ok: false,
+        checks,
+        queue: emptyQueue(),
+        ...emptyQueue(),
+        hint: '信息流依赖不完整；请先检查 DATABASE_URL、TwitterAPI.io 和 AI provider 配置。',
+      },
+      { status: 503 }
+    )
+  }
+
+  try {
+    const [sourcesRes, postsRes, rawRes, jobsRes] = await Promise.all([
+      pool.query<CountRow>("SELECT count(*)::text AS count FROM sources WHERE enabled = true"),
+      pool.query<CountRow>("SELECT count(*)::text AS count FROM news_items WHERE id LIKE 'x-%'"),
+      pool.query<QueueMetricRow>(
+        "SELECT count(*)::text AS count, min(created_at) AS oldest_at FROM raw_posts WHERE status = ANY($1::text[])",
+        [RAW_POST_PROCESSABLE_STATUS_VALUES]
+      ),
+      pool.query<QueueMetricRow>(
+        "SELECT count(*)::text AS count, min(created_at) AS oldest_at FROM processing_jobs WHERE status = 'pending'"
+      ),
+    ])
+
+    const sourceCount = countValue(sourcesRes.rows[0])
+    const realPosts = countValue(postsRes.rows[0])
+    const rawQueuePending = countValue(rawRes.rows[0])
+    const processingJobsPending = countValue(jobsRes.rows[0])
+    const totalPending = rawQueuePending + processingJobsPending
+    const oldestPendingAgeMinutes = combineOldestAge(
+      rawRes.rows[0]?.oldest_at,
+      jobsRes.rows[0]?.oldest_at
+    )
+    const queue: FeedQueueHealth = {
+      rawQueuePending,
+      processingJobsPending,
+      totalPending,
+      oldestPendingAgeMinutes,
     }
-  } else {
-    checks.database_feed = { ok: false, detail: '跳过：无 DATABASE_URL' }
+
+    checks.database_sources = {
+      ok: sourceCount > 0,
+      detail: `已启用信息源 ${sourceCount} 个`,
+    }
+    checks.database_real_posts = {
+      ok: realPosts > 0,
+      detail:
+        realPosts > 0
+          ? `真实推文（x-*）${realPosts} 条`
+          : '暂无真实推文，请登录后抓取或等待自动补抓',
+    }
+    checks.raw_queue = {
+      ok: true,
+      detail: `待处理队列：raw_posts ${rawQueuePending} 条，processing_jobs ${processingJobsPending} 条`,
+    }
+    checks.queue_latency = {
+      ok: oldestPendingAgeMinutes == null || oldestPendingAgeMinutes < 180,
+      detail:
+        oldestPendingAgeMinutes == null
+          ? '当前没有待处理队列'
+          : `最早待处理内容已等待约 ${oldestPendingAgeMinutes} 分钟`,
+    }
+
+    const ok =
+      checks.twitter_api.ok &&
+      checks.ai_provider.ok &&
+      checks.database_real_posts.ok
+
+    return NextResponse.json(
+      {
+        ok,
+        checks,
+        queue,
+        rawQueuePending,
+        processingJobsPending,
+        oldestPendingAgeMinutes,
+        hint:
+          totalPending > 0
+            ? `信息流依赖正常；仍有 ${totalPending} 条待处理内容，刷新或后台任务会继续消化。`
+            : '信息流依赖正常；当前没有待处理队列。',
+      },
+      { status: ok ? 200 : 503 }
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    checks.database_feed = { ok: false, detail: message }
+    return NextResponse.json(
+      {
+        ok: false,
+        checks,
+        queue: emptyQueue(),
+        ...emptyQueue(),
+        hint: '数据库健康检查失败，请先查看服务端日志。',
+      },
+      { status: 503 }
+    )
   }
-
-  const ok =
-    checks.twitter_api.ok &&
-    checks.ai_provider.ok &&
-    (checks.database_real_posts?.ok ?? false)
-
-  return NextResponse.json(
-    {
-      ok,
-      checks,
-      hint: ok
-        ? '信息流依赖正常。若列表仍空，请点顶栏「抓取更新」或稍等自动补抓完成。'
-        : '首页若为空属正常：需配置 TWITTERAPI_IO_KEY 与 AI 密钥后抓取，已关闭英文 demo 占位帖。',
-    },
-    { status: ok ? 200 : 503 }
-  )
 }

@@ -27,12 +27,50 @@ import SourceActivityNotice, {
 
 import type { RecommendSourceRow } from "./SourceRecommendSection";
 
-const AddSourceModal = dynamic(() => import("./AddSourceModal"), { ssr: false });
+function ModalLoadingFallback({
+  title,
+  large = false,
+}: {
+  title: string;
+  large?: boolean;
+}) {
+  return (
+    <>
+      <div className="modal-backdrop fixed inset-0 z-[100]" aria-hidden />
+      <div
+        className={[
+          "modal-panel modal-panel-enter fixed left-1/2 top-1/2 z-[101] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 p-5",
+          large ? "max-w-[760px]" : "max-w-[480px]",
+        ].join(" ")}
+        role="status"
+        aria-live="polite"
+      >
+        <div className="mb-4 text-sm font-semibold text-[#101828]">{title}</div>
+        <div className="grid gap-2">
+          <div className="skeleton h-4 w-2/3 rounded-md" />
+          <div className="skeleton h-9 rounded-md" />
+          <div className="skeleton h-20 rounded-md" />
+        </div>
+      </div>
+    </>
+  );
+}
+
+const AddSourceModal = dynamic(() => import("./AddSourceModal"), {
+  ssr: false,
+  loading: () => <ModalLoadingFallback title="添加信息源" />,
+});
 const AddLongformModal = dynamic(() => import("./AddLongformModal"), { ssr: false });
 const AuthPromptModal = dynamic(() => import("./AuthPromptModal"), { ssr: false });
 const AnalysisPanel = dynamic(() => import("./AnalysisPanel"), { ssr: false });
-const PassedPostsReviewPanel = dynamic(() => import("./PassedPostsReviewPanel"), { ssr: false });
-const FetchPipelinePanel = dynamic(() => import("./FetchPipelinePanel"), { ssr: false });
+const PassedPostsReviewPanel = dynamic(() => import("./PassedPostsReviewPanel"), {
+  ssr: false,
+  loading: () => <ModalLoadingFallback title="PASS 审核" large />,
+});
+const FetchPipelinePanel = dynamic(() => import("./FetchPipelinePanel"), {
+  ssr: false,
+  loading: () => <ModalLoadingFallback title="抓取与筛选设置" large />,
+});
 const LongformModule = dynamic(() => import("./LongformModule"), { ssr: false });
 import {
   MAIN_FRAME_GRID_SHELL_CLASS,
@@ -46,7 +84,8 @@ import { OPTIMISTIC_REFRESH_TASK_ID } from "@/lib/fetch-refresh-ui";
 import { useOptionalHomeLayout } from "@/components/HomeLayoutContext";
 import { hasRawInsightPayload } from "@/lib/insight-echo-guard";
 import { dedupeNewsItemsForDisplay } from "@/lib/news-dedupe";
-import { HOME_FEED_PAGE_SIZE, type FeedPage } from "@/lib/feed-pagination";
+import { compareNewsItemsForFeedDisplay } from "@/lib/feed-sort";
+import { HOME_FEED_PAGE_SIZE, LONGFORM_FEED_PAGE_SIZE, type FeedPage } from "@/lib/feed-pagination";
 
 /** Figma 侧栏宽 — 与画板列宽一致 */
 const SOURCES_PANEL_WIDTH_PX = 256;
@@ -56,7 +95,6 @@ const MAIN_CENTER_TRACK_PX = 802;
 
 /** 与 app/globals.css --layout-duration 一致 */
 const ANALYSIS_PANEL_CLOSE_MS = 220;
-
 /** 首屏后空闲再跑，减少与 LCP/交互争抢（无 ric 时尽快延后一帧） */
 function scheduleIdleTask(fn: () => void) {
   if (typeof requestIdleCallback !== "undefined") {
@@ -70,6 +108,7 @@ function scheduleIdleTask(fn: () => void) {
 const MAIN_SCROLL_THUMB_IDLE_MS = 200;
 const LONGFORM_CATEGORY = "优质长文";
 const INSIGHT_PREFETCH_LIMIT = 12;
+type NewBadgeCommitMode = "replace" | "merge";
 
 function normalizeHandleForFilter(handle: unknown): string {
   return String(handle ?? "").trim().replace(/^@+/, "").toLowerCase();
@@ -79,10 +118,32 @@ function textMatchesQuery(value: unknown, lowerQuery: string): boolean {
   return String(value ?? "").toLowerCase().includes(lowerQuery);
 }
 
-function displaySortTime(post: NewsItem): number {
-  const promotedAt = post.promotedAt ? new Date(post.promotedAt).getTime() : NaN;
-  if (Number.isFinite(promotedAt)) return promotedAt;
-  return new Date(post.publishedAt).getTime();
+function collectNewBadgePostIds(
+  nextPosts: NewsItem[],
+  previousIds: ReadonlySet<string>,
+  startedAtMs: number
+): Set<string> {
+  const out = new Set<string>();
+  for (const post of nextPosts) {
+    if (previousIds.has(post.id)) continue;
+    const createdAtMs = new Date(post.createdAt).getTime();
+    if (Number.isFinite(createdAtMs) && createdAtMs >= startedAtMs) {
+      out.add(post.id);
+    }
+  }
+  return out;
+}
+
+function commitPostIdSetByMode(
+  current: Set<string>,
+  incoming: ReadonlySet<string>,
+  mode: NewBadgeCommitMode
+): Set<string> {
+  if (mode === "replace") return new Set(incoming);
+  if (incoming.size === 0) return current;
+  const next = new Set(current);
+  for (const id of incoming) next.add(id);
+  return next;
 }
 
 function LongformStatusSection({
@@ -137,6 +198,17 @@ type SourceActivityState = {
   detail: string;
   tone: SourceActivityTone;
   isLeaving: boolean;
+};
+
+type FeedFilterPageMeta = {
+  key: string;
+  total: number;
+  hasMore: boolean;
+};
+
+type NewBadgeCollectionWindow = {
+  startedAtMs: number;
+  baselinePostIds: Set<string>;
 };
 
 type MainContentProps = {
@@ -197,6 +269,24 @@ export default function MainContent({
   useEffect(() => {
     setHasHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (cancelled || document.visibilityState !== "visible") return;
+      scheduleIdleTask(() => {
+        if (cancelled || document.visibilityState !== "visible") return;
+        void import("./AddSourceModal");
+        void import("./FetchPipelinePanel");
+        void import("./PassedPostsReviewPanel");
+      });
+    }, 2600);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [hasHydrated]);
 
   const fetchPipelinePanelOpen = shellLayoutReady
     ? optionalShell!.fetchPipelinePanelOpen
@@ -259,16 +349,25 @@ export default function MainContent({
   const [activeSource, setActiveSource] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [posts, setPosts] = useState<NewsItem[]>(initialPosts);
+  const [newBadgePostIds, setNewBadgePostIds] = useState<Set<string>>(() => new Set());
+  const [newBadgeSortPostIds, setNewBadgeSortPostIds] = useState<Set<string>>(() => new Set());
+  const preserveClientFeedUntilRef = useRef(0);
   const [feedOffset, setFeedOffset] = useState(initialFeedOffset);
   const [feedTotal, setFeedTotal] = useState(initialFeedTotal);
   const [feedHasMore, setFeedHasMore] = useState(initialFeedHasMore);
   const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
   const [loadMoreFeedError, setLoadMoreFeedError] = useState("");
+  const [feedFilterPageMeta, setFeedFilterPageMeta] = useState<FeedFilterPageMeta | null>(null);
   const [longformLoaded, setLongformLoaded] = useState(() =>
     initialPosts.some((post) => Boolean(post.longform?.translatedContent))
   );
   const [longformLoading, setLongformLoading] = useState(false);
+  const [longformLoadingMore, setLongformLoadingMore] = useState(false);
   const [longformError, setLongformError] = useState("");
+  const [longformLoadMoreError, setLongformLoadMoreError] = useState("");
+  const [longformOffset, setLongformOffset] = useState(0);
+  const [longformTotal, setLongformTotal] = useState(0);
+  const [longformHasMore, setLongformHasMore] = useState(false);
   const [longformPreviewIds, setLongformPreviewIds] = useState<Set<string>>(() => new Set());
   const [longformFullLoadingIds, setLongformFullLoadingIds] = useState<Set<string>>(() => new Set());
   const [longformFullErrorById, setLongformFullErrorById] = useState<Record<string, string>>({});
@@ -321,6 +420,10 @@ export default function MainContent({
   const closeAnalysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainScrollThumbIdleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshAbortRef = useRef<AbortController | null>(null);
+  const refreshStartedAtRef = useRef<number | null>(null);
+  const refreshBaselinePostIdsRef = useRef<Set<string>>(new Set());
+  const newBadgeCollectionWindowRef = useRef<NewBadgeCollectionWindow | null>(null);
+  const newBadgeCommitModeRef = useRef<NewBadgeCommitMode>("replace");
   const passPendingIdsRef = useRef<Set<string>>(new Set());
   const longformActionPendingIdsRef = useRef<Set<string>>(new Set());
   const sourceActivityExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -339,6 +442,66 @@ export default function MainContent({
   }, []);
 
   const handleNeedAuth = useCallback(() => setShowAuthPrompt(true), []);
+
+  const clearRefreshNewBadgeContext = useCallback((clearCollectionWindow = true) => {
+    refreshStartedAtRef.current = null;
+    refreshBaselinePostIdsRef.current = new Set();
+    newBadgeCommitModeRef.current = "replace";
+    if (clearCollectionWindow) {
+      newBadgeCollectionWindowRef.current = null;
+    }
+  }, []);
+
+  const beginNewBadgeCollection = useCallback(
+    (startedAtMs: number, baselinePostIds: Set<string>, mode: NewBadgeCommitMode) => {
+      refreshStartedAtRef.current = startedAtMs;
+      refreshBaselinePostIdsRef.current = baselinePostIds;
+      newBadgeCommitModeRef.current = mode;
+      newBadgeCollectionWindowRef.current = { startedAtMs, baselinePostIds };
+    },
+    []
+  );
+
+  const collectNewBadgesForLoadedPosts = useCallback((loadedPosts: NewsItem[]) => {
+    const collectionWindow = newBadgeCollectionWindowRef.current;
+    if (!collectionWindow || loadedPosts.length === 0) return;
+
+    const collected = collectNewBadgePostIds(
+      loadedPosts,
+      collectionWindow.baselinePostIds,
+      collectionWindow.startedAtMs
+    );
+    if (collected.size === 0) return;
+
+    setNewBadgePostIds((current) => commitPostIdSetByMode(current, collected, "merge"));
+    setNewBadgeSortPostIds((current) => commitPostIdSetByMode(current, collected, "merge"));
+  }, []);
+
+  const commitNewBadgesFromPosts = useCallback((nextPosts: NewsItem[]) => {
+    const startedAtMs = refreshStartedAtRef.current;
+    if (startedAtMs == null) return;
+    const baselinePostIds = refreshBaselinePostIdsRef.current;
+
+    const collected = collectNewBadgePostIds(
+      nextPosts,
+      baselinePostIds,
+      startedAtMs
+    );
+    newBadgeCollectionWindowRef.current = { startedAtMs, baselinePostIds };
+    const mode = newBadgeCommitModeRef.current;
+    setNewBadgePostIds((current) => commitPostIdSetByMode(current, collected, mode));
+    setNewBadgeSortPostIds((current) => commitPostIdSetByMode(current, collected, mode));
+    clearRefreshNewBadgeContext(false);
+  }, [clearRefreshNewBadgeContext]);
+
+  const dismissNewBadge = useCallback((postId: string) => {
+    setNewBadgePostIds((current) => {
+      if (!current.has(postId)) return current;
+      const next = new Set(current);
+      next.delete(postId);
+      return next;
+    });
+  }, []);
 
   const clearSourceActivityTimers = useCallback(() => {
     if (sourceActivityExitTimerRef.current) {
@@ -379,6 +542,7 @@ export default function MainContent({
       const sourceLabel = normalizedHandle ? `@${normalizedHandle}` : "该信息源";
 
       if (status === "started") {
+        beginNewBadgeCollection(Date.now(), new Set(posts.map((post) => post.id)), "merge");
         showSourceActivity({
           title: `已订阅 ${sourceLabel}`,
           detail: "正在抓取首批推文，完成后会自动更新信息流。",
@@ -399,6 +563,7 @@ export default function MainContent({
         return;
       }
 
+      clearRefreshNewBadgeContext();
       showSourceActivity(
         {
           title: `${sourceLabel} 暂未抓取完成`,
@@ -408,7 +573,7 @@ export default function MainContent({
         6200
       );
     },
-    [showSourceActivity]
+    [beginNewBadgeCollection, clearRefreshNewBadgeContext, posts, showSourceActivity]
   );
 
   const handleMainContentScroll = useCallback(() => {
@@ -437,15 +602,42 @@ export default function MainContent({
 
   /** FETCH 完成后 router.refresh() 会更新 RSC props；useState 初值不会跟 props 变，需同步 */
   useEffect(() => {
-    setPosts(initialPosts);
+    const shouldPreserveClientFeed = Date.now() < preserveClientFeedUntilRef.current;
+    setPosts((current) => {
+      if (shouldPreserveClientFeed && current.length > 0) {
+        const byId = new Map(current.map((post) => [post.id, post]));
+        for (const post of initialPosts) {
+          if (!byId.has(post.id)) {
+            byId.set(post.id, post);
+          }
+        }
+        return dedupeNewsItemsForDisplay(Array.from(byId.values()));
+      }
+
+      const byId = new Map(initialPosts.map((post) => [post.id, post]));
+      for (const post of current) {
+        if (post.longform?.translatedContent && !byId.has(post.id)) {
+          byId.set(post.id, post);
+        }
+      }
+      return dedupeNewsItemsForDisplay(Array.from(byId.values()));
+    });
     setFeedOffset(initialFeedOffset);
     setFeedTotal(initialFeedTotal);
     setFeedHasMore(initialFeedHasMore);
+    setFeedFilterPageMeta(null);
     setLoadMoreFeedError("");
     if (initialPosts.some((post) => Boolean(post.longform?.translatedContent))) {
       setLongformLoaded(true);
     }
-  }, [initialFeedHasMore, initialFeedOffset, initialFeedTotal, initialPosts]);
+    collectNewBadgesForLoadedPosts(initialPosts);
+  }, [
+    collectNewBadgesForLoadedPosts,
+    initialFeedHasMore,
+    initialFeedOffset,
+    initialFeedTotal,
+    initialPosts,
+  ]);
 
   useEffect(() => {
     setSourcesState(sources);
@@ -466,6 +658,13 @@ export default function MainContent({
     []
   );
 
+  const handleFeedPostsSynced = useCallback(
+    (page: FeedPage) => {
+      commitNewBadgesFromPosts(page.posts);
+    },
+    [commitNewBadgesFromPosts]
+  );
+
   const { refreshSubscribedClientState, startSourceFetchPolling, handleSubscriptionSynced } =
     useSubscribedFeedSync(
       user,
@@ -474,7 +673,8 @@ export default function MainContent({
       setPosts,
       setFetchingSourceIds,
       handleSourceFetchEvent,
-      handleFeedPageSynced
+      handleFeedPageSynced,
+      handleFeedPostsSynced
     );
 
   const initialBookmarkedIdSet = useMemo(
@@ -575,18 +775,28 @@ export default function MainContent({
     );
   }, []);
 
-  const loadLongformPosts = useCallback(async () => {
-    if (longformLoading) return;
-    setLongformLoading(true);
+  const loadLongformPosts = useCallback(async (options?: { append?: boolean }) => {
+    const append = options?.append === true;
+    if (append ? longformLoadingMore : longformLoading) return;
+    if (append) {
+      setLongformLoadingMore(true);
+    } else {
+      setLongformLoading(true);
+    }
     setLongformError("");
+    setLongformLoadMoreError("");
+    const requestOffset = append ? longformOffset : 0;
     try {
-      const res = await fetch("/api/longform/posts", {
+      const params = new URLSearchParams({
+        offset: String(requestOffset),
+        limit: String(LONGFORM_FEED_PAGE_SIZE),
+      });
+      const res = await fetch(`/api/longform/posts?${params.toString()}`, {
         cache: "no-store",
         credentials: "same-origin",
       });
-      const data = (await res.json().catch(() => ({}))) as {
+      const data = (await res.json().catch(() => ({}))) as Partial<FeedPage> & {
         success?: boolean;
-        posts?: NewsItem[];
         error?: string;
       };
       if (!res.ok || !data.success || !Array.isArray(data.posts)) {
@@ -594,20 +804,44 @@ export default function MainContent({
       }
       const nextPosts = data.posts ?? [];
       setPosts((current) => {
-        const byId = new Map(current.map((post) => [post.id, post]));
+        const base = append
+          ? current
+          : current.filter((post) => !post.longform?.translatedContent);
+        const byId = new Map(base.map((post) => [post.id, post]));
         for (const post of nextPosts) {
           byId.set(post.id, post);
         }
         return dedupeNewsItemsForDisplay(Array.from(byId.values()));
       });
-      setLongformPreviewIds(new Set(nextPosts.map((post) => post.id)));
+      setLongformPreviewIds((current) => {
+        const next = append ? new Set(current) : new Set<string>();
+        for (const post of nextPosts) next.add(post.id);
+        return next;
+      });
+      setLongformOffset(data.nextOffset ?? requestOffset + nextPosts.length);
+      setLongformTotal(data.total ?? nextPosts.length);
+      setLongformHasMore(Boolean(data.hasMore));
       setLongformLoaded(true);
     } catch (error) {
-      setLongformError(error instanceof Error ? error.message : "长文加载失败");
+      const message = error instanceof Error ? error.message : "长文加载失败";
+      if (append) {
+        setLongformLoadMoreError(message);
+      } else {
+        setLongformError(message);
+      }
     } finally {
-      setLongformLoading(false);
+      if (append) {
+        setLongformLoadingMore(false);
+      } else {
+        setLongformLoading(false);
+      }
     }
-  }, [longformLoading]);
+  }, [longformLoading, longformLoadingMore, longformOffset]);
+
+  const loadMoreLongformPosts = useCallback(() => {
+    if (!longformHasMore || longformLoadingMore) return;
+    void loadLongformPosts({ append: true });
+  }, [longformHasMore, longformLoadingMore, loadLongformPosts]);
 
   const loadFullLongformPost = useCallback(async (postId: string) => {
     if (!longformPreviewIds.has(postId) || longformFullLoadingIds.has(postId)) return;
@@ -665,7 +899,9 @@ export default function MainContent({
   useEffect(() => {
     if (!emptyFeedAwaitingFetch || !user) return;
     const iv = setInterval(() => {
-      void refreshSubscribedClientState();
+      void refreshSubscribedClientState(
+        refreshStartedAtRef.current == null ? undefined : { notifyFeedPostsSynced: false }
+      );
     }, 15000);
     return () => clearInterval(iv);
   }, [emptyFeedAwaitingFetch, user, refreshSubscribedClientState]);
@@ -677,6 +913,7 @@ export default function MainContent({
     }
     if (isFetchBusy) {
       activeFetchTaskIdRef.current = null;
+      clearRefreshNewBadgeContext();
       if (taskId === OPTIMISTIC_REFRESH_TASK_ID) {
         refreshAbortRef.current?.abort();
         refreshAbortRef.current = null;
@@ -700,6 +937,9 @@ export default function MainContent({
 
     const ac = new AbortController();
     refreshAbortRef.current = ac;
+    const refreshStartedAt = Date.now();
+    beginNewBadgeCollection(refreshStartedAt, new Set(posts.map((post) => post.id)), "replace");
+    setNewBadgePostIds(new Set());
 
     setTask({
       id: OPTIMISTIC_REFRESH_TASK_ID,
@@ -715,8 +955,6 @@ export default function MainContent({
     setTaskId(OPTIMISTIC_REFRESH_TASK_ID);
 
     try {
-      sessionStorage.setItem("lastFetchTimestamp", Date.now().toString());
-      sessionStorage.setItem("hasRefreshed", "false");
       const response = await fetch("/api/refresh", {
         method: "POST",
         cache: "no-store",
@@ -728,6 +966,7 @@ export default function MainContent({
       if (ac.signal.aborted) return;
 
       if (!response.ok || !result.success) {
+        clearRefreshNewBadgeContext();
         alert(result.error || "启动抓取任务失败");
         setTaskId(null);
         setTask(null);
@@ -742,6 +981,7 @@ export default function MainContent({
         return;
       }
       alert("网络请求失败，请检查网络连接后重试");
+      clearRefreshNewBadgeContext();
       setTaskId(null);
       setTask(null);
     } finally {
@@ -762,8 +1002,14 @@ export default function MainContent({
     activeFetchTaskIdRef.current = null;
     setTaskId(null);
     setTask(null);
-    void refreshSubscribedClientState();
-  }, [refreshSubscribedClientState]);
+    preserveClientFeedUntilRef.current = Date.now() + 30_000;
+    void refreshSubscribedClientState({ prioritizeRecentlyFetched: true }).then((page) => {
+      if (!page?.posts) {
+        preserveClientFeedUntilRef.current = 0;
+        clearRefreshNewBadgeContext();
+      }
+    });
+  }, [clearRefreshNewBadgeContext, refreshSubscribedClientState]);
 
   const handleAddSource = useCallback((_type: 'blogger' | 'media' | 'academic') => {
     setShowAddSourceModal(true);
@@ -987,6 +1233,7 @@ export default function MainContent({
   const handleAnalysisToggle = useCallback(
     (postId: string) => {
       clearCloseAnalysisTimer();
+      dismissNewBadge(postId);
       if (analysisPostId === postId && postId !== null && isAnalysisSidebarCollapsed) {
         setIsAnalysisSidebarCollapsed(false);
         return;
@@ -1008,6 +1255,7 @@ export default function MainContent({
       analysisOpen,
       isAnalysisSidebarCollapsed,
       clearCloseAnalysisTimer,
+      dismissNewBadge,
       closeAnalysisSession,
     ]
   );
@@ -1129,13 +1377,16 @@ export default function MainContent({
 
   useEffect(() => {
     if (insightPrefetchIds.length === 0) return;
-    const needed = insightPrefetchIds.filter((id: string) => !analysisCacheRef.current[id]);
-    if (needed.length === 0) return;
     let cancelled = false;
     type InsightPayload = (typeof analysisCache)[string];
-    scheduleIdleTask(() => {
+    const timeoutId = window.setTimeout(() => {
       if (cancelled) return;
       if (document.visibilityState !== "visible") return;
+      const needed = insightPrefetchIds.filter(
+        (id: string) => !analysisCacheRef.current[id]
+      );
+      if (needed.length === 0) return;
+
       void (async () => {
         try {
           const res = await fetch("/api/analysis/prefetch", {
@@ -1162,9 +1413,10 @@ export default function MainContent({
           /* 预取失败不提示；打开 INSIGHT 时仍走 POST /api/analysis */
         }
       })();
-    });
+    }, 3200);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
     };
   }, [insightPrefetchKey]);
 
@@ -1183,10 +1435,15 @@ export default function MainContent({
   }, [analysisPostId]);
 
   const sortedPosts = useMemo(() => {
-    return dedupeNewsItemsForDisplay([...posts].sort((a, b) => {
-      return displaySortTime(b) - displaySortTime(a);
-    }));
-  }, [posts]);
+    return dedupeNewsItemsForDisplay(
+      [...posts].sort((a, b) => {
+        const newBadgeDiff =
+          Number(newBadgeSortPostIds.has(b.id)) - Number(newBadgeSortPostIds.has(a.id));
+        if (newBadgeDiff !== 0) return newBadgeDiff;
+        return compareNewsItemsForFeedDisplay(a, b);
+      })
+    );
+  }, [newBadgeSortPostIds, posts]);
 
   const analysisPost = useMemo(
     () => (analysisPostId ? posts.find((p) => p.id === analysisPostId) ?? null : null),
@@ -1242,19 +1499,68 @@ export default function MainContent({
     return result;
   }, [sortedPosts, activeCategory, activeSource, searchQuery, isLongformCategory]);
 
+  const activeSourceFilter = isLongformCategory ? "" : normalizeHandleForFilter(activeSource);
+  const activeCategoryFilter =
+    !isLongformCategory && activeCategory && activeCategory !== "all" ? activeCategory : "";
+  const activeSearchFilter = isLongformCategory ? "" : searchQuery.trim();
+  const activeFeedFilterKey = [
+    activeSourceFilter,
+    activeCategoryFilter,
+    activeSearchFilter.toLowerCase(),
+  ].join("\0");
+  const hasActiveFeedFilters = Boolean(
+    activeSourceFilter || activeCategoryFilter || activeSearchFilter
+  );
+  const activeFeedFilterMeta =
+    feedFilterPageMeta?.key === activeFeedFilterKey ? feedFilterPageMeta : null;
+
+  useEffect(() => {
+    setLoadMoreFeedError("");
+  }, [activeFeedFilterKey]);
+
   const canShowLoadMoreFeed =
-    canLoadMoreFeed && !isLongformCategory && feedHasMore && !emptyFeedAwaitingFetch;
+    canLoadMoreFeed &&
+    !isLongformCategory &&
+    !emptyFeedAwaitingFetch &&
+    (hasActiveFeedFilters
+      ? activeFeedFilterMeta
+        ? activeFeedFilterMeta.hasMore
+        : feedHasMore || filteredPosts.length === 0
+      : feedHasMore);
+
+  const loadMoreStatusText = hasActiveFeedFilters
+    ? activeFeedFilterMeta
+      ? `已显示 ${Math.min(filteredPosts.length, activeFeedFilterMeta.total)} / ${activeFeedFilterMeta.total}`
+      : `已显示 ${filteredPosts.length} 条，点击加载当前筛选结果`
+    : `已加载 ${Math.min(posts.length, feedTotal)} / ${feedTotal}`;
 
   const handleLoadMoreFeed = useCallback(async () => {
-    if (isLoadingMoreFeed || !feedHasMore) return;
+    const canLoadCurrentView = hasActiveFeedFilters
+      ? activeFeedFilterMeta
+        ? activeFeedFilterMeta.hasMore
+        : feedHasMore || filteredPosts.length === 0
+      : feedHasMore;
+    if (isLoadingMoreFeed || !canLoadCurrentView) return;
+
+    const isFilteredLoad = hasActiveFeedFilters;
+    const requestFilterKey = activeFeedFilterKey;
+    const requestOffset = isFilteredLoad ? filteredPosts.length : feedOffset;
     setIsLoadingMoreFeed(true);
     setLoadMoreFeedError("");
 
     try {
       const params = new URLSearchParams({
-        offset: String(feedOffset),
+        offset: String(requestOffset),
         limit: String(feedPageSize),
       });
+      if (isFilteredLoad) {
+        if (activeSourceFilter) params.set("source", activeSourceFilter);
+        if (activeCategoryFilter) params.set("category", activeCategoryFilter);
+        if (activeSearchFilter) params.set("q", activeSearchFilter);
+      }
+      if (newBadgeCollectionWindowRef.current) {
+        params.set("fresh", "1");
+      }
       const response = await fetch(`/api/feed?${params.toString()}`, {
         cache: "no-store",
         credentials: "same-origin",
@@ -1269,19 +1575,43 @@ export default function MainContent({
       }
 
       setPosts((current) => dedupeNewsItemsForDisplay([...current, ...data.posts!]));
+      collectNewBadgesForLoadedPosts(data.posts as NewsItem[]);
       const nextOffset =
         typeof data.nextOffset === "number"
           ? data.nextOffset
-          : feedOffset + data.posts.length;
-      setFeedOffset(nextOffset);
-      setFeedTotal(typeof data.total === "number" ? data.total : nextOffset);
-      setFeedHasMore(Boolean(data.hasMore));
+          : requestOffset + data.posts.length;
+      const nextTotal = typeof data.total === "number" ? data.total : nextOffset;
+      const nextHasMore = Boolean(data.hasMore);
+      if (isFilteredLoad) {
+        setFeedFilterPageMeta({
+          key: requestFilterKey,
+          total: nextTotal,
+          hasMore: nextHasMore,
+        });
+      } else {
+        setFeedOffset(nextOffset);
+        setFeedTotal(nextTotal);
+        setFeedHasMore(nextHasMore);
+      }
     } catch (error) {
       setLoadMoreFeedError(error instanceof Error ? error.message : "加载更多失败");
     } finally {
       setIsLoadingMoreFeed(false);
     }
-  }, [feedHasMore, feedOffset, feedPageSize, isLoadingMoreFeed]);
+  }, [
+    activeCategoryFilter,
+    activeFeedFilterKey,
+    activeFeedFilterMeta,
+    activeSearchFilter,
+    activeSourceFilter,
+    collectNewBadgesForLoadedPosts,
+    feedHasMore,
+    feedOffset,
+    feedPageSize,
+    filteredPosts.length,
+    hasActiveFeedFilters,
+    isLoadingMoreFeed,
+  ]);
 
   const isGuestDefaultFeed =
     !user &&
@@ -1443,17 +1773,43 @@ export default function MainContent({
                       onAction={loadLongformPosts}
                     />
                   ) : isLongformCategory ? (
-                    <LongformModule
-                      posts={filteredPosts}
-                      onAddArticle={() => setShowAddLongformModal(true)}
-                      analysisActivePostId={analysisPostId}
-                      onAnalysisToggle={handleAnalysisToggle}
-                      previewPostIds={longformPreviewIds}
-                      fullLoadingPostIds={longformFullLoadingIds}
-                      fullErrorByPostId={longformFullErrorById}
-                      onRequestFullArticle={loadFullLongformPost}
-                      showFloatingToc={isSourcesListCollapsed}
-                    />
+                    <>
+                      <LongformModule
+                        posts={filteredPosts}
+                        onAddArticle={() => setShowAddLongformModal(true)}
+                        analysisActivePostId={analysisPostId}
+                        onAnalysisToggle={handleAnalysisToggle}
+                        previewPostIds={longformPreviewIds}
+                        fullLoadingPostIds={longformFullLoadingIds}
+                        fullErrorByPostId={longformFullErrorById}
+                        onRequestFullArticle={loadFullLongformPost}
+                        showFloatingToc={isSourcesListCollapsed}
+                      />
+                      {(longformHasMore || longformLoadMoreError) ? (
+                        <section className="flex w-full min-w-0 flex-col items-center gap-3 px-4 py-8">
+                          {longformHasMore ? (
+                            <button
+                              type="button"
+                              onClick={loadMoreLongformPosts}
+                              disabled={longformLoadingMore}
+                              className="btn-primary btn-press inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium disabled:cursor-wait disabled:opacity-60"
+                            >
+                              {longformLoadingMore ? "加载中..." : "加载更多长文"}
+                            </button>
+                          ) : null}
+                          {longformTotal > 0 ? (
+                            <p className="m-0 text-[12px] leading-5 text-[#99a1af]">
+                              已显示 {Math.min(filteredPosts.length, longformTotal)} / {longformTotal}
+                            </p>
+                          ) : null}
+                          {longformLoadMoreError ? (
+                            <p className="m-0 text-[12px] leading-5 text-primary-600">
+                              {longformLoadMoreError}
+                            </p>
+                          ) : null}
+                        </section>
+                      ) : null}
+                    </>
                   ) : (
                     <NewsList
                       posts={filteredPosts}
@@ -1462,6 +1818,7 @@ export default function MainContent({
                       onBookmarkToggle={toggleBookmark}
                       passPendingIds={passPendingIds}
                       onPassPost={handlePassPost}
+                      newPostIds={newBadgePostIds}
                       analysisActivePostId={analysisPostId}
                       onAnalysisToggle={handleAnalysisToggle}
                       emptyFeedAwaitingFetch={emptyFeedAwaitingFetch}
@@ -1480,7 +1837,7 @@ export default function MainContent({
                         </button>
                       ) : null}
                       <p className="m-0 text-[12px] leading-5 text-[#99a1af]">
-                        已加载 {Math.min(posts.length, feedTotal)} / {feedTotal}
+                        {loadMoreStatusText}
                       </p>
                       {loadMoreFeedError ? (
                         <p className="m-0 text-[12px] leading-5 text-primary-600">
@@ -1694,7 +2051,9 @@ export default function MainContent({
                 tone: "success",
               });
             }
-            void refreshSubscribedClientState();
+            void refreshSubscribedClientState(
+              taskId ? { notifyFeedPostsSynced: false } : undefined
+            );
             return;
           }
           void fetch(`/api/recommended-sources?limit=${RECOMMENDED_SIDEBAR_LIMIT}`, {
@@ -1729,7 +2088,11 @@ export default function MainContent({
           isOpen={showPassReviewPanel}
           onClose={() => setShowPassReviewPanel(false)}
           user={user}
-          onPromoted={() => void refreshSubscribedClientState()}
+          onPromoted={() =>
+            void refreshSubscribedClientState(
+              refreshStartedAtRef.current == null ? undefined : { notifyFeedPostsSynced: false }
+            )
+          }
         />
       ) : null}
 

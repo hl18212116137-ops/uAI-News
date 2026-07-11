@@ -26,6 +26,7 @@ type Source = {
   avatar?: string;
   description?: string;
   postCount: number;
+  totalPostCount?: number;
   latestPostTime?: string;
   id: string;
   sourceType?: 'blogger' | 'media' | 'academic';
@@ -97,6 +98,14 @@ const SourcesListSourceCard = memo(function SourcesListSourceCard({
   const sourceHomeUrl = resolveSourceHomeUrl(source);
   const bioTagsLine = sourceBioTagsLine(profile.description, source.handle);
   const rowActive = isSourceRowActive(source.handle, currentSource);
+  const totalPostCount =
+    typeof source.totalPostCount === "number" && Number.isFinite(source.totalPostCount)
+      ? source.totalPostCount
+      : source.postCount;
+  const countLabel =
+    totalPostCount > source.postCount ? `${source.postCount}/${totalPostCount}` : String(source.postCount);
+  const countTooltip =
+    totalPostCount > source.postCount ? "近 7 天收录 / 总收录" : "已收录推文数";
 
   return (
     <Tooltip content={`点击筛选 ${source.name} 的推文`} excludeSelector="[data-tooltip-exclude]">
@@ -150,7 +159,7 @@ const SourcesListSourceCard = memo(function SourcesListSourceCard({
               </a>
             </Tooltip>
             <div className="flex min-h-px min-w-0 flex-shrink-0 items-center justify-end gap-2">
-              <Tooltip content={isFetching ? "正在抓取推文" : "已收录推文数"}>
+              <Tooltip content={isFetching ? "正在抓取推文" : countTooltip}>
                 <span
                   className="pointer-events-auto inline-flex min-w-[1em] cursor-default items-center justify-center gap-1 font-mono text-[12px] font-medium tabular-nums leading-4 text-[#0055FF]"
                   data-tooltip-exclude=""
@@ -164,7 +173,7 @@ const SourcesListSourceCard = memo(function SourcesListSourceCard({
                       <span className="text-[10px] leading-4">抓取中</span>
                     </>
                   ) : (
-                    source.postCount
+                    countLabel
                   )}
                 </span>
               </Tooltip>

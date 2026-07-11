@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
+import { type CSSProperties } from "react";
 import type { AuthUser } from "@/lib/auth";
 import { useOpenLogin } from "@/hooks/useOpenLogin";
 type User = AuthUser;
@@ -50,23 +49,21 @@ export default function TopBar({
   onOpenFetchPipelineSettings,
   onOpenPassReview,
 }: TopBarProps) {
-  const router = useRouter();
   const openLogin = useOpenLogin();
 
-  useEffect(() => {
-    if (!user) {
-      router.prefetch("/login");
-      router.prefetch("/register");
-    }
-  }, [user, router]);
-
   const handleOpenFetchPipelineSettings = () => {
-    onOpenFetchPipelineSettings?.();
+    if (onOpenFetchPipelineSettings) {
+      onOpenFetchPipelineSettings();
+      return;
+    }
     window.dispatchEvent(new Event("uai:open-fetch-pipeline-panel"));
   };
 
   const handleOpenPassReview = () => {
-    onOpenPassReview?.();
+    if (onOpenPassReview) {
+      onOpenPassReview();
+      return;
+    }
     window.dispatchEvent(new Event("uai:open-pass-review"));
   };
 
@@ -154,6 +151,7 @@ export default function TopBar({
         >
           <Link
             href="/bookmarks"
+            prefetch={Boolean(user)}
             onClick={rememberHomeBeforeBookmarks}
             data-name="Container"
             data-node-id={dualCollapsed ? "43:5033" : "3:2680"}

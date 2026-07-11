@@ -18,6 +18,7 @@ type NewsListProps = {
   onBookmarkToggle?: (id: string, post: NewsItem) => void;
   passPendingIds?: Set<string>;
   onPassPost?: (post: NewsItem) => void;
+  newPostIds?: Set<string>;
   analysisActivePostId?: string | null;
   onAnalysisToggle?: (postId: string) => void;
   emptyFeedAwaitingFetch?: boolean;
@@ -32,6 +33,7 @@ function NewsList({
   onBookmarkToggle,
   passPendingIds,
   onPassPost,
+  newPostIds,
   analysisActivePostId = null,
   onAnalysisToggle,
   emptyFeedAwaitingFetch = false,
@@ -146,6 +148,7 @@ function NewsList({
             onBookmarkToggle={onBookmarkToggle}
             passPending={passPendingIds?.has(post.id) ?? false}
             onPassPost={onPassPost}
+            showNewBadge={newPostIds?.has(post.id) ?? false}
             analysisActive={analysisActivePostId === post.id}
             onAnalysisToggle={onAnalysisToggle}
           />

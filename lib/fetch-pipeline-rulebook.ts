@@ -136,8 +136,8 @@ export function getFetchPipelineRulebook(): RulebookStage[] {
         },
         {
           id: 'ai-2',
-          condition: '内容有新闻价值',
-          action: '生成标题、摘要和分类。',
+          condition: '内容有新闻价值，或是能改变判断的高价值观点/线索',
+          action: '生成标题、摘要和分类；观点线索会作为独立分类进入资讯流。',
           platform: 'all',
         },
         {

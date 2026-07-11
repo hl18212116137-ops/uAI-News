@@ -13,7 +13,12 @@ import { appendImageTextsToTweetText, extractTweetImageTexts } from '@/lib/tweet
 import { isMostlyChinese } from '@/lib/text-locale'
 import type { NewsCategory, NewsItem, XReferencedPost } from '@/lib/types'
 
-export type PassedPostKind = 'low_signal' | 'ai_unimportant' | 'user_pass'
+export type PassedPostKind =
+  | 'low_signal'
+  | 'ai_unimportant'
+  | 'user_pass'
+  | 'duplicate'
+  | 'processing_failed'
 type PassFeedbackAction = 'promote_from_pass' | 'pass_from_feed'
 
 export type PassedPostLog = {
@@ -92,7 +97,7 @@ async function ensurePassedPostsTable(): Promise<void> {
         title text,
         summary text,
         category text,
-        pass_type text NOT NULL CHECK (pass_type IN ('low_signal', 'ai_unimportant', 'user_pass')),
+        pass_type text NOT NULL CHECK (pass_type IN ('low_signal', 'ai_unimportant', 'user_pass', 'duplicate', 'processing_failed')),
         pass_reason text NOT NULL DEFAULT '',
         published_at timestamptz,
         media_urls jsonb,
@@ -126,7 +131,7 @@ async function ensurePassedPostsTable(): Promise<void> {
       ALTER TABLE passed_posts DROP CONSTRAINT IF EXISTS passed_posts_pass_type_check;
       ALTER TABLE passed_posts
         ADD CONSTRAINT passed_posts_pass_type_check
-        CHECK (pass_type IN ('low_signal', 'ai_unimportant', 'user_pass'));
+        CHECK (pass_type IN ('low_signal', 'ai_unimportant', 'user_pass', 'duplicate', 'processing_failed'));
 
       ALTER TABLE pass_feedback DROP CONSTRAINT IF EXISTS pass_feedback_action_check;
       ALTER TABLE pass_feedback
@@ -282,7 +287,11 @@ export async function listPassedPosts(options: {
         ? 'low_signal'
         : row.pass_type === 'user_pass'
           ? 'user_pass'
-          : 'ai_unimportant',
+          : row.pass_type === 'duplicate'
+            ? 'duplicate'
+            : row.pass_type === 'processing_failed'
+              ? 'processing_failed'
+              : 'ai_unimportant',
     passReason: row.pass_reason || '未记录具体原因',
     publishedAt: dateToIso(row.published_at),
     createdAt: dateToIso(row.created_at) || new Date().toISOString(),
@@ -292,7 +301,7 @@ export async function listPassedPosts(options: {
 }
 
 function normalizeCategory(value: unknown): NewsCategory {
-  return value === '模型' || value === '产品' || value === '研究' || value === '行业' || value === '政策'
+  return value === '模型' || value === '产品' || value === '研究' || value === '行业' || value === '政策' || value === '观点线索'
     ? value
     : '行业'
 }

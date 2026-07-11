@@ -1,15 +1,24 @@
 import 'server-only'
 
+import { Readability } from '@mozilla/readability'
+import { JSDOM } from 'jsdom'
 import type { LongformArticle, XReferencedPost } from '@/lib/types'
+import { isVideoTranscriptRequiredLongformUrl } from '@/lib/longform-quality'
 
-type ExtractLongformInput = {
+export type ExtractLongformInput = {
   platform: string
   text: string
   sourceUrl: string
   authorName: string
   authorHandle: string
+  urls?: string[]
   mediaUrls?: string[]
   referencedPost?: XReferencedPost | null
+}
+
+export type ExtractLongformOptions = {
+  allowImageDiscovery?: boolean
+  allowTextSearch?: boolean
 }
 
 type CandidateArticle = {
@@ -33,6 +42,7 @@ type TextArticleInput = {
   sourceName: string
   authorName?: string
   text: string
+  discoveryMethod?: NonNullable<LongformArticle['discoveryMethod']>
 }
 
 type ScreenshotArticleClues = {
@@ -170,6 +180,12 @@ function collectTextBlocks(input: ExtractLongformInput): string[] {
 
 function extractCandidateUrls(input: ExtractLongformInput): string[] {
   const out = new Set<string>()
+  for (const raw of [...(input.urls ?? []), ...(input.referencedPost?.urls ?? [])]) {
+    if (typeof raw !== 'string') continue
+    const url = normalizeCandidateUrl(raw)
+    if (url) out.add(url)
+  }
+
   for (const text of collectTextBlocks(input)) {
     for (const match of text.matchAll(URL_RE)) {
       const url = normalizeCandidateUrl(match[0])
@@ -182,7 +198,11 @@ function extractCandidateUrls(input: ExtractLongformInput): string[] {
     if (url) out.add(url)
   }
 
-  return Array.from(out).filter((url) => !looksLikeStaticAsset(url))
+  const candidates = Array.from(out).filter((url) => !looksLikeStaticAsset(url))
+  const hasDirectArticleCandidate = candidates.some((url) => !isExcludedLongformHost(url))
+  return hasDirectArticleCandidate
+    ? candidates.filter((url) => !isExcludedLongformHost(url))
+    : candidates
 }
 
 function collectImageMediaUrls(input: ExtractLongformInput): string[] {
@@ -331,6 +351,29 @@ function extractAuthorName(html: string): string | undefined {
     extractMetaContent(html, 'name', 'citation_author'),
   ]
   return candidates.find((candidate) => candidate && candidate.trim())?.trim()
+}
+
+function extractReadableArticle(
+  html: string,
+  url: string,
+): { title?: string; byline?: string; textContent?: string } | null {
+  try {
+    const dom = new JSDOM(html, { url })
+    const parsed = new Readability(dom.window.document).parse()
+    if (!parsed?.textContent?.trim()) return null
+    return {
+      title: parsed.title?.trim() || undefined,
+      byline: parsed.byline?.trim() || undefined,
+      textContent: parsed.textContent
+        .replace(/\r/g, '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim(),
+    }
+  } catch {
+    return null
+  }
 }
 
 function extractBestContentHtml(html: string): string {
@@ -651,10 +694,19 @@ async function fetchCandidateArticle(
   const resolvedUrl = normalizeCandidateUrl(fetched.resolvedUrl) ?? fetched.resolvedUrl
   if (isExcludedLongformHost(resolvedUrl) || looksLikeStaticAsset(resolvedUrl)) return null
   if (isArxivAbstractUrl(resolvedUrl)) return null
+  if (isVideoTranscriptRequiredLongformUrl(resolvedUrl)) return null
 
-  const title = extractTitle(fetched.html, resolvedUrl)
+  const readable = extractReadableArticle(fetched.html, resolvedUrl)
+  const title = readable?.title || extractTitle(fetched.html, resolvedUrl)
   const contentKind = isLikelyScholarlyArticle(fetched.html, resolvedUrl) ? 'paper' : 'article'
-  const cleanText = cleanCandidateArticleText(stripHtmlToText(extractBestContentHtml(fetched.html)), title)
+  const fallbackText = cleanCandidateArticleText(stripHtmlToText(extractBestContentHtml(fetched.html)), title)
+  const readableText = readable?.textContent
+    ? cleanCandidateArticleText(readable.textContent, title)
+    : ''
+  const cleanText =
+    readableText.length >= Math.min(fallbackText.length * 0.65, fallbackText.length - 500)
+      ? readableText
+      : fallbackText
   const text = contentKind === 'paper' ? selectPaperReadingText(cleanText, title) : cleanText
   const minChars =
     contentKind === 'paper'
@@ -669,7 +721,7 @@ async function fetchCandidateArticle(
     resolvedUrl,
     title,
     sourceName: sourceNameFromUrl(resolvedUrl),
-    authorName: extractAuthorName(fetched.html),
+    authorName: readable?.byline || extractAuthorName(fetched.html),
     text,
     contentKind,
     originalWordCount: countWords(text),
@@ -735,7 +787,7 @@ export async function createLongformFromTextArticle(
       text,
       contentKind: 'article',
       originalWordCount: countWords(text),
-      discoveryMethod: 'url',
+      discoveryMethod: input.discoveryMethod || 'url',
     },
     translate,
   )
@@ -1321,14 +1373,19 @@ async function extractLongformFromTextSearch(
 export async function extractLongformForRawPost(
   input: ExtractLongformInput,
   translate: (text: string) => Promise<string>,
+  options: ExtractLongformOptions = {},
 ): Promise<LongformArticle | undefined> {
   if (!isEnabled()) return undefined
 
   const direct = await extractLongformFromUrlCandidates(extractCandidateUrls(input), translate)
   if (direct) return direct
 
-  const image = await extractLongformFromImages(input, translate)
-  if (image) return image
+  if (options.allowImageDiscovery !== false) {
+    const image = await extractLongformFromImages(input, translate)
+    if (image) return image
+  }
+
+  if (options.allowTextSearch === false) return undefined
 
   return extractLongformFromTextSearch(input, translate)
 }

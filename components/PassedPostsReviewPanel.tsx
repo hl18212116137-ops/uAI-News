@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AuthUser } from "@/lib/auth";
 import AppModalShell from "@/components/AppModalShell";
@@ -14,7 +14,7 @@ type PassedPostLogRow = {
   title: string | null;
   summary: string | null;
   category: string | null;
-  passType: "low_signal" | "ai_unimportant" | "user_pass";
+  passType: "low_signal" | "ai_unimportant" | "user_pass" | "duplicate" | "processing_failed";
   passReason: string;
   publishedAt: string | null;
   updatedAt: string;
@@ -30,6 +30,8 @@ type Props = {
 
 function passTypeLabel(passType: PassedPostLogRow["passType"]): string {
   if (passType === "user_pass") return "用户 PASS";
+  if (passType === "duplicate") return "重复";
+  if (passType === "processing_failed") return "处理失败";
   return passType === "low_signal" ? "低信号" : "AI PASS";
 }
 
@@ -60,16 +62,21 @@ export default function PassedPostsReviewPanel({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const userCacheKey = user?.id ?? "guest";
+  const activeUserCacheKeyRef = useRef(userCacheKey);
+  const loadLogsRequestRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
+    activeUserCacheKeyRef.current = userCacheKey;
+    loadLogsRequestRef.current = null;
     setLogs([]);
     setSelectedIds(new Set());
     setLoaded(false);
+    setLoading(false);
     setError(null);
     setMessage(null);
   }, [userCacheKey]);
 
-  const loadLogs = useCallback(async () => {
+  const loadLogs = useCallback(() => {
     if (!user) {
       setLogs([]);
       setLoaded(true);
@@ -77,30 +84,45 @@ export default function PassedPostsReviewPanel({
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/me/pass-logs?limit=80", {
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      const data = (await res.json()) as {
-        success?: boolean;
-        logs?: PassedPostLogRow[];
-        error?: string;
-      };
-      if (!res.ok || !data.success) throw new Error(data.error || "加载 PASS 记录失败");
-      setLogs(data.logs ?? []);
-      setSelectedIds(new Set());
-      setLoaded(true);
-    } catch (e) {
-      setLogs([]);
-      setError(e instanceof Error ? e.message : "加载 PASS 记录失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+    if (loadLogsRequestRef.current) return loadLogsRequestRef.current;
+    const requestUserCacheKey = userCacheKey;
+    const request = (async () => {
+      setLoading(true);
+      setError(null);
+      setMessage(null);
+      try {
+        const res = await fetch("/api/me/pass-logs?limit=80", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const data = (await res.json()) as {
+          success?: boolean;
+          logs?: PassedPostLogRow[];
+          error?: string;
+        };
+        if (!res.ok || !data.success) throw new Error(data.error || "加载 PASS 记录失败");
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setLogs(data.logs ?? []);
+        setSelectedIds(new Set());
+        setLoaded(true);
+      } catch (e) {
+        if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
+        setLogs([]);
+        setError(e instanceof Error ? e.message : "加载 PASS 记录失败");
+      } finally {
+        if (activeUserCacheKeyRef.current === requestUserCacheKey) {
+          setLoading(false);
+        }
+      }
+    })();
+    loadLogsRequestRef.current = request;
+    void request.finally(() => {
+      if (loadLogsRequestRef.current === request) {
+        loadLogsRequestRef.current = null;
+      }
+    });
+    return request;
+  }, [user, userCacheKey]);
 
   useEffect(() => {
     if (!isOpen || loaded || loading) return;

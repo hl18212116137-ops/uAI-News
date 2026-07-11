@@ -8,6 +8,8 @@ export interface XPost {
   posted_at: string;
   /** 推文配图 / 视频 mp4 等 https URL（TwitterAPI.io 各字段兼容） */
   media_urls?: string[];
+  /** 推文正文里的展开链接（优先 expanded_url，避免只存 t.co 短链） */
+  urls?: string[];
   /** 互动指标（随 API 字段兼容抽取） */
   social_engagement?: SocialEngagement;
   /** `retweeted_tweet` / `quoted_tweet` 解析结果 */
@@ -27,12 +29,43 @@ export type XArticle = {
   originalWordCount: number;
 };
 
+export type XConversationPost = {
+  post_id: string;
+  post_text: string;
+  post_url: string;
+  posted_at: string;
+  author_name: string;
+  handle: string;
+  urls?: string[];
+  media_urls?: string[];
+  in_reply_to_id?: string;
+  referencedPost?: XReferencedPost;
+  raw?: Record<string, unknown>;
+};
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
 }
 
 function cleanString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function envIntInRange(name: string, fallback: number, min: number, max: number): number {
+  const raw = parseInt(process.env[name] || String(fallback), 10);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.min(max, Math.max(min, raw));
+}
+
+function getFetchTweetPageLimit(): number {
+  return envIntInRange('FETCH_MAX_TWEET_PAGES_PER_HANDLE_PER_RUN', 3, 1, 10);
+}
+
+function getFetchPostLimit(): number | null {
+  const raw = process.env.FETCH_MAX_POSTS_PER_HANDLE_PER_RUN;
+  if (raw == null || raw === '') return null;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function nestedString(value: unknown, keys: string[]): string {
@@ -218,12 +251,14 @@ function innerToReferenced(
           ? inner.id_str
           : undefined;
   const mediaUrls = extractTweetMediaUrls(inner);
+  const urls = extractEntityUrls(inner);
   return {
     kind,
     id,
     text,
     userName,
     name,
+    ...(urls.length > 0 ? { urls } : {}),
     ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
   };
 }
@@ -271,16 +306,17 @@ function extractEntityUrls(tweet: Record<string, unknown>): string[] {
   const urls = entities?.urls;
   if (!Array.isArray(urls)) return [];
 
-  const out: string[] = [];
+  const out = new Set<string>();
   for (const item of urls) {
     const record = asRecord(item);
     if (!record) continue;
-    for (const key of ['expanded_url', 'expandedUrl', 'display_url', 'displayUrl', 'url'] as const) {
+    for (const key of ['expanded_url', 'expandedUrl', 'unwound_url', 'unwoundUrl', 'url'] as const) {
       const value = record[key];
-      if (typeof value === 'string' && value.trim()) out.push(value.trim());
+      const cleaned = cleanString(value);
+      if (/^https?:\/\//i.test(cleaned)) out.add(cleaned);
     }
   }
-  return out;
+  return Array.from(out);
 }
 
 export function hasXArticleEntity(tweet: Record<string, unknown>): boolean {
@@ -492,6 +528,7 @@ export async function fetchTweetById(
   posted_at: string;
   author_name: string;
   handle: string;
+  urls?: string[];
   media_urls?: string[];
   social_engagement?: SocialEngagement;
   referencedPost?: XReferencedPost;
@@ -531,6 +568,7 @@ export async function fetchTweetById(
     'unknown';
   const authorName = name || screenName;
   const media = extractTweetMediaUrls(t);
+  const urls = extractEntityUrls(t);
   const engagement = extractTweetEngagement(t);
   const referencedPost = extractReferencedPostFromTweet(t);
   const postUrl = cleanString(t.url) || `https://x.com/${screenName}/status/${idStr}`;
@@ -547,10 +585,156 @@ export async function fetchTweetById(
           : new Date().toISOString(),
     author_name: authorName,
     handle: screenName,
+    ...(urls.length > 0 ? { urls } : {}),
     ...(media.length > 0 ? { media_urls: media } : {}),
     ...(engagement ? { social_engagement: engagement } : {}),
     ...(referencedPost ? { referencedPost } : {}),
     raw: t,
+  };
+}
+
+function cleanId(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function normalizeConversationTweet(
+  tweet: unknown,
+  handleHint?: string,
+): XConversationPost | undefined {
+  const t = asRecord(tweet);
+  if (!t) return undefined;
+
+  const id = cleanId(t.id) || cleanId(t.id_str) || cleanId(t.tweet_id) || cleanId(t.tweetId);
+  if (!id) return undefined;
+
+  const { userName, name } = authorFromTweetObj(t);
+  const handle = userName || handleHint || cleanString(t.userName) || cleanString(t.screen_name) || 'unknown';
+  const authorName = name || cleanString(t.name) || handle;
+  const text = extractTweetBodyText(t);
+  if (!text.trim()) return undefined;
+
+  const inReplyToId =
+    cleanId(t.in_reply_to_status_id_str) ||
+    cleanId(t.in_reply_to_status_id) ||
+    cleanId(t.inReplyToStatusId) ||
+    cleanId(t.inReplyToTweetId) ||
+    cleanId(t.in_reply_to_tweet_id);
+  const media = extractTweetMediaUrls(t);
+  const urls = extractEntityUrls(t);
+  const referencedPost = extractReferencedPostFromTweet(t);
+  const postUrl = cleanString(t.url) || `https://x.com/${handle}/status/${id}`;
+
+  return {
+    post_id: id,
+    post_text: text,
+    post_url: postUrl,
+    posted_at:
+      typeof t.createdAt === 'string'
+        ? t.createdAt
+        : typeof t.created_at === 'string'
+          ? t.created_at
+          : new Date().toISOString(),
+    author_name: authorName,
+    handle,
+    ...(urls.length > 0 ? { urls } : {}),
+    ...(media.length > 0 ? { media_urls: media } : {}),
+    ...(inReplyToId ? { in_reply_to_id: inReplyToId } : {}),
+    ...(referencedPost ? { referencedPost } : {}),
+    raw: t,
+  };
+}
+
+function collectTweetRecords(value: unknown, out: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (!value) return out;
+  if (Array.isArray(value)) {
+    for (const item of value) collectTweetRecords(item, out);
+    return out;
+  }
+
+  const record = asRecord(value);
+  if (!record) return out;
+
+  const hasTweetShape =
+    (cleanId(record.id) || cleanId(record.id_str) || cleanId(record.tweet_id) || cleanId(record.tweetId)) &&
+    (cleanString(record.text) ||
+      cleanString(record.full_text) ||
+      cleanString(record.fullText) ||
+      nestedString(record.note_tweet, ['text']) ||
+      nestedString(record.noteTweet, ['text']));
+
+  if (hasTweetShape) out.push(record);
+
+  for (const key of ['tweets', 'replies', 'data', 'items', 'result', 'results', 'thread']) {
+    if (key in record) collectTweetRecords(record[key], out);
+  }
+
+  return out;
+}
+
+function responseNextCursor(value: unknown): string | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  for (const key of ['next_cursor', 'nextCursor', 'cursor', 'next']) {
+    const raw = record[key];
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  }
+  return responseNextCursor(record.data);
+}
+
+async function fetchTwitterApiJson(url: URL): Promise<unknown> {
+  const apiKey = process.env.TWITTERAPI_IO_KEY;
+  if (!apiKey) {
+    throw new Error('TWITTERAPI_IO_KEY not configured');
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { 'X-API-Key': apiKey },
+  });
+  if (!response.ok) {
+    throw new Error(`TwitterAPI.io request failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function fetchTweetThreadContext(
+  tweetId: string,
+  options: { cursor?: string; handleHint?: string } = {},
+): Promise<{ posts: XConversationPost[]; nextCursor?: string }> {
+  const url = new URL('https://api.twitterapi.io/twitter/tweet/thread_context');
+  url.searchParams.set('tweetId', String(tweetId).trim());
+  if (options.cursor) url.searchParams.set('cursor', options.cursor);
+
+  const data = await fetchTwitterApiJson(url);
+  const posts = collectTweetRecords(data)
+    .map((tweet) => normalizeConversationTweet(tweet, options.handleHint))
+    .filter((tweet): tweet is XConversationPost => Boolean(tweet));
+
+  return {
+    posts,
+    nextCursor: responseNextCursor(data),
+  };
+}
+
+export async function fetchTweetRepliesV2(
+  tweetId: string,
+  options: { cursor?: string; sort?: 'Relevance' | 'Latest' | 'Likes'; handleHint?: string } = {},
+): Promise<{ replies: XConversationPost[]; nextCursor?: string }> {
+  const url = new URL('https://api.twitterapi.io/twitter/tweet/replies/v2');
+  url.searchParams.set('tweetId', String(tweetId).trim());
+  if (options.cursor) url.searchParams.set('cursor', options.cursor);
+  if (options.sort) url.searchParams.set('sort', options.sort);
+
+  const data = await fetchTwitterApiJson(url);
+  const replies = collectTweetRecords(data)
+    .map((tweet) => normalizeConversationTweet(tweet, options.handleHint))
+    .filter((tweet): tweet is XConversationPost => Boolean(tweet));
+
+  return {
+    replies,
+    nextCursor: responseNextCursor(data),
   };
 }
 
@@ -561,76 +745,87 @@ export async function fetchPostsFromX(handle: string): Promise<XPost[]> {
     throw new Error('TWITTERAPI_IO_KEY not configured');
   }
 
-  const url = `https://api.twitterapi.io/twitter/user/last_tweets?userName=${handle}`;
-
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-API-Key': apiKey,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`TwitterAPI.io request failed: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-
-    const tweets = data?.data?.tweets || [];
-
-    if (!Array.isArray(tweets)) {
-      return [];
-    }
-
-    // 计算1个月前的时间
     const oneMonthAgo = new Date();
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
-    // 过滤并映射推文，只保留最近1个月的（单条解析失败则跳过，避免整 handle 被清空）
     const mapped: XPost[] = []
-    for (const tweet of tweets as any[]) {
-      try {
-        const postedAt = new Date(tweet?.createdAt ?? tweet?.created_at ?? new Date())
-        if (postedAt < oneMonthAgo) continue
+    const maxPages = getFetchTweetPageLimit()
+    const maxPosts = getFetchPostLimit()
+    let cursor: string | undefined
 
-        const t = tweet as Record<string, unknown>
-        const rawId = tweet?.id ?? tweet?.id_str
-        const idStr =
-          typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : ''
-        if (!idStr) continue
+    for (let page = 0; page < maxPages; page += 1) {
+      const url = new URL('https://api.twitterapi.io/twitter/user/last_tweets')
+      url.searchParams.set('userName', handle)
+      if (cursor) url.searchParams.set('cursor', cursor)
 
-        const media = extractTweetMediaUrls(t)
-        const engagement = extractTweetEngagement(t)
-        const referencedPost = extractReferencedPostFromTweet(t)
-        mapped.push({
-          post_id: idStr,
-          post_text: extractTweetBodyText(t),
-          post_url: `https://x.com/${handle}/status/${idStr}`,
-          posted_at:
-            typeof tweet?.createdAt === 'string'
-              ? tweet.createdAt
-              : typeof tweet?.created_at === 'string'
-                ? tweet.created_at
-                : new Date().toISOString(),
-          ...(media.length > 0 ? { media_urls: media } : {}),
-          ...(engagement ? { social_engagement: engagement } : {}),
-          ...(referencedPost ? { referencedPost } : {}),
-        })
-      } catch (rowErr) {
-        console.warn(`[fetchPostsFromX] skip malformed tweet for @${handle}:`, rowErr)
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'X-API-Key': apiKey,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`TwitterAPI.io request failed: ${response.status} ${response.statusText}`);
       }
+
+      const data = await response.json();
+      const tweets = data?.data?.tweets || [];
+
+      if (!Array.isArray(tweets) || tweets.length === 0) {
+        break;
+      }
+
+      let pageHadRecentPost = false
+      for (const tweet of tweets as any[]) {
+        try {
+          const postedAt = new Date(tweet?.createdAt ?? tweet?.created_at ?? new Date())
+          if (postedAt < oneMonthAgo) continue
+          pageHadRecentPost = true
+
+          const t = tweet as Record<string, unknown>
+          const rawId = tweet?.id ?? tweet?.id_str
+          const idStr =
+            typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : ''
+          if (!idStr) continue
+
+          const media = extractTweetMediaUrls(t)
+          const urls = extractEntityUrls(t)
+          const engagement = extractTweetEngagement(t)
+          const referencedPost = extractReferencedPostFromTweet(t)
+          mapped.push({
+            post_id: idStr,
+            post_text: extractTweetBodyText(t),
+            post_url: `https://x.com/${handle}/status/${idStr}`,
+            posted_at:
+              typeof tweet?.createdAt === 'string'
+                ? tweet.createdAt
+                : typeof tweet?.created_at === 'string'
+                  ? tweet.created_at
+                  : new Date().toISOString(),
+            ...(urls.length > 0 ? { urls } : {}),
+            ...(media.length > 0 ? { media_urls: media } : {}),
+            ...(engagement ? { social_engagement: engagement } : {}),
+            ...(referencedPost ? { referencedPost } : {}),
+          })
+          if (maxPosts != null && mapped.length >= maxPosts) break
+        } catch (rowErr) {
+          console.warn(`[fetchPostsFromX] skip malformed tweet for @${handle}:`, rowErr)
+        }
+      }
+
+      if (maxPosts != null && mapped.length >= maxPosts) break
+      const nextCursor = cleanString(data?.next_cursor)
+      const hasNextPage = data?.has_next_page === true || data?.has_next_page === 'true'
+      if (!hasNextPage || !nextCursor || !pageHadRecentPost) break
+      cursor = nextCursor
     }
 
     mapped.sort(
       (a, b) => new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime()
     );
 
-    const capRaw = process.env.FETCH_MAX_POSTS_PER_HANDLE_PER_RUN
-    const cap = capRaw != null && capRaw !== '' ? parseInt(capRaw, 10) : NaN
-    if (Number.isFinite(cap) && cap > 0) {
-      return mapped.slice(0, cap)
-    }
     return mapped;
   } catch (error) {
     console.error(`Error fetching posts from X for ${handle}:`, error);

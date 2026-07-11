@@ -39,6 +39,11 @@ import {
   ensureChineseBody as ensureChineseBodyShared,
   ensureChineseTitleSummary as ensureChineseTitleSummaryShared,
 } from '@/lib/translation-guard'
+import {
+  createLongformAutoBudget,
+  maybeAttachAutoLongform,
+  type LongformAutoBudget,
+} from '@/lib/longform-auto'
 import type { AIProcessedContent, AIService } from '@/lib/ai/ai-service'
 import { isMostlyChinese } from '@/lib/text-locale'
 
@@ -81,6 +86,7 @@ type ProcessContext = {
   lowSignalThresholds: LowSignalThresholds
   userId?: string
   learningContextCache?: Map<string, Promise<string>>
+  longformAutoBudget?: LongformAutoBudget
 }
 
 type ProcessOneResult = {
@@ -309,7 +315,42 @@ async function processOneRawPost(
       // 评分失败不影响保存
     }
 
-    await addPost(newsItem, ctx.persistRawPostId ? { rawPostId: rawId } : undefined)
+    const newsItemWithLongform = await maybeAttachAutoLongform(
+      newsItem,
+      {
+        platform,
+        text: outerText,
+        sourceUrl: url,
+        authorName,
+        authorHandle: handle,
+        urls: rawPost.urls,
+        mediaUrls,
+        referencedPost,
+      },
+      aiService,
+      ctx.longformAutoBudget,
+    )
+
+    const addResult = await addPost(newsItemWithLongform, ctx.persistRawPostId ? { rawPostId: rawId } : undefined)
+    if (addResult.status === 'duplicate_content') {
+      await recordPassedPostSafely({
+        id,
+        url,
+        sourcePlatform: platform,
+        sourceName: authorName,
+        sourceHandle: handle,
+        content: outerText,
+        title: newsItemWithLongform.title,
+        summary: newsItemWithLongform.summary,
+        category: newsItemWithLongform.category,
+        passType: 'duplicate',
+        passReason: '已有相似事件入库，为避免同一事件重复展示，未再次收录。',
+        publishedAt,
+        mediaUrls,
+        socialEngagement,
+        referencedPost,
+      })
+    }
 
     const storedId = normalizeNewsItemId(String(id))
     try {
@@ -328,6 +369,20 @@ async function processOneRawPost(
   } catch (error) {
     console.error(`处理 ${id} 失败:`, error)
     const message = error instanceof Error ? error.message : String(error)
+    await recordPassedPostSafely({
+      id,
+      url,
+      sourcePlatform: platform,
+      sourceName: authorName,
+      sourceHandle: handle,
+      content: outerText,
+      passType: 'processing_failed',
+      passReason: `处理失败：${message}`,
+      publishedAt,
+      mediaUrls,
+      socialEngagement,
+      referencedPost,
+    })
     if (ctx.job) {
       await markProcessingJobFailed(ctx.job.id, message, ctx.job.attempts + 1)
     }
@@ -376,6 +431,7 @@ export async function runRefreshProcessRawQueue(
     minNestedRt: pipelineRt.rawMinNestedCharsRetweet,
   }
   const learningContextCache = new Map<string, Promise<string>>()
+  const longformAutoBudget = createLongformAutoBudget()
 
   if (!useJobs) {
     const rawPosts = await fetchRawPostsBatch(rawLimit)
@@ -416,7 +472,13 @@ export async function runRefreshProcessRawQueue(
       const batch = rawPosts.slice(i, i + BATCH_SIZE)
       const results = await Promise.all(
         batch.map(raw =>
-          processOneRawPost(raw, { persistRawPostId: false, lowSignalThresholds, userId, learningContextCache })
+          processOneRawPost(raw, {
+            persistRawPostId: false,
+            lowSignalThresholds,
+            userId,
+            learningContextCache,
+            longformAutoBudget,
+          })
         )
       )
       for (const r of results) accumulateProcessOutcome(acc, r)
@@ -515,7 +577,14 @@ export async function runRefreshProcessRawQueue(
       continue
     }
 
-    const one = await processOneRawPost(raw, { job, persistRawPostId, lowSignalThresholds, userId, learningContextCache })
+    const one = await processOneRawPost(raw, {
+      job,
+      persistRawPostId,
+      lowSignalThresholds,
+      userId,
+      learningContextCache,
+      longformAutoBudget,
+    })
     accumulateProcessOutcome(acc, one)
     bumpProgress()
   }
@@ -527,7 +596,15 @@ export async function runRefreshProcessRawQueue(
     }
     const batch = legacyRaw.slice(i, i + BATCH_SIZE)
     const results = await Promise.all(
-      batch.map(raw => processOneRawPost(raw, { persistRawPostId, lowSignalThresholds, userId, learningContextCache }))
+      batch.map(raw =>
+        processOneRawPost(raw, {
+          persistRawPostId,
+          lowSignalThresholds,
+          userId,
+          learningContextCache,
+          longformAutoBudget,
+        })
+      )
     )
     for (const r of results) accumulateProcessOutcome(acc, r)
     for (let j = 0; j < batch.length; j++) bumpProgress()

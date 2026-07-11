@@ -1,4 +1,4 @@
-# ainews-v2 架构说明
+# uAI News 架构说明
 
 面向新成员 onboarding：技术栈、数据流、路由与 API 索引。详细设计规范见仓库根目录 [CLAUDE.md](../CLAUDE.md)。
 
@@ -6,7 +6,7 @@
 
 | 层级 | 实现 |
 |------|------|
-| 框架 | Next.js 14 App Router |
+| 框架 | Next.js 15.5.19 App Router |
 | 身份 | Supabase Auth（[middleware.ts](../middleware.ts) 刷新 session） |
 | 数据 | Supabase PostgreSQL（`news_items`、`sources`、订阅、书签等） |
 | AI | Minimax / Claude，入口 [lib/ai/ai-factory.ts](../lib/ai/ai-factory.ts) |
@@ -98,7 +98,7 @@ public/        静态资源
 
 ## TypeScript 与构建
 
-- **`next build` 与 `ignoreBuildErrors`：** 当前 Next.js 14.2 生成的 `.next/types/**` 路由校验文件引用裸标识符 `Function`，在完整构建类型检查中会报错，故 [next.config.js](../next.config.js) 保留 `typescript.ignoreBuildErrors: true`。
+- **`next build`：** 当前使用 Next.js 15.5.19，构建配置不再启用 `typescript.ignoreBuildErrors`；合并前应同时通过 `npm run typecheck` 与 `npm run build`。
 - **业务源码检查：** 使用 `npm run typecheck`（`tsconfig.src.json`，仅包含 `app/`、`components/`、`lib/`、`hooks/`、`middleware.ts`，不包含 `.next`）。本地需已正确安装 `typescript` 与 `@types/*`（`node_modules/typescript/lib` 完整）。
 
 ## 运维与扩展提示

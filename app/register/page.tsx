@@ -3,7 +3,7 @@
 import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSession, signIn } from "next-auth/react";
+import { signIn } from "next-auth/react";
 import { mapSignInError } from "@/lib/auth-errors";
 
 export default function RegisterPage() {
@@ -56,7 +56,6 @@ export default function RegisterPage() {
         return;
       }
 
-      await getSession();
       router.push("/");
       router.refresh();
     } catch (err) {
