@@ -8,7 +8,7 @@
     "dev": "node scripts/dev-local.mjs",
     "build": "next build",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
-    "test:unit": "node --import tsx --test tests/feed-pagination.test.ts tests/feed-sort-diversity.test.ts tests/longform-quality.test.ts tests/news-dedupe-queue.test.ts",
+    "test:unit": "node --import tsx --test tests/db-retry.test.ts tests/feed-pagination.test.ts tests/feed-sort-diversity.test.ts tests/longform-quality.test.ts tests/news-dedupe-queue.test.ts",
     "test:api-smoke": "tsx scripts/smoke-api.ts",
     "start": "node scripts/start-standalone-local.mjs",
     "fetch": "tsx scripts/fetch-posts.ts",

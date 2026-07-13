@@ -11,6 +11,7 @@ import {
   rawPostDedupeKeys,
 } from '@/lib/news-dedupe'
 import { RAW_POST_PROCESSABLE_STATUS_VALUES } from '@/lib/raw-post-queue'
+import { withTransientDatabaseReadRetry } from '@/lib/db/retry'
 
 /** ingest / import 旧字段 → drizzle schema；process 读取时再还原为 legacy 形态 */
 export function normalizeRawPostRowForWrite(row: Record<string, unknown>): typeof rawPosts.$inferInsert {
@@ -93,16 +94,19 @@ export async function fetchExistingNewsSourceUrls(): Promise<string[]> {
 }
 
 export async function fetchExistingRawPostDedupeKeys(): Promise<Set<string>> {
-  const rows = await db
-    .select({
-      id: rawPosts.id,
-      url: rawPosts.url,
-      contentHash: rawPosts.contentHash,
-      content: rawPosts.content,
-      title: rawPosts.title,
-      referencedPost: rawPosts.referencedPost,
-    })
-    .from(rawPosts)
+  const rows = await withTransientDatabaseReadRetry(
+    () => db
+      .select({
+        id: rawPosts.id,
+        url: rawPosts.url,
+        contentHash: rawPosts.contentHash,
+        content: rawPosts.content,
+        title: rawPosts.title,
+        referencedPost: rawPosts.referencedPost,
+      })
+      .from(rawPosts),
+    { operationName: '读取 raw_posts 去重键' }
+  )
 
   const keys = new Set<string>()
   for (const row of rows) {
@@ -121,13 +125,16 @@ export async function fetchExistingRawPostDedupeKeys(): Promise<Set<string>> {
 }
 
 export async function fetchExistingNewsDedupeKeys(): Promise<Set<string>> {
-  const rows = await db
-    .select({
-      id: newsItems.id,
-      sourceUrl: newsItems.sourceUrl,
-      sourcePlatform: newsItems.sourcePlatform,
-    })
-    .from(newsItems)
+  const rows = await withTransientDatabaseReadRetry(
+    () => db
+      .select({
+        id: newsItems.id,
+        sourceUrl: newsItems.sourceUrl,
+        sourcePlatform: newsItems.sourcePlatform,
+      })
+      .from(newsItems),
+    { operationName: '读取 news_items 去重键' }
+  )
 
   const keys = new Set<string>()
   for (const row of rows) {
@@ -171,12 +178,15 @@ export async function upsertRawPosts(rows: Record<string, unknown>[]): Promise<v
 }
 
 export async function fetchRawPostsBatch(limit: number): Promise<Record<string, unknown>[]> {
-  const rows = await db
-    .select()
-    .from(rawPosts)
-    .where(inArray(rawPosts.status, RAW_POST_PROCESSABLE_STATUS_VALUES))
-    .orderBy(asc(rawPosts.createdAt))
-    .limit(limit)
+  const rows = await withTransientDatabaseReadRetry(
+    () => db
+      .select()
+      .from(rawPosts)
+      .where(inArray(rawPosts.status, RAW_POST_PROCESSABLE_STATUS_VALUES))
+      .orderBy(asc(rawPosts.createdAt))
+      .limit(limit),
+    { operationName: '读取待处理 raw_posts' }
+  )
   return (rows as unknown as Record<string, unknown>[]).map(normalizeRawPostRowForProcess)
 }
 
@@ -205,12 +215,15 @@ export async function fetchRawPostsExcludingActiveJobs(
   )
 ): Promise<Record<string, unknown>[]> {
   const block = await fetchRawPostIdsWithActiveJobs()
-  const rows = await db
-    .select()
-    .from(rawPosts)
-    .where(inArray(rawPosts.status, RAW_POST_PROCESSABLE_STATUS_VALUES))
-    .orderBy(asc(rawPosts.createdAt))
-    .limit(scanCap)
+  const rows = await withTransientDatabaseReadRetry(
+    () => db
+      .select()
+      .from(rawPosts)
+      .where(inArray(rawPosts.status, RAW_POST_PROCESSABLE_STATUS_VALUES))
+      .orderBy(asc(rawPosts.createdAt))
+      .limit(scanCap),
+    { operationName: '扫描 legacy raw_posts 队列' }
+  )
   const list = (rows as unknown as Record<string, unknown>[])
     .map(normalizeRawPostRowForProcess)
     .filter(r => !block.has(r.id as string))
