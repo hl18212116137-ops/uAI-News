@@ -3,6 +3,7 @@ import { buildLongformDigestPrompt, parseLongformDigestResponse } from './longfo
 import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
+import { cleanEnvValue } from '../env';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 
@@ -20,8 +21,8 @@ export class DeepSeekService implements AIService {
   private model: string;
 
   constructor() {
-    this.apiKey = process.env.DEEPSEEK_API_KEY || '';
-    this.model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+    this.apiKey = cleanEnvValue(process.env.DEEPSEEK_API_KEY);
+    this.model = cleanEnvValue(process.env.DEEPSEEK_MODEL) || 'deepseek-chat';
 
     if (!this.apiKey) {
       throw new Error('DEEPSEEK_API_KEY is not configured');

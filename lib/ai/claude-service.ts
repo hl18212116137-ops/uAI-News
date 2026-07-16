@@ -4,6 +4,7 @@ import { buildLongformDigestPrompt, parseLongformDigestResponse } from './longfo
 import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
+import { cleanEnvValue } from '../env';
 
 // 有效的分类列表
 const VALID_CATEGORIES: NewsCategory[] = [
@@ -22,7 +23,7 @@ export class ClaudeService implements AIService {
   private client: Anthropic;
 
   constructor() {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = cleanEnvValue(process.env.ANTHROPIC_API_KEY);
     if (!apiKey) {
       throw new Error('ANTHROPIC_API_KEY is not configured');
     }

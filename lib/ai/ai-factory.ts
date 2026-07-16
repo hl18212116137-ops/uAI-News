@@ -4,6 +4,7 @@ import { MinimaxService } from './minimax-service';
 import { ClaudeService } from './claude-service';
 import { DeepSeekService } from './deepseek-service';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
+import { cleanEnvValue } from '../env';
 
 export type AIProvider = 'minimax' | 'claude' | 'deepseek';
 
@@ -18,7 +19,7 @@ export class AIServiceFactory {
    * @returns AIService 实例
    */
   static create(provider?: AIProvider): AIService {
-    const selectedProvider = provider || (process.env.AI_PROVIDER as AIProvider) || 'deepseek';
+    const selectedProvider = cleanEnvValue(provider || process.env.AI_PROVIDER) || 'deepseek';
 
     switch (selectedProvider) {
       case 'deepseek':
@@ -44,8 +45,8 @@ export class AIServiceFactory {
     primaryProvider?: AIProvider,
     fallbackProvider?: AIProvider
   ): AIService {
-    const primary = primaryProvider || (process.env.AI_PROVIDER as AIProvider) || 'deepseek';
-    const fallback = fallbackProvider || (primary === 'deepseek' ? 'minimax' : 'deepseek');
+    const primary = (cleanEnvValue(primaryProvider || process.env.AI_PROVIDER) || 'deepseek') as AIProvider;
+    const fallback = (cleanEnvValue(fallbackProvider) || (primary === 'deepseek' ? 'minimax' : 'deepseek')) as AIProvider;
 
     let primaryService: AIService;
     try {

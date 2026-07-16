@@ -3,6 +3,7 @@ import { buildLongformDigestPrompt, parseLongformDigestResponse } from './longfo
 import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
+import { cleanEnvValue } from '../env';
 
 // MiniMax API 配置
 const MINIMAX_API_URL = 'https://api.minimax.chat/v1/text/chatcompletion_v2';
@@ -25,9 +26,9 @@ export class MinimaxService implements AIService {
   private model: string;
 
   constructor() {
-    this.apiKey = process.env.MINIMAX_API_KEY || '';
-    this.groupId = process.env.MINIMAX_GROUP_ID || '';
-    this.model = process.env.MINIMAX_MODEL || 'abab6.5-chat';
+    this.apiKey = cleanEnvValue(process.env.MINIMAX_API_KEY);
+    this.groupId = cleanEnvValue(process.env.MINIMAX_GROUP_ID);
+    this.model = cleanEnvValue(process.env.MINIMAX_MODEL) || 'abab6.5-chat';
 
     if (!this.apiKey) {
       throw new Error('MINIMAX_API_KEY is not configured');

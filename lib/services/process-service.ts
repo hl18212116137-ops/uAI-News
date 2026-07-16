@@ -47,7 +47,7 @@ import {
 } from '@/lib/longform-auto'
 import type { AIProcessedContent, AIService } from '@/lib/ai/ai-service'
 import { isMostlyChinese } from '@/lib/text-locale'
-import { normalizeRequestedRawIds } from '@/lib/raw-post-queue'
+import { getProcessingBatchFailure, normalizeRequestedRawIds } from '@/lib/raw-post-queue'
 
 export type RefreshProcessResult = {
   success: true
@@ -179,6 +179,22 @@ async function pushProcessTelemetry(
     processErrors: acc.errors,
     errorsSample: acc.samples.length > 0 ? acc.samples : undefined,
   })
+}
+
+async function throwIfEntireBatchFailed(
+  silent: boolean,
+  taskId: string,
+  acc: { attempted: number; errors: number; samples: string[] }
+): Promise<void> {
+  const failure = getProcessingBatchFailure(acc)
+  if (!failure) return
+  await syncTask(silent, taskId, {
+    status: 'failed',
+    remainingTime: 0,
+    message: 'AI processing failed',
+    error: failure,
+  })
+  throw new Error(failure)
 }
 
 function getAiUnimportantPassReason(draft: AIProcessedContent): string {
@@ -503,6 +519,7 @@ export async function runRefreshProcessRawQueue(
     }
 
     await pushProcessTelemetry(silent, taskId, acc)
+    await throwIfEntireBatchFailed(silent, taskId, acc)
     await syncTask(silent, taskId, {
       status: 'completed',
       progress: 100,
@@ -623,6 +640,7 @@ export async function runRefreshProcessRawQueue(
   }
 
   await pushProcessTelemetry(silent, taskId, acc)
+  await throwIfEntireBatchFailed(silent, taskId, acc)
   await syncTask(silent, taskId, {
     status: 'completed',
     progress: 100,
