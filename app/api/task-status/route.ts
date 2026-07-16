@@ -1,4 +1,4 @@
-import { taskManager } from '@/lib/task-manager';
+import { taskManager } from '@/lib/task-manager-server';
 
 export async function GET(request: Request) {
   try {
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
       }, { status: 400 });
     }
 
-    const task = taskManager.getTask(taskId);
+    const task = await taskManager.getTask(taskId);
 
     if (!task) {
       return Response.json({

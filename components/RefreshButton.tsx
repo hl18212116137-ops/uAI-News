@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Task } from "@/lib/task-manager";
 import { OPTIMISTIC_REFRESH_TASK_ID } from "@/lib/fetch-refresh-ui";
+import {
+  createFailedTaskFromPolling,
+  readTaskStatusResponse,
+} from "@/lib/task-status-client";
 import { formatTime } from "@/lib/utils";
 import Tooltip from "./Tooltip";
 
@@ -40,6 +44,7 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
 
     let disposed = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    let consecutiveNetworkFailures = 0;
 
     const stopInterval = () => {
       if (intervalId != null) {
@@ -48,38 +53,56 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
       }
     };
 
+    const failPolling = (message: string) => {
+      stopInterval();
+      if (!disposed) {
+        onTaskUpdate(createFailedTaskFromPolling(taskId, null, message));
+      }
+    };
+
     const poll = async () => {
       if (disposed) return;
       try {
         const response = await fetch(`/api/task-status?taskId=${taskId}`, { cache: "no-store" });
         if (disposed) return;
-        const data = await response.json();
+        const result = await readTaskStatusResponse(response);
         if (disposed) return;
-        const taskPayload = (data && typeof data === "object" && "task" in data
-          ? (data as { task: Task | null }).task
-          : data) as Task | null | undefined;
 
-        if (response.ok && taskPayload) {
-          onTaskUpdate(taskPayload);
+        if (result.kind !== "task") {
+          failPolling(
+            result.kind === "missing"
+              ? "任务状态已丢失，请重新抓取"
+              : result.message
+          );
+          return;
+        }
 
-          if (taskPayload.status === "cancelled") {
-            stopInterval();
-            if (!disposed) onTaskComplete();
-            return;
-          }
-          if (taskPayload.status === "completed" || taskPayload.status === "failed") {
-            stopInterval();
-            if (taskPayload.status === "completed") {
-              setTimeout(() => {
-                if (disposed) return;
-                router.refresh();
-                onTaskComplete();
-              }, 1000);
-            }
+        consecutiveNetworkFailures = 0;
+        const taskPayload = result.task;
+        onTaskUpdate(taskPayload);
+
+        if (taskPayload.status === "cancelled") {
+          stopInterval();
+          if (!disposed) onTaskComplete();
+          return;
+        }
+        if (taskPayload.status === "completed" || taskPayload.status === "failed") {
+          stopInterval();
+          if (taskPayload.status === "completed") {
+            setTimeout(() => {
+              if (disposed) return;
+              router.refresh();
+              onTaskComplete();
+            }, 1000);
           }
         }
       } catch (error) {
-        if (!disposed) console.error("Failed to fetch task status:", error);
+        if (disposed) return;
+        consecutiveNetworkFailures += 1;
+        console.error("Failed to fetch task status:", error);
+        if (consecutiveNetworkFailures >= 3) {
+          failPolling("任务状态查询失败，请检查网络后重新抓取");
+        }
       }
     };
 

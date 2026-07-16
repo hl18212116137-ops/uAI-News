@@ -5,7 +5,7 @@ import { composeTextForAiProcessing, fetchPostsFromX } from '@/lib/x'
 import { addPost } from '@/lib/db'
 import { translateNewsOriginalToChinese } from '@/lib/news-original-chinese'
 import { getDefaultAIService } from '@/lib/ai/ai-factory'
-import { mergePipelineTelemetryToTask, taskManager } from '@/lib/task-manager'
+import { mergePipelineTelemetryToTask, taskManager } from '@/lib/task-manager-server'
 import { getEffectivePipelineRuntimeValues } from '@/lib/pipeline-settings'
 import { getLowSignalRawPostPassReason } from '@/lib/raw-post-quality'
 import { canonicalNewsIdForPlatform } from '@/lib/news-dedupe'
@@ -30,7 +30,7 @@ export async function fetchAndProcessPostsInBackground(
   try {
     console.log(`[后台任务] 开始抓取 @${source.handle} 的推文...`)
 
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       progress: 10,
       message: `正在抓取 @${source.handle} 的推文...`,
     })
@@ -38,7 +38,7 @@ export async function fetchAndProcessPostsInBackground(
     const posts = await fetchPostsFromX(source.handle)
 
     if (posts.length === 0) {
-      taskManager.updateTask(taskId, {
+      await taskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         message: `@${source.handle} 没有找到推文`,
@@ -46,7 +46,7 @@ export async function fetchAndProcessPostsInBackground(
       return
     }
 
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       progress: 30,
       message: `找到 ${posts.length} 条推文，正在处理...`,
     })
@@ -258,7 +258,7 @@ export async function fetchAndProcessPostsInBackground(
 
       processedCount += batch.length
       const progress = 30 + Math.floor((processedCount / posts.length) * 70)
-      mergePipelineTelemetryToTask(taskId, {
+      await mergePipelineTelemetryToTask(taskId, {
         rawFetchedTotal: posts.length,
         processAttempted: processedCount,
         processSuccess: successCount,
@@ -266,7 +266,7 @@ export async function fetchAndProcessPostsInBackground(
         droppedUnimportant: unimportantCount,
         processErrors: errorCount,
       })
-      taskManager.updateTask(taskId, {
+      await taskManager.updateTask(taskId, {
         progress,
         message: `正在处理推文 ${processedCount}/${posts.length}...`,
       })
@@ -276,7 +276,7 @@ export async function fetchAndProcessPostsInBackground(
       revalidateHomeFeedCaches()
     }
 
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       status: 'completed',
       progress: 100,
       message: `成功处理 ${successCount}/${posts.length} 条推文，跳过 ${lowSignalCount + unimportantCount} 条`,
@@ -285,7 +285,7 @@ export async function fetchAndProcessPostsInBackground(
     console.log(`[后台任务] 完成: @${source.handle}, 成功 ${successCount}/${posts.length} 条`)
   } catch (error) {
     console.error(`[后台任务] 抓取 @${source.handle} 失败:`, error)
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       status: 'failed',
       error: error instanceof Error ? error.message : '未知错误',
     })

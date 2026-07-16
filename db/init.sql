@@ -163,6 +163,20 @@ CREATE INDEX IF NOT EXISTS processing_jobs_raw_post_id_idx ON processing_jobs (r
 CREATE INDEX IF NOT EXISTS processing_jobs_created_at_idx ON processing_jobs (created_at DESC);
 CREATE INDEX IF NOT EXISTS processing_jobs_pending_created_at_idx ON processing_jobs (created_at ASC) WHERE status = 'pending';
 
+-- ─── refresh_tasks（跨实例刷新任务状态） ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS refresh_tasks (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'pending',
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS refresh_tasks_updated_at_idx ON refresh_tasks (updated_at DESC);
+
+ALTER TABLE refresh_tasks ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE refresh_tasks FROM anon, authenticated;
+
 -- ─── passed_posts（PASS 审计记录）────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS passed_posts (
   id text PRIMARY KEY,
