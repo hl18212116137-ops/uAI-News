@@ -4,7 +4,9 @@ import { dedupeNewsItemsForDisplay } from "@/lib/news-dedupe";
 import {
   RAW_POST_PROCESSABLE_STATUSES,
   RAW_POST_PROCESSABLE_STATUS_VALUES,
+  getProcessingBatchFailure,
   isRawPostProcessableStatus,
+  normalizeRequestedRawIds,
 } from "@/lib/raw-post-queue";
 import { makeNewsItem } from "./test-helpers";
 
@@ -35,4 +37,25 @@ test("raw queue processable statuses are explicit and reusable", () => {
   assert.equal(isRawPostProcessableStatus("queued"), true);
   assert.equal(isRawPostProcessableStatus("processed"), false);
   assert.equal(isRawPostProcessableStatus("failed"), false);
+});
+
+test("an explicit refresh batch stays separate from the historical raw queue", () => {
+  assert.equal(normalizeRequestedRawIds(undefined), null);
+  assert.deepEqual(normalizeRequestedRawIds([]), []);
+  assert.deepEqual(
+    normalizeRequestedRawIds([" new-2 ", "new-1", "new-2", ""]),
+    ["new-2", "new-1"]
+  );
+});
+
+test("an all-error processing batch becomes a terminal failure", () => {
+  assert.equal(
+    getProcessingBatchFailure({ attempted: 2, errors: 2, samples: ["AI unavailable"] }),
+    "AI processing failed for every item: AI unavailable"
+  );
+  assert.equal(
+    getProcessingBatchFailure({ attempted: 2, errors: 1, samples: ["one error"] }),
+    null
+  );
+  assert.equal(getProcessingBatchFailure({ attempted: 0, errors: 0, samples: [] }), null);
 });

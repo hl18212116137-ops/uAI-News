@@ -2,7 +2,7 @@ import 'server-only'
 
 import { db } from '@/lib/db/drizzle'
 import { rawPosts, newsItems } from '@/lib/db/schema'
-import { asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { fetchRawPostIdsWithActiveJobs } from '@/lib/db/processing-jobs'
 import { canonicalizeExternalUrlForDedupe, parseXStatusUrl } from '@/lib/news-post-url'
 import {
@@ -186,6 +186,29 @@ export async function fetchRawPostsBatch(limit: number): Promise<Record<string, 
       .orderBy(asc(rawPosts.createdAt))
       .limit(limit),
     { operationName: '读取待处理 raw_posts' }
+  )
+  return (rows as unknown as Record<string, unknown>[]).map(normalizeRawPostRowForProcess)
+}
+
+export async function fetchRawPostsByIds(
+  ids: string[],
+  limit: number
+): Promise<Record<string, unknown>[]> {
+  if (ids.length === 0) return []
+
+  const rows = await withTransientDatabaseReadRetry(
+    () => db
+      .select()
+      .from(rawPosts)
+      .where(
+        and(
+          inArray(rawPosts.id, ids),
+          inArray(rawPosts.status, RAW_POST_PROCESSABLE_STATUS_VALUES)
+        )
+      )
+      .orderBy(desc(rawPosts.createdAt))
+      .limit(limit),
+    { operationName: '读取本次抓取的 raw_posts' }
   )
   return (rows as unknown as Record<string, unknown>[]).map(normalizeRawPostRowForProcess)
 }

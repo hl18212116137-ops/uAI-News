@@ -131,6 +131,15 @@ export const processingJobs = pgTable('processing_jobs', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+// ─── refresh_tasks ───────────────────────────────────────────────────────────
+export const refreshTasks = pgTable('refresh_tasks', {
+  id: text('id').primaryKey(),
+  status: text('status').notNull().default('pending'),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 // ─── passed_posts ────────────────────────────────────────────────────────────
 export const passedPosts = pgTable('passed_posts', {
   id: text('id').primaryKey(),

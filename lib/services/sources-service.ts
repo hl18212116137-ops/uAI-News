@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { taskManager } from '@/lib/task-manager'
+import { taskManager } from '@/lib/task-manager-server'
 import {
   getSources,
   addSource,
@@ -49,8 +49,8 @@ export async function addSourceFromUrlWithBackgroundFetch(params: {
     await subscribeSource(user.id, source.id, source.handle)
   }
 
-  const taskId = taskManager.createTask()
-  taskManager.updateTask(taskId, {
+  const taskId = await taskManager.createTask()
+  await taskManager.updateTask(taskId, {
     status: 'running',
     progress: 0,
     message: `正在抓取 @${source.handle} 的推文...`,
@@ -59,9 +59,9 @@ export async function addSourceFromUrlWithBackgroundFetch(params: {
     remainingTime: 120,
   })
 
-  fetchAndProcessPostsInBackground(source, taskId, user?.id).catch(error => {
+  void fetchAndProcessPostsInBackground(source, taskId, user?.id).catch(async error => {
     console.error(`[后台任务] 抓取 @${source.handle} 失败:`, error)
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       status: 'failed',
       error: error.message,
     })
@@ -125,8 +125,8 @@ export async function startFetchForSubscribedSource(
     return { ok: false, status: 404, error: '信息源不存在' }
   }
 
-  const taskId = taskManager.createTask()
-  taskManager.updateTask(taskId, {
+  const taskId = await taskManager.createTask()
+  await taskManager.updateTask(taskId, {
     status: 'running',
     progress: 0,
     message: `正在抓取 @${source.handle} 的推文...`,
@@ -135,9 +135,9 @@ export async function startFetchForSubscribedSource(
     remainingTime: 120,
   })
 
-  fetchAndProcessPostsInBackground(source, taskId, userId).catch((error) => {
+  void fetchAndProcessPostsInBackground(source, taskId, userId).catch(async (error) => {
     console.error(`[sources/fetch] 抓取 @${source.handle} 失败:`, error)
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       status: 'failed',
       error: error instanceof Error ? error.message : '未知错误',
     })

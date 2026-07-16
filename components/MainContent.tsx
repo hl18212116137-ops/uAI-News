@@ -930,9 +930,9 @@ export default function MainContent({
       return;
     }
     if (taskId && !isFetchBusy) {
+      activeFetchTaskIdRef.current = null;
       setTaskId(null);
       setTask(null);
-      return;
     }
 
     const ac = new AbortController();
@@ -941,6 +941,7 @@ export default function MainContent({
     beginNewBadgeCollection(refreshStartedAt, new Set(posts.map((post) => post.id)), "replace");
     setNewBadgePostIds(new Set());
 
+    activeFetchTaskIdRef.current = OPTIMISTIC_REFRESH_TASK_ID;
     setTask({
       id: OPTIMISTIC_REFRESH_TASK_ID,
       status: "running",
@@ -966,12 +967,14 @@ export default function MainContent({
       if (ac.signal.aborted) return;
 
       if (!response.ok || !result.success) {
+        activeFetchTaskIdRef.current = null;
         clearRefreshNewBadgeContext();
         alert(result.error || "启动抓取任务失败");
         setTaskId(null);
         setTask(null);
         return;
       }
+      activeFetchTaskIdRef.current = result.taskId;
       setTaskId(result.taskId);
       if (result.task && typeof result.task === "object") {
         setTask(result.task as Task);
@@ -980,6 +983,7 @@ export default function MainContent({
       if (ac.signal.aborted || (e instanceof DOMException && e.name === "AbortError")) {
         return;
       }
+      activeFetchTaskIdRef.current = null;
       alert("网络请求失败，请检查网络连接后重试");
       clearRefreshNewBadgeContext();
       setTaskId(null);

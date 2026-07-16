@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { mergePipelineTelemetryToTask, taskManager } from '@/lib/task-manager'
+import { mergePipelineTelemetryToTask, taskManager } from '@/lib/task-manager-server'
 import { getSources } from '@/lib/sources'
 import { fetchPostsFromX } from '@/lib/x'
 import { fetchMediaNews } from '@/lib/media-fetcher'
@@ -21,6 +21,7 @@ export type RefreshFetchResult = {
   taskId: string
   message: string
   count: number
+  rawIds: string[]
 }
 
 /**
@@ -36,10 +37,10 @@ export async function runRefreshFetchFromEnabledSources(body: {
    */
   completeTaskAfterFetch?: boolean
 }): Promise<RefreshFetchResult> {
-  const taskId = body.taskId || taskManager.createTask()
+  const taskId = body.taskId || (await taskManager.createTask())
   const completeTaskAfterFetch = body.completeTaskAfterFetch !== false
 
-  taskManager.updateTask(taskId, {
+  await taskManager.updateTask(taskId, {
     status: 'running',
     progress: 0,
     message: '正在抓取推文...',
@@ -60,12 +61,12 @@ export async function runRefreshFetchFromEnabledSources(body: {
       getUserSubscribedSourceIds(body.userId),
     ])
     if (subscribedHandles.length === 0 && subscribedSourceIds.length === 0) {
-      taskManager.updateTask(taskId, {
+      await taskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         message: '暂无订阅的信息源，请先订阅后再抓取',
       })
-      return { success: true, taskId, message: '无订阅源', count: 0 }
+      return { success: true, taskId, message: '无订阅源', count: 0, rawIds: [] }
     }
     const subHandleSet = new Set(subscribedHandles.map(normalizeSourceHandle).filter(Boolean))
     const subIdSet = new Set(subscribedSourceIds.map(String))
@@ -75,27 +76,27 @@ export async function runRefreshFetchFromEnabledSources(body: {
     sourcesSkippedDisabled = subscribedSources.filter(s => !s.enabled).length
     enabledSources = subscribedSources.filter(s => s.enabled)
     if (enabledSources.length === 0) {
-      taskManager.updateTask(taskId, {
+      await taskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         message: '订阅的信息源目前都暂停抓取，请在规则面板中启用抓取开关',
       })
-      mergePipelineTelemetryToTask(taskId, {
+      await mergePipelineTelemetryToTask(taskId, {
         sourcesProcessed: 0,
         sourcesTotal: subscribedSources.length,
         sourcesSkippedDisabled,
       })
-      return { success: true, taskId, message: '无可用订阅源', count: 0 }
+      return { success: true, taskId, message: '无可用订阅源', count: 0, rawIds: [] }
     }
   }
 
   if (enabledSources.length === 0) {
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       status: 'completed',
       progress: 100,
       message: '没有配置任何源',
     })
-    return { success: true, taskId, message: '没有源需要抓取', count: 0 }
+    return { success: true, taskId, message: '没有源需要抓取', count: 0, rawIds: [] }
   }
 
   const [existingRawIds, existingNewsUrls, pipelineRt] = await Promise.all([
@@ -128,8 +129,8 @@ export async function runRefreshFetchFromEnabledSources(body: {
   let rawFetchedTotal = 0
   let rawSkippedDuplicate = 0
 
-  const pushTelemetry = () => {
-    mergePipelineTelemetryToTask(taskId, {
+  const pushTelemetry = async () => {
+    await mergePipelineTelemetryToTask(taskId, {
       rawFetchedTotal,
       rawSkippedDuplicate,
       rawInserted: newRawPosts.length,
@@ -140,7 +141,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
   }
 
   for (const source of enabledSources) {
-    if (taskManager.getTask(taskId)?.status === 'cancelled') {
+    if ((await taskManager.getTask(taskId))?.status === 'cancelled') {
       break
     }
     try {
@@ -210,22 +211,24 @@ export async function runRefreshFetchFromEnabledSources(body: {
     }
 
     processed++
-    pushTelemetry()
-    taskManager.updateTask(taskId, {
+    await pushTelemetry()
+    await taskManager.updateTask(taskId, {
       progress: Math.round((processed / total) * 100),
       message: `已抓取 ${processed}/${total} 个源，${newRawPosts.length} 条新内容`,
     })
   }
 
   await upsertRawPosts(newRawPosts)
-  pushTelemetry()
+  const rawIds = newRawPosts.map((row) => String(row.id ?? '')).filter(Boolean)
+  await pushTelemetry()
 
-  if (taskManager.getTask(taskId)?.status === 'cancelled') {
+  if ((await taskManager.getTask(taskId))?.status === 'cancelled') {
     return {
       success: true,
       taskId,
       message: 'cancelled',
       count: newRawPosts.length,
+      rawIds,
     }
   }
 
@@ -235,13 +238,13 @@ export async function runRefreshFetchFromEnabledSources(body: {
   }
 
   if (completeTaskAfterFetch) {
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       status: 'completed',
       progress: 100,
       message: `抓取完成：${newRawPosts.length} 条新内容`,
     })
   } else {
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       status: 'running',
       progress: 38,
       message: `抓取完成：${newRawPosts.length} 条新内容，正在 AI 处理…`,
@@ -253,5 +256,6 @@ export async function runRefreshFetchFromEnabledSources(body: {
     taskId,
     message: '抓取完成',
     count: newRawPosts.length,
+    rawIds,
   }
 }

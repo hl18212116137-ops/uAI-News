@@ -7,7 +7,7 @@ import { expandHandleQueryVariants } from '@/lib/source-avatar'
 import { getFeedPublishedAtGte } from '@/lib/feed-window'
 import { getSourceById } from '@/lib/sources'
 import { fetchAndProcessPostsInBackground } from '@/lib/source-fetch-background'
-import { taskManager } from '@/lib/task-manager'
+import { taskManager } from '@/lib/task-manager-server'
 
 /** 同一 handle 自动补抓冷却（毫秒） */
 const AUTO_FETCH_COOLDOWN_MS = 30 * 60 * 1000
@@ -84,18 +84,18 @@ export function scheduleStaleSourceFetches(handles: string[]): void {
           continue
         }
 
-        const taskId = taskManager.createTask()
+        const taskId = await taskManager.createTask()
         lastScheduledFetch.set(h, { scheduledAt, taskId })
-        taskManager.updateTask(taskId, {
+        await taskManager.updateTask(taskId, {
           status: 'running',
           progress: 0,
           message: `自动抓取 @${source.handle}…`,
           startTime: Date.now(),
         })
 
-        fetchAndProcessPostsInBackground(source, taskId).catch((error) => {
+        void fetchAndProcessPostsInBackground(source, taskId).catch(async (error) => {
           console.error(`[feed-stale-fetch] @${source.handle} 失败:`, error)
-          taskManager.updateTask(taskId, {
+          await taskManager.updateTask(taskId, {
             status: 'failed',
             error: error instanceof Error ? error.message : '抓取失败',
           })
@@ -128,18 +128,18 @@ export async function scheduleStaleSourceFetchesForSourceId(
     reservationAt = Date.now()
     lastScheduledFetch.set(handle, { scheduledAt: reservationAt })
 
-    const taskId = taskManager.createTask()
+    const taskId = await taskManager.createTask()
     lastScheduledFetch.set(handle, { scheduledAt: reservationAt, taskId })
-    taskManager.updateTask(taskId, {
+    await taskManager.updateTask(taskId, {
       status: 'running',
       progress: 0,
       message: `订阅后抓取 @${source.handle}…`,
       startTime: Date.now(),
     })
 
-    fetchAndProcessPostsInBackground(source, taskId).catch((error) => {
+    void fetchAndProcessPostsInBackground(source, taskId).catch(async (error) => {
       console.error(`[feed-stale-fetch] subscribe @${source.handle} 失败:`, error)
-      taskManager.updateTask(taskId, {
+      await taskManager.updateTask(taskId, {
         status: 'failed',
         error: error instanceof Error ? error.message : '抓取失败',
       })

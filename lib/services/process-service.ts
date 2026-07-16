@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { mergePipelineTelemetryToTask, taskManager } from '@/lib/task-manager'
+import { mergePipelineTelemetryToTask, taskManager } from '@/lib/task-manager-server'
 import { getDefaultAIService } from '@/lib/ai/ai-factory'
 import {
   addPost,
@@ -20,6 +20,7 @@ import {
 import {
   deleteRawPostById,
   fetchRawPostById,
+  fetchRawPostsByIds,
   fetchRawPostsBatch,
   fetchRawPostsExcludingActiveJobs,
 } from '@/lib/db/raw-posts'
@@ -46,6 +47,7 @@ import {
 } from '@/lib/longform-auto'
 import type { AIProcessedContent, AIService } from '@/lib/ai/ai-service'
 import { isMostlyChinese } from '@/lib/text-locale'
+import { getProcessingBatchFailure, normalizeRequestedRawIds } from '@/lib/raw-post-queue'
 
 export type RefreshProcessResult = {
   success: true
@@ -62,9 +64,9 @@ export const PROCESS_RAW_BATCH_LIMIT = RAW_LIMIT_DEFAULT
 
 const CRON_TASK_ID = 'cron'
 
-function isUserRefreshCancelled(taskId: string, silent: boolean): boolean {
+async function isUserRefreshCancelled(taskId: string, silent: boolean): Promise<boolean> {
   if (silent || taskId === CRON_TASK_ID) return false
-  return taskManager.getTask(taskId)?.status === 'cancelled'
+  return (await taskManager.getTask(taskId))?.status === 'cancelled'
 }
 
 function clampProcessRawLimit(rawLimit?: number): number {
@@ -72,12 +74,12 @@ function clampProcessRawLimit(rawLimit?: number): number {
   return Math.min(RAW_LIMIT_MAX, Math.max(RAW_LIMIT_MIN, Math.floor(rawLimit)))
 }
 
-function syncTask(
+async function syncTask(
   silent: boolean,
   taskId: string,
   update: Parameters<typeof taskManager.updateTask>[1]
-) {
-  if (!silent) taskManager.updateTask(taskId, update)
+): Promise<void> {
+  if (!silent) await taskManager.updateTask(taskId, update)
 }
 
 type ProcessContext = {
@@ -156,7 +158,7 @@ async function ensureChineseBody(ai: AIService, body: string): Promise<string> {
   return body
 }
 
-function pushProcessTelemetry(
+async function pushProcessTelemetry(
   silent: boolean,
   taskId: string,
   acc: {
@@ -169,7 +171,7 @@ function pushProcessTelemetry(
   }
 ) {
   if (silent) return
-  mergePipelineTelemetryToTask(taskId, {
+  await mergePipelineTelemetryToTask(taskId, {
     processAttempted: acc.attempted,
     processSuccess: acc.success,
     droppedLowSignal: acc.low,
@@ -177,6 +179,22 @@ function pushProcessTelemetry(
     processErrors: acc.errors,
     errorsSample: acc.samples.length > 0 ? acc.samples : undefined,
   })
+}
+
+async function throwIfEntireBatchFailed(
+  silent: boolean,
+  taskId: string,
+  acc: { attempted: number; errors: number; samples: string[] }
+): Promise<void> {
+  const failure = getProcessingBatchFailure(acc)
+  if (!failure) return
+  await syncTask(silent, taskId, {
+    status: 'failed',
+    remainingTime: 0,
+    message: 'AI processing failed',
+    error: failure,
+  })
+  throw new Error(failure)
 }
 
 function getAiUnimportantPassReason(draft: AIProcessedContent): string {
@@ -396,6 +414,8 @@ export type RunRefreshProcessBody = {
   silent?: boolean
   /** 本批最多处理条数（job 列队 + legacy raw 各受此上限约束），默认 100，范围 1–100 */
   rawLimit?: number
+  /** When provided, process only rows inserted by the current fetch instead of the backlog. */
+  rawIds?: string[]
   /** 当前登录用户；用于读取该用户手动恢复 PASS 的反馈样本 */
   userId?: string
 }
@@ -408,15 +428,16 @@ export async function runRefreshProcessRawQueue(
   body: RunRefreshProcessBody = {}
 ): Promise<RefreshProcessResult> {
   const silent = body.silent === true
-  const taskId = silent ? CRON_TASK_ID : body.taskId || taskManager.createTask()
+  const taskId = silent ? CRON_TASK_ID : body.taskId || (await taskManager.createTask())
   const rawLimit = clampProcessRawLimit(body.rawLimit)
+  const requestedRawIds = normalizeRequestedRawIds(body.rawIds)
   const userId = typeof body.userId === 'string' && body.userId.trim() ? body.userId.trim() : undefined
 
-  if (!silent && body.taskId && isUserRefreshCancelled(body.taskId, silent)) {
+  if (!silent && body.taskId && (await isUserRefreshCancelled(body.taskId, silent))) {
     return { success: true, taskId: body.taskId, message: 'cancelled', count: 0 }
   }
 
-  syncTask(silent, taskId, {
+  await syncTask(silent, taskId, {
     status: 'running',
     progress: 40,
     message: '正在 AI 处理推文...',
@@ -434,10 +455,12 @@ export async function runRefreshProcessRawQueue(
   const longformAutoBudget = createLongformAutoBudget()
 
   if (!useJobs) {
-    const rawPosts = await fetchRawPostsBatch(rawLimit)
+    const rawPosts = requestedRawIds === null
+      ? await fetchRawPostsBatch(rawLimit)
+      : await fetchRawPostsByIds(requestedRawIds, rawLimit)
 
     if (rawPosts.length === 0) {
-      pushProcessTelemetry(silent, taskId, {
+      await pushProcessTelemetry(silent, taskId, {
         attempted: 0,
         success: 0,
         low: 0,
@@ -445,7 +468,7 @@ export async function runRefreshProcessRawQueue(
         errors: 0,
         samples: [],
       })
-      syncTask(silent, taskId, {
+      await syncTask(silent, taskId, {
         status: 'completed',
         progress: 100,
         message: '没有原始推文需要处理',
@@ -465,8 +488,8 @@ export async function runRefreshProcessRawQueue(
     }
 
     for (let i = 0; i < rawPosts.length; i += BATCH_SIZE) {
-      if (isUserRefreshCancelled(taskId, silent)) {
-        pushProcessTelemetry(silent, taskId, acc)
+      if (await isUserRefreshCancelled(taskId, silent)) {
+        await pushProcessTelemetry(silent, taskId, acc)
         return { success: true, taskId, message: 'cancelled', count: processed }
       }
       const batch = rawPosts.slice(i, i + BATCH_SIZE)
@@ -483,20 +506,21 @@ export async function runRefreshProcessRawQueue(
       )
       for (const r of results) accumulateProcessOutcome(acc, r)
       processed += batch.length
-      syncTask(silent, taskId, {
+      await syncTask(silent, taskId, {
         progress: 40 + Math.round((processed / total) * 60),
         message: `已处理 ${processed}/${total} 条推文`,
       })
-      pushProcessTelemetry(silent, taskId, acc)
+      await pushProcessTelemetry(silent, taskId, acc)
     }
 
-    if (isUserRefreshCancelled(taskId, silent)) {
-      pushProcessTelemetry(silent, taskId, acc)
+    if (await isUserRefreshCancelled(taskId, silent)) {
+      await pushProcessTelemetry(silent, taskId, acc)
       return { success: true, taskId, message: 'cancelled', count: processed }
     }
 
-    pushProcessTelemetry(silent, taskId, acc)
-    syncTask(silent, taskId, {
+    await pushProcessTelemetry(silent, taskId, acc)
+    await throwIfEntireBatchFailed(silent, taskId, acc)
+    await syncTask(silent, taskId, {
       status: 'completed',
       progress: 100,
       message: `处理完成：${processed} 条推文`,
@@ -517,7 +541,7 @@ export async function runRefreshProcessRawQueue(
   const totalWork = pending.length + legacyRaw.length
 
   if (totalWork === 0) {
-    pushProcessTelemetry(silent, taskId, {
+    await pushProcessTelemetry(silent, taskId, {
       attempted: 0,
       success: 0,
       low: 0,
@@ -525,7 +549,7 @@ export async function runRefreshProcessRawQueue(
       errors: 0,
       samples: [],
     })
-    syncTask(silent, taskId, {
+    await syncTask(silent, taskId, {
       status: 'completed',
       progress: 100,
       message: '没有原始推文需要处理',
@@ -542,30 +566,30 @@ export async function runRefreshProcessRawQueue(
     errors: 0,
     samples: [] as string[],
   }
-  const bumpProgress = () => {
+  const bumpProgress = async () => {
     idx++
-    syncTask(silent, taskId, {
+    await syncTask(silent, taskId, {
       progress: 40 + Math.round((idx / totalWork) * 60),
       message: `已处理 ${idx}/${totalWork} 条推文`,
     })
-    pushProcessTelemetry(silent, taskId, acc)
+    await pushProcessTelemetry(silent, taskId, acc)
   }
 
   for (const job of pending) {
-    if (isUserRefreshCancelled(taskId, silent)) {
-      pushProcessTelemetry(silent, taskId, acc)
+    if (await isUserRefreshCancelled(taskId, silent)) {
+      await pushProcessTelemetry(silent, taskId, acc)
       return { success: true, taskId, message: 'cancelled', count: idx }
     }
     const claimed = await claimProcessingJob(job.id)
     if (!claimed) {
-      bumpProgress()
+      await bumpProgress()
       continue
     }
 
     if (!job.rawPostId) {
       await markProcessingJobFailed(job.id, 'missing_raw_post_id', job.attempts + 1)
       accumulateProcessOutcome(acc, { outcome: 'error', errorMessage: 'missing_raw_post_id' })
-      bumpProgress()
+      await bumpProgress()
       continue
     }
 
@@ -573,7 +597,7 @@ export async function runRefreshProcessRawQueue(
     if (!raw) {
       await markProcessingJobFailed(job.id, 'raw_missing', job.attempts + 1)
       accumulateProcessOutcome(acc, { outcome: 'error', errorMessage: 'raw_missing' })
-      bumpProgress()
+      await bumpProgress()
       continue
     }
 
@@ -586,12 +610,12 @@ export async function runRefreshProcessRawQueue(
       longformAutoBudget,
     })
     accumulateProcessOutcome(acc, one)
-    bumpProgress()
+    await bumpProgress()
   }
 
   for (let i = 0; i < legacyRaw.length; i += BATCH_SIZE) {
-    if (isUserRefreshCancelled(taskId, silent)) {
-      pushProcessTelemetry(silent, taskId, acc)
+    if (await isUserRefreshCancelled(taskId, silent)) {
+      await pushProcessTelemetry(silent, taskId, acc)
       return { success: true, taskId, message: 'cancelled', count: idx }
     }
     const batch = legacyRaw.slice(i, i + BATCH_SIZE)
@@ -607,16 +631,17 @@ export async function runRefreshProcessRawQueue(
       )
     )
     for (const r of results) accumulateProcessOutcome(acc, r)
-    for (let j = 0; j < batch.length; j++) bumpProgress()
+    for (let j = 0; j < batch.length; j++) await bumpProgress()
   }
 
-  if (isUserRefreshCancelled(taskId, silent)) {
-    pushProcessTelemetry(silent, taskId, acc)
+  if (await isUserRefreshCancelled(taskId, silent)) {
+    await pushProcessTelemetry(silent, taskId, acc)
     return { success: true, taskId, message: 'cancelled', count: idx }
   }
 
-  pushProcessTelemetry(silent, taskId, acc)
-  syncTask(silent, taskId, {
+  await pushProcessTelemetry(silent, taskId, acc)
+  await throwIfEntireBatchFailed(silent, taskId, acc)
+  await syncTask(silent, taskId, {
     status: 'completed',
     progress: 100,
     message: `处理完成：${idx} 条推文`,
