@@ -47,7 +47,17 @@ export class AIServiceFactory {
     const primary = primaryProvider || (process.env.AI_PROVIDER as AIProvider) || 'deepseek';
     const fallback = fallbackProvider || (primary === 'deepseek' ? 'minimax' : 'deepseek');
 
-    const primaryService = this.create(primary);
+    let primaryService: AIService;
+    try {
+      primaryService = this.create(primary);
+    } catch (primaryError) {
+      const message = primaryError instanceof Error ? primaryError.message : String(primaryError);
+      console.warn(
+        `[AIServiceFactory] Primary "${primary}" unavailable (${message}). Using fallback "${fallback}".`
+      );
+      return this.create(fallback);
+    }
+
     try {
       const fallbackService = this.create(fallback);
       return new AIServiceWithFallback(primaryService, fallbackService);
