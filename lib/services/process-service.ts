@@ -20,6 +20,7 @@ import {
 import {
   deleteRawPostById,
   fetchRawPostById,
+  fetchRawPostsByIds,
   fetchRawPostsBatch,
   fetchRawPostsExcludingActiveJobs,
 } from '@/lib/db/raw-posts'
@@ -46,6 +47,7 @@ import {
 } from '@/lib/longform-auto'
 import type { AIProcessedContent, AIService } from '@/lib/ai/ai-service'
 import { isMostlyChinese } from '@/lib/text-locale'
+import { normalizeRequestedRawIds } from '@/lib/raw-post-queue'
 
 export type RefreshProcessResult = {
   success: true
@@ -396,6 +398,8 @@ export type RunRefreshProcessBody = {
   silent?: boolean
   /** 本批最多处理条数（job 列队 + legacy raw 各受此上限约束），默认 100，范围 1–100 */
   rawLimit?: number
+  /** When provided, process only rows inserted by the current fetch instead of the backlog. */
+  rawIds?: string[]
   /** 当前登录用户；用于读取该用户手动恢复 PASS 的反馈样本 */
   userId?: string
 }
@@ -410,6 +414,7 @@ export async function runRefreshProcessRawQueue(
   const silent = body.silent === true
   const taskId = silent ? CRON_TASK_ID : body.taskId || (await taskManager.createTask())
   const rawLimit = clampProcessRawLimit(body.rawLimit)
+  const requestedRawIds = normalizeRequestedRawIds(body.rawIds)
   const userId = typeof body.userId === 'string' && body.userId.trim() ? body.userId.trim() : undefined
 
   if (!silent && body.taskId && (await isUserRefreshCancelled(body.taskId, silent))) {
@@ -434,7 +439,9 @@ export async function runRefreshProcessRawQueue(
   const longformAutoBudget = createLongformAutoBudget()
 
   if (!useJobs) {
-    const rawPosts = await fetchRawPostsBatch(rawLimit)
+    const rawPosts = requestedRawIds === null
+      ? await fetchRawPostsBatch(rawLimit)
+      : await fetchRawPostsByIds(requestedRawIds, rawLimit)
 
     if (rawPosts.length === 0) {
       await pushProcessTelemetry(silent, taskId, {

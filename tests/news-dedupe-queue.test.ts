@@ -5,6 +5,7 @@ import {
   RAW_POST_PROCESSABLE_STATUSES,
   RAW_POST_PROCESSABLE_STATUS_VALUES,
   isRawPostProcessableStatus,
+  normalizeRequestedRawIds,
 } from "@/lib/raw-post-queue";
 import { makeNewsItem } from "./test-helpers";
 
@@ -35,4 +36,13 @@ test("raw queue processable statuses are explicit and reusable", () => {
   assert.equal(isRawPostProcessableStatus("queued"), true);
   assert.equal(isRawPostProcessableStatus("processed"), false);
   assert.equal(isRawPostProcessableStatus("failed"), false);
+});
+
+test("an explicit refresh batch stays separate from the historical raw queue", () => {
+  assert.equal(normalizeRequestedRawIds(undefined), null);
+  assert.deepEqual(normalizeRequestedRawIds([]), []);
+  assert.deepEqual(
+    normalizeRequestedRawIds([" new-2 ", "new-1", "new-2", ""]),
+    ["new-2", "new-1"]
+  );
 });

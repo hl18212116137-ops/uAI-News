@@ -9,3 +9,9 @@ export function isRawPostProcessableStatus(
 ): status is RawPostProcessableStatus {
   return RAW_POST_PROCESSABLE_STATUSES.includes(status as RawPostProcessableStatus);
 }
+
+/** null means consume the historical queue; an array means only this refresh batch. */
+export function normalizeRequestedRawIds(rawIds?: string[]): string[] | null {
+  if (rawIds === undefined) return null;
+  return [...new Set(rawIds.map((id) => id.trim()).filter(Boolean))];
+}

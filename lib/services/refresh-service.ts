@@ -64,6 +64,7 @@ export async function runBackgroundFullRefresh(taskId: string, userId: string): 
         taskId,
         userId,
         rawLimit: PROCESS_RAW_BATCH_LIMIT,
+        rawIds: fetchData.rawIds,
       })
       const processedThisPass = processData.count || 0
       processedTotal += processedThisPass

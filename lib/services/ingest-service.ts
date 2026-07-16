@@ -21,6 +21,7 @@ export type RefreshFetchResult = {
   taskId: string
   message: string
   count: number
+  rawIds: string[]
 }
 
 /**
@@ -65,7 +66,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
         progress: 100,
         message: '暂无订阅的信息源，请先订阅后再抓取',
       })
-      return { success: true, taskId, message: '无订阅源', count: 0 }
+      return { success: true, taskId, message: '无订阅源', count: 0, rawIds: [] }
     }
     const subHandleSet = new Set(subscribedHandles.map(normalizeSourceHandle).filter(Boolean))
     const subIdSet = new Set(subscribedSourceIds.map(String))
@@ -85,7 +86,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
         sourcesTotal: subscribedSources.length,
         sourcesSkippedDisabled,
       })
-      return { success: true, taskId, message: '无可用订阅源', count: 0 }
+      return { success: true, taskId, message: '无可用订阅源', count: 0, rawIds: [] }
     }
   }
 
@@ -95,7 +96,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
       progress: 100,
       message: '没有配置任何源',
     })
-    return { success: true, taskId, message: '没有源需要抓取', count: 0 }
+    return { success: true, taskId, message: '没有源需要抓取', count: 0, rawIds: [] }
   }
 
   const [existingRawIds, existingNewsUrls, pipelineRt] = await Promise.all([
@@ -218,6 +219,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
   }
 
   await upsertRawPosts(newRawPosts)
+  const rawIds = newRawPosts.map((row) => String(row.id ?? '')).filter(Boolean)
   await pushTelemetry()
 
   if ((await taskManager.getTask(taskId))?.status === 'cancelled') {
@@ -226,6 +228,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
       taskId,
       message: 'cancelled',
       count: newRawPosts.length,
+      rawIds,
     }
   }
 
@@ -253,5 +256,6 @@ export async function runRefreshFetchFromEnabledSources(body: {
     taskId,
     message: '抓取完成',
     count: newRawPosts.length,
+    rawIds,
   }
 }
