@@ -27,6 +27,8 @@ export async function fetchAndProcessPostsInBackground(
   taskId: string,
   userId?: string
 ) {
+  const cancelled = async () => (await taskManager.getTask(taskId))?.status === 'cancelled'
+  if (await cancelled()) return
   try {
     console.log(`[后台任务] 开始抓取 @${source.handle} 的推文...`)
 
@@ -36,6 +38,7 @@ export async function fetchAndProcessPostsInBackground(
     })
 
     const posts = await fetchPostsFromX(source.handle)
+    if (await cancelled()) return
 
     if (posts.length === 0) {
       await taskManager.updateTask(taskId, {
@@ -77,6 +80,7 @@ export async function fetchAndProcessPostsInBackground(
     }
 
     for (let i = 0; i < posts.length; i += CONCURRENCY) {
+      if (await cancelled()) break
       const batch = posts.slice(i, i + CONCURRENCY)
 
       const results = await Promise.allSettled(
@@ -256,6 +260,7 @@ export async function fetchAndProcessPostsInBackground(
         }
       })
 
+      if (await cancelled()) break
       processedCount += batch.length
       const progress = 30 + Math.floor((processedCount / posts.length) * 70)
       await mergePipelineTelemetryToTask(taskId, {
@@ -276,6 +281,7 @@ export async function fetchAndProcessPostsInBackground(
       revalidateHomeFeedCaches()
     }
 
+    if (await cancelled()) return
     await taskManager.updateTask(taskId, {
       status: 'completed',
       progress: 100,
@@ -284,6 +290,7 @@ export async function fetchAndProcessPostsInBackground(
 
     console.log(`[后台任务] 完成: @${source.handle}, 成功 ${successCount}/${posts.length} 条`)
   } catch (error) {
+    if (await cancelled()) return
     console.error(`[后台任务] 抓取 @${source.handle} 失败:`, error)
     await taskManager.updateTask(taskId, {
       status: 'failed',

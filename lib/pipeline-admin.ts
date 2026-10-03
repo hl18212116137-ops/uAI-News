@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { AuthUser } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth'
 type User = AuthUser
 
 function parseList(raw: string | undefined): string[] {
@@ -24,4 +25,13 @@ export function isPipelineAdmin(user: Pick<User, 'id' | 'email'> | null | undefi
   const em = user.email?.trim().toLowerCase()
   if (em && emails.map((e) => e.toLowerCase()).includes(em)) return true
   return false
+}
+
+export async function requirePipelineAdmin() {
+  const auth = await requireAuth()
+  if (auth.errorResponse) return auth
+  if (!isPipelineAdmin(auth.user)) {
+    return { user: null, errorResponse: Response.json({ success: false, error: '此操作仅限管理员' }, { status: 403 }) }
+  }
+  return auth
 }

@@ -1,0 +1,322 @@
+[
+  {
+    "path": "tmp-next-3010.out.log",
+    "files": 1,
+    "bytes": 183
+  },
+  {
+    "path": "tmp-standalone-3001.err.log",
+    "files": 1,
+    "bytes": 79905
+  },
+  {
+    "path": "tmp-next-3007.err.log",
+    "files": 1,
+    "bytes": 120
+  },
+  {
+    "path": "tmp-auto-open.err.log",
+    "files": 1,
+    "bytes": 18211
+  },
+  {
+    "path": "tmp-next-3008.out.log",
+    "files": 1,
+    "bytes": 232
+  },
+  {
+    "path": "tmp-perf-start-final4.err.log",
+    "files": 1,
+    "bytes": 0
+  },
+  {
+    "path": "tmp-next-3001.out.log",
+    "files": 1,
+    "bytes": 47027
+  },
+  {
+    "path": "tmp-next-3006.err.log",
+    "files": 1,
+    "bytes": 23071
+  },
+  {
+    "path": "tmp-standalone-3007.out.log",
+    "files": 1,
+    "bytes": 139
+  },
+  {
+    "path": "tmp-ain-news-open.err.log",
+    "files": 1,
+    "bytes": 0
+  },
+  {
+    "path": "tmp-newbadge-standalone-3001.err.log",
+    "files": 1,
+    "bytes": 0
+  },
+  {
+    "path": "tmp-next-3002-newbadge.err.log",
+    "files": 1,
+    "bytes": 0
+  },
+  {
+    "path": "tmp-next-3004-perf.out.log",
+    "files": 1,
+    "bytes": 49172
+  },
+  {
+    "path": "tmp-next-3003.out.log",
+    "files": 1,
+    "bytes": 2750
+  },
+  {
+    "path": "tmp-next-3004.err.log",
+    "files": 1,
+    "bytes": 1165
+  },
+  {
+    "path": "tmp-next-3004-pass.err.log",
+    "files": 1,
+    "bytes": 2434
+  },
+  {
+    "path": "tmp-next-3002.out.log",
+    "files": 1,
+    "bytes": 5098
+  },
+  {
+    "path": "tmp-uai-news-open.err.log",
+    "files": 1,
+    "bytes": 1004
+  },
+  {
+    "path": "tmp-build.out.log",
+    "files": 1,
+    "bytes": 94
+  },
+  {
+    "path": "tmp-standalone-3001.out.log",
+    "files": 1,
+    "bytes": 374
+  },
+  {
+    "path": "tmp-next-3010.err.log",
+    "files": 1,
+    "bytes": 0
+  },
+  {
+    "path": "tmp-next-3007.out.log",
+    "files": 1,
+    "bytes": 150
+  },
+  {
+    "path": "tmp-next-3001.err.log",
+    "files": 1,
+    "bytes": 31380
+  },
+  {
+    "path": "tmp-standalone-3007.err.log",
+    "files": 1,
+    "bytes": 0
+  },
+  {
+    "path": "tmp-next-3006.out.log",
+    "files": 1,
+    "bytes": 9908
+  },
+  {
+    "path": "tmp-perf-start-final4.out.log",
+    "files": 1,
+    "bytes": 319
+  },
+  {
+    "path": "tmp-next-3008.err.log",
+    "files": 1,
+    "bytes": 0
+  },
+  {
+    "path": "tmp-auto-open.out.log",
+    "files": 1,
+    "bytes": 209674
+  },
+  {
+    "path": "tmp-next-3003.err.log",
+    "files": 1,
+    "bytes": 2242
+  },
+  {
+    "path": "tmp-next-3004-perf.err.log",
+    "files": 1,
+    "bytes": 1878
+  },
+  {
+    "path": "tmp-next-3004.out.log",
+    "files": 1,
+    "bytes": 2472
+  },
+  {
+    "path": "tmp-newbadge-standalone-3001.out.log",
+    "files": 1,
+    "bytes": 489
+  },
+  {
+    "path": "tmp-ain-news-open.out.log",
+    "files": 1,
+    "bytes": 1442
+  },
+  {
+    "path": "tmp-next-3002-newbadge.out.log",
+    "files": 1,
+    "bytes": 1048
+  },
+  {
+    "path": "tmp-uai-news-open.out.log",
+    "files": 1,
+    "bytes": 29434
+  },
+  {
+    "path": "tmp-build.err.log",
+    "files": 1,
+    "bytes": 0
+  },
+  {
+    "path": "tmp-next-3002.err.log",
+    "files": 1,
+    "bytes": 1506
+  },
+  {
+    "path": "tmp-next-3004-pass.out.log",
+    "files": 1,
+    "bytes": 15921
+  },
+  {
+    "path": "tsconfig.tsbuildinfo",
+    "files": 1,
+    "bytes": 192977
+  },
+  {
+    "path": "tsconfig.src.tsbuildinfo",
+    "files": 1,
+    "bytes": 218756
+  },
+  {
+    "path": ".next-dev",
+    "files": 337,
+    "bytes": 131671564
+  },
+  {
+    "path": ".next-standalone-runtime",
+    "files": 1315,
+    "bytes": 45353992
+  },
+  {
+    "path": "components/Providers.tsx",
+    "files": 1,
+    "bytes": 490
+  },
+  {
+    "path": "app/api/debug-log",
+    "files": 1,
+    "bytes": 678
+  },
+  {
+    "path": "data/raw-posts-backup-20260316-024718.json",
+    "files": 1,
+    "bytes": 197319
+  },
+  {
+    "path": "data/raw-posts.json",
+    "files": 1,
+    "bytes": 701184
+  },
+  {
+    "path": "data/processed-posts-before-semantic-dedup.json",
+    "files": 1,
+    "bytes": 130115
+  },
+  {
+    "path": "data/processed-posts.json.temp",
+    "files": 1,
+    "bytes": 228784
+  },
+  {
+    "path": "data/raw-posts-test-3.json",
+    "files": 1,
+    "bytes": 39
+  },
+  {
+    "path": "data/processing.log",
+    "files": 1,
+    "bytes": 649286
+  },
+  {
+    "path": "data/semantic-dedup-test.log",
+    "files": 1,
+    "bytes": 7919
+  },
+  {
+    "path": "data/raw-posts-test.json",
+    "files": 1,
+    "bytes": 3955
+  },
+  {
+    "path": "data/processed-index.json",
+    "files": 1,
+    "bytes": 138788
+  },
+  {
+    "path": "data/ai-cache.json",
+    "files": 1,
+    "bytes": 227257
+  },
+  {
+    "path": "data/processed-posts.backup.json",
+    "files": 1,
+    "bytes": 202807
+  },
+  {
+    "path": "data/raw-posts-full-backup.json",
+    "files": 1,
+    "bytes": 100502
+  },
+  {
+    "path": "data/sources.json.backup",
+    "files": 1,
+    "bytes": 11311
+  },
+  {
+    "path": "data/raw-posts-test-new.json",
+    "files": 1,
+    "bytes": 3961
+  },
+  {
+    "path": "data/backup",
+    "files": 73,
+    "bytes": 9705824
+  },
+  {
+    "path": "data/ai-cache-old-prompt-backup.json",
+    "files": 1,
+    "bytes": 83774
+  },
+  {
+    "path": "data/processed-posts.json",
+    "files": 1,
+    "bytes": 442656
+  },
+  {
+    "path": "data/semantic-cache-similarity.json",
+    "files": 1,
+    "bytes": 24664
+  },
+  {
+    "path": "data/ai-cache-backup.json",
+    "files": 1,
+    "bytes": 83774
+  },
+  {
+    "path": "next-server-js.d.ts",
+    "files": 1,
+    "bytes": 712
+  }
+]

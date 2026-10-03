@@ -2,24 +2,12 @@ import 'server-only'
 
 import { db } from '@/lib/db/drizzle'
 import { userPipelineRules } from '@/lib/db/schema'
-import { eq, and, asc, count, inArray } from 'drizzle-orm'
+import { eq, and, asc, count, inArray, sql } from 'drizzle-orm'
 import type { NewsItem } from '@/lib/types'
 import { getFeedVisibleDaysEffective } from '@/lib/feed-window'
 
 export const MAX_RULES_PER_MODULE = 40
-export const MAX_PAYLOAD_STRING_LEN = 200
-
-export const PIPELINE_RULE_MODULES = [
-  'sources',
-  'dedupe',
-  'raw',
-  'quality',
-  'ai',
-  'feed',
-  'recommendation',
-] as const
-
-export type PipelineRuleModule = (typeof PIPELINE_RULE_MODULES)[number]
+export type PipelineRuleModule = 'recommendation'
 
 export type UserPipelineRuleRow = {
   id: string
@@ -31,41 +19,14 @@ export type UserPipelineRuleRow = {
   createdAt: Date
 }
 
-const RECOMMENDATION_TYPES = [
-  'hide_if_contains',
-  'prefer_keyword',
-  'recommendation_visible_days',
-] as const
-
-const GENERAL_TYPES = [
-  'plain_rule',
-  'disable_builtin_rule',
-] as const
-
-export type RecommendationRuleType = (typeof RECOMMENDATION_TYPES)[number]
-export type GeneralPipelineRuleType = (typeof GENERAL_TYPES)[number]
-
 function norm(s: string): string {
   return s.trim().toLowerCase()
 }
 
-export async function countRulesForModule(userId: string, module: PipelineRuleModule): Promise<number> {
-  try {
-    const rows = await db
-      .select({ count: count() })
-      .from(userPipelineRules)
-      .where(and(eq(userPipelineRules.userId, userId), eq(userPipelineRules.module, module)))
-    return rows[0]?.count ?? 0
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.warn('[user-pipeline-rules] count:', msg)
-    return 0
-  }
-}
-
 export async function listRules(
   userId: string,
-  module: PipelineRuleModule
+  module: PipelineRuleModule,
+  options: { strict?: boolean } = {}
 ): Promise<UserPipelineRuleRow[]> {
   try {
     const rows = await db
@@ -76,25 +37,8 @@ export async function listRules(
     return rows as UserPipelineRuleRow[]
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
+    if (options.strict) throw err
     console.warn('[user-pipeline-rules] list:', msg)
-    return []
-  }
-}
-
-export async function listRulesForModules(
-  userId: string,
-  modules: PipelineRuleModule[] = [...PIPELINE_RULE_MODULES]
-): Promise<UserPipelineRuleRow[]> {
-  try {
-    const rows = await db
-      .select()
-      .from(userPipelineRules)
-      .where(and(eq(userPipelineRules.userId, userId), inArray(userPipelineRules.module, modules)))
-      .orderBy(asc(userPipelineRules.createdAt))
-    return rows as UserPipelineRuleRow[]
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.warn('[user-pipeline-rules] list modules:', msg)
     return []
   }
 }
@@ -107,23 +51,6 @@ export async function getUserRecommendationVisibleDays(userId: string): Promise<
   const d = Number((row.payload as Record<string, unknown>).days)
   if (!Number.isFinite(d)) return null
   return Math.floor(d)
-}
-
-async function deleteRecommendationVisibleDaysRules(userId: string): Promise<void> {
-  try {
-    await db
-      .delete(userPipelineRules)
-      .where(
-        and(
-          eq(userPipelineRules.userId, userId),
-          eq(userPipelineRules.module, 'recommendation'),
-          eq(userPipelineRules.ruleType, 'recommendation_visible_days')
-        )
-      )
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.warn('[user-pipeline-rules] delete visible days:', msg)
-  }
 }
 
 export async function deleteRule(userId: string, ruleId: string): Promise<boolean> {
@@ -141,32 +68,23 @@ export async function createRule(
   ruleType: string,
   payload: Record<string, unknown>
 ): Promise<UserPipelineRuleRow> {
-  if (ruleType === 'recommendation_visible_days') {
-    await deleteRecommendationVisibleDaysRules(userId)
-    const cnt = await countRulesForModule(userId, module)
-    if (cnt >= MAX_RULES_PER_MODULE) {
-      throw new Error(`每个模块最多 ${MAX_RULES_PER_MODULE} 条规则，请先删除一条再设可见天数`)
+  return db.transaction(async (tx) => {
+    // Serialize this user's edits so concurrent saves cannot exceed the limit
+    // or leave two competing reading windows. Failure preserves the old value.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${module}`}))`)
+    const owner = and(eq(userPipelineRules.userId, userId), eq(userPipelineRules.module, module))
+    if (ruleType === 'recommendation_visible_days') {
+      await tx.delete(userPipelineRules).where(and(owner, eq(userPipelineRules.ruleType, ruleType)))
     }
-  } else {
-    const n = await countRulesForModule(userId, module)
-    if (n >= MAX_RULES_PER_MODULE) {
-      throw new Error(`每个模块最多 ${MAX_RULES_PER_MODULE} 条规则`)
-    }
-  }
-
-  const rows = await db
-    .insert(userPipelineRules)
-    .values({
-      userId,
-      module,
-      ruleType,
-      payload,
-      enabled: true,
-    })
-    .returning()
-
-  if (!rows[0]) throw new Error('[user-pipeline-rules] insert returned no rows')
-  return rows[0] as UserPipelineRuleRow
+    const [total] = await tx.select({ count: count() }).from(userPipelineRules).where(and(
+      owner,
+      inArray(userPipelineRules.ruleType, ['recommendation_visible_days', 'hide_if_contains', 'prefer_keyword'])
+    ))
+    if (total.count >= MAX_RULES_PER_MODULE) throw new Error(`最多保存 ${MAX_RULES_PER_MODULE} 项阅读偏好，请先删除一项`)
+    const [row] = await tx.insert(userPipelineRules).values({ userId, module, ruleType, payload, enabled: true }).returning()
+    if (!row) throw new Error('[reading-preferences] insert returned no rows')
+    return row as UserPipelineRuleRow
+  })
 }
 
 function haystackForRecommendation(p: NewsItem): string {
@@ -217,20 +135,8 @@ export async function applyRecommendationToPosts(userId: string, posts: NewsItem
   return scored.map((s) => s.item)
 }
 
-export function isValidRuleTypeForModule(module: PipelineRuleModule, ruleType: string): boolean {
-  if ((GENERAL_TYPES as readonly string[]).includes(ruleType)) return true
-  if (module !== 'recommendation') return false
-  return (RECOMMENDATION_TYPES as readonly string[]).includes(ruleType)
-}
-
-export function isPipelineRuleModule(module: string | null): module is PipelineRuleModule {
-  return Boolean(module && (PIPELINE_RULE_MODULES as readonly string[]).includes(module))
-}
-
 /** 将用户填写的天数限制在全站 feed 窗口内 */
 export function clampRecommendationVisibleDays(days: number): number {
   const cap = getFeedVisibleDaysEffective()
   return Math.min(cap, Math.max(1, Math.floor(days)))
 }
-
-export { GENERAL_TYPES, RECOMMENDATION_TYPES }

@@ -1,3 +1,4 @@
+import { requireAuth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { getDefaultAIService } from '@/lib/ai/ai-factory'
@@ -12,6 +13,9 @@ import type { NewsItem } from '@/lib/types'
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
+  const { errorResponse } = await requireAuth()
+  if (errorResponse) return errorResponse
+
   try {
     const body = (await request.json().catch(() => ({}))) as { postId?: unknown }
     const postId = typeof body.postId === 'string' ? body.postId.trim() : ''

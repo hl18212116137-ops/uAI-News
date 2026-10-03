@@ -144,42 +144,6 @@ function stripHtml(html: string): string {
 }
 
 /**
- * 从网页抓取新闻（备选方案）
- * 注：这是一个基础实现，实际使用可能需要更复杂的解析逻辑
- *
- * @param pageUrl 网页 URL
- * @param mediaName 媒体名称
- * @param mediaHandle 媒体 handle
- * @returns 新闻项目数组
- */
-export async function fetchFromWebPage(
-  pageUrl: string,
-  mediaName: string,
-  mediaHandle: string
-): Promise<NewsItem[]> {
-  try {
-    const response = await fetch(pageUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; uAI-NewsBot/1.0)',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    // 注：实际使用需要使用 cheerio 或 jsdom 等库来解析 HTML
-    // 这里只是一个占位符实现
-    console.warn('⚠️  网页抓取功能需要额外的依赖库，建议优先使用 RSS 源');
-
-    return [];
-  } catch (error) {
-    console.error(`❌ 从网页 ${pageUrl} 抓取失败:`, error);
-    return [];
-  }
-}
-
-/**
  * 根据媒体源配置抓取新闻
  * @param source 媒体源配置
  * @returns 新闻项目数组
@@ -196,8 +160,7 @@ export async function fetchMediaNews(source: {
 
   if (method === 'rss') {
     return fetchFromRSS(source.url, source.name, source.handle);
-  } else if (method === 'scraper') {
-    return fetchFromWebPage(source.url, source.name, source.handle);
+
   } else {
     console.warn(`⚠️  未知的抓取方法: ${method}`);
     return [];

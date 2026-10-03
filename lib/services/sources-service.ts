@@ -1,4 +1,5 @@
 import 'server-only'
+import { after } from 'next/server'
 
 import { taskManager } from '@/lib/task-manager-server'
 import {
@@ -20,10 +21,10 @@ export async function listSources(): Promise<Source[]> {
 
 export async function addSourceFromUrlWithBackgroundFetch(params: {
   url: string
-  user: { id: string } | null
+  user: { id: string }
 }): Promise<{
   source: Source
-  taskId: string
+  taskId?: string
   isLoggedIn: boolean
   message: string
 }> {
@@ -45,32 +46,13 @@ export async function addSourceFromUrlWithBackgroundFetch(params: {
     fetchConfig: sourceData.fetchConfig,
   })
 
-  if (user) {
-    await subscribeSource(user.id, source.id, source.handle)
-  }
-
-  const taskId = await taskManager.createTask()
-  await taskManager.updateTask(taskId, {
-    status: 'running',
-    progress: 0,
-    message: `正在抓取 @${source.handle} 的推文...`,
-    startTime: Date.now(),
-    estimatedDuration: 120,
-    remainingTime: 120,
-  })
-
-  void fetchAndProcessPostsInBackground(source, taskId, user?.id).catch(async error => {
-    console.error(`[后台任务] 抓取 @${source.handle} 失败:`, error)
-    await taskManager.updateTask(taskId, {
-      status: 'failed',
-      error: error.message,
-    })
-  })
+  await subscribeSource(user.id, source.id, source.handle)
+  const taskId = source.enabled ? await startSourceFetch(source, user.id) : undefined
 
   return {
     source,
     taskId,
-    isLoggedIn: !!user,
+    isLoggedIn: true,
     message: `已添加博主 @${source.handle}`,
   }
 }
@@ -125,23 +107,18 @@ export async function startFetchForSubscribedSource(
     return { ok: false, status: 404, error: '信息源不存在' }
   }
 
-  const taskId = await taskManager.createTask()
-  await taskManager.updateTask(taskId, {
-    status: 'running',
-    progress: 0,
-    message: `正在抓取 @${source.handle} 的推文...`,
-    startTime: Date.now(),
-    estimatedDuration: 120,
-    remainingTime: 120,
-  })
-
-  void fetchAndProcessPostsInBackground(source, taskId, userId).catch(async (error) => {
-    console.error(`[sources/fetch] 抓取 @${source.handle} 失败:`, error)
-    await taskManager.updateTask(taskId, {
-      status: 'failed',
-      error: error instanceof Error ? error.message : '未知错误',
-    })
-  })
+  if (!source.enabled) return { ok: false, status: 403, error: '该信息源已由管理员暂停采集' }
+  if (source.platform !== 'X') return { ok: false, status: 400, error: '请使用「更新」同步该信息源' }
+  const taskId = await startSourceFetch(source, userId)
 
   return { ok: true, taskId }
+}
+
+async function startSourceFetch(source: Source, userId: string): Promise<string> {
+  const taskId = await taskManager.createTask(userId)
+  await taskManager.updateTask(taskId, {
+    status: 'running', progress: 0, message: `正在更新 @${source.handle}…`, startTime: Date.now(),
+  })
+  after(() => fetchAndProcessPostsInBackground(source, taskId, userId))
+  return taskId
 }

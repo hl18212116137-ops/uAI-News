@@ -1,3 +1,4 @@
+import { requirePipelineAdmin } from '@/lib/pipeline-admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import {
@@ -10,6 +11,9 @@ import {
 export const runtime = 'nodejs'
 
 export async function POST(request: NextRequest) {
+  const { errorResponse } = await requirePipelineAdmin()
+  if (errorResponse) return errorResponse
+
   try {
     const formData = await request.formData()
     const file = formData.get('file')

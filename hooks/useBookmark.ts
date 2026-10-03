@@ -200,12 +200,12 @@ export function useBookmark(
           })
           if (!res.ok) throw new Error('收藏失败')
         }
-        if (refreshOnSync) router.refresh()
+        if (storeUserId === user.id && refreshOnSync) router.refresh()
       } catch (error) {
         console.error('[useBookmark] 同步失败，回滚状态:', error)
-        applyBookmarkState(newsItemId, wasBookmarked, previousItem)
+        if (storeUserId === user.id) applyBookmarkState(newsItemId, wasBookmarked, previousItem)
       } finally {
-        setBookmarkPending(newsItemId, false)
+        if (storeUserId === user.id) setBookmarkPending(newsItemId, false)
       }
     },
     [refreshOnSync, router, user],

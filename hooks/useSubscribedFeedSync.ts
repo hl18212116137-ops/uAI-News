@@ -6,21 +6,11 @@ type User = AuthUser;
 import type { NewsItem } from "@/lib/types";
 import { RECOMMENDED_SIDEBAR_LIMIT } from "@/lib/feed-quality";
 import { HOME_FEED_PAGE_SIZE, type FeedPage } from "@/lib/feed-pagination";
+import { watchTask } from "@/lib/task-polling";
 import type { SubscriptionMutateSuccessPayload } from "@/hooks/useSubscription";
 
-/** 与 MainContent / SourcesList 侧栏行一致 */
-export type SubscribedSourceRow = {
-  id: string;
-  handle: string;
-  name: string;
-  url?: string;
-  avatar?: string;
-  description?: string;
-  enabled?: boolean;
-  postCount: number;
-  latestPostTime?: string;
-  sourceType?: "blogger" | "media" | "academic";
-};
+export type { SourceListItem as SubscribedSourceRow } from "@/lib/types";
+import type { SourceListItem as SubscribedSourceRow } from "@/lib/types";
 
 type SetSources = Dispatch<SetStateAction<SubscribedSourceRow[]>>;
 type SetRecommended = Dispatch<SetStateAction<SubscribedSourceRow[]>>;
@@ -52,7 +42,8 @@ export function useSubscribedFeedSync(
   onFeedPageSynced?: (page: Pick<FeedPage, "nextOffset" | "total" | "hasMore">) => void,
   onFeedPostsSynced?: (page: FeedPage) => void
 ) {
-  const fetchPollsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const fetchPollsRef = useRef<Map<string, { stop: () => void; sourceId: string }>>(new Map());
+  const syncRequestRef = useRef<AbortController | null>(null);
   const onSourceFetchEventRef = useRef(onSourceFetchEvent);
   const onFeedPageSyncedRef = useRef(onFeedPageSynced);
   const onFeedPostsSyncedRef = useRef(onFeedPostsSynced);
@@ -71,15 +62,19 @@ export function useSubscribedFeedSync(
 
   useEffect(
     () => () => {
-      fetchPollsRef.current.forEach((id) => clearInterval(id));
+      syncRequestRef.current?.abort();
+      fetchPollsRef.current.forEach(({ stop }) => stop());
       fetchPollsRef.current.clear();
     },
-    []
+    [user?.id]
   );
 
   const refreshSubscribedClientState = useCallback(
     async (options?: RefreshSubscribedClientStateOptions): Promise<FeedPage | null> => {
       if (!user) return null;
+      syncRequestRef.current?.abort();
+      const controller = new AbortController();
+      syncRequestRef.current = controller;
       try {
         const feedParams = new URLSearchParams({
           offset: "0",
@@ -89,21 +84,24 @@ export function useSubscribedFeedSync(
           feedParams.set("fresh", "1");
         }
         const [metaRes, recRes, feedRes] = await Promise.all([
-          fetch("/api/me/subscribed-sources", { cache: "no-store", credentials: "same-origin" }),
+          fetch("/api/me/subscribed-sources", { cache: "no-store", credentials: "same-origin", signal: controller.signal }),
           fetch(`/api/recommended-sources?limit=${RECOMMENDED_SIDEBAR_LIMIT}&random=1`, {
             cache: "no-store",
             credentials: "same-origin",
+            signal: controller.signal,
           }),
           fetch(`/api/feed?${feedParams.toString()}`, {
             cache: "no-store",
             credentials: "same-origin",
+            signal: controller.signal,
           }),
         ]);
         const [meta, rec, feed] = await Promise.all([metaRes.json(), recRes.json(), feedRes.json()]);
-        if (meta.success && Array.isArray(meta.sources)) setSourcesState(meta.sources);
-        if (rec.success && Array.isArray(rec.sources)) setRecommendedState(rec.sources);
+        if (controller.signal.aborted) return null;
+        if (metaRes.ok && meta.success && Array.isArray(meta.sources)) setSourcesState(meta.sources);
+        if (recRes.ok && rec.success && Array.isArray(rec.sources)) setRecommendedState(rec.sources);
         let syncedFeedPage: FeedPage | null = null;
-        if (feed.success && Array.isArray(feed.posts)) {
+        if (feedRes.ok && feed.success && Array.isArray(feed.posts)) {
           const feedPosts = feed.posts as NewsItem[];
           syncedFeedPage = {
             posts: feedPosts,
@@ -112,7 +110,9 @@ export function useSubscribedFeedSync(
             total: typeof feed.total === "number" ? feed.total : feedPosts.length,
             hasMore: Boolean(feed.hasMore),
           };
-          setPosts(syncedFeedPage.posts);
+          const nextFeedPosts = syncedFeedPage.posts;
+          setPosts((current) => [...nextFeedPosts, ...current.filter((post) =>
+            post.longform?.translatedContent && !nextFeedPosts.some((next) => next.id === post.id))]);
           onFeedPageSyncedRef.current?.(syncedFeedPage);
           if (options?.notifyFeedPostsSynced !== false) {
             onFeedPostsSyncedRef.current?.(syncedFeedPage);
@@ -120,7 +120,7 @@ export function useSubscribedFeedSync(
         }
         return syncedFeedPage;
       } catch (e) {
-        console.error("[useSubscribedFeedSync] refreshSubscribedClientState", e);
+        if (!controller.signal.aborted) console.error("[useSubscribedFeedSync] refreshSubscribedClientState", e);
         return null;
       }
     },
@@ -138,43 +138,19 @@ export function useSubscribedFeedSync(
         status: "started",
       });
 
-      let pollInFlight = false;
-      const pollTask = async () => {
-        if (pollInFlight) return;
-        pollInFlight = true;
-        try {
-          const r = await fetch(`/api/task-status?taskId=${encodeURIComponent(taskId)}`);
-          const j = await r.json();
-          const t = (j.task ?? j) as { status?: string };
-          if (t?.status === "completed" || t?.status === "failed") {
-            const activePoll = fetchPollsRef.current.get(taskId);
-            if (activePoll) clearInterval(activePoll);
-            fetchPollsRef.current.delete(taskId);
-            setFetchingSourceIds((prev) => {
-              const next = new Set(prev);
-              next.delete(sourceId);
-              return next;
-            });
-            onSourceFetchEventRef.current?.({
-              sourceId,
-              sourceHandle,
-              taskId,
-              status: t.status,
-            });
-            if (t.status === "completed") {
-              void refreshSubscribedClientState({ prioritizeRecentlyFetched: true });
-            }
-          }
-        } catch {
-          /* ignore transient poll errors */
-        } finally {
-          pollInFlight = false;
+      const finish = (status: "completed" | "failed") => {
+        fetchPollsRef.current.delete(taskId);
+        if (![...fetchPollsRef.current.values()].some((poll) => poll.sourceId === sourceId)) {
+          setFetchingSourceIds((current) => { const next = new Set(current); next.delete(sourceId); return next; });
         }
+        onSourceFetchEventRef.current?.({ sourceId, sourceHandle, taskId, status });
+        if (status === "completed") void refreshSubscribedClientState({ prioritizeRecentlyFetched: true });
       };
-
-      const iv = setInterval(() => void pollTask(), 2000);
-      fetchPollsRef.current.set(taskId, iv);
-      void pollTask();
+      const stop = watchTask(taskId, (task) => {
+        if (task.status === "completed") finish("completed");
+        else if (task.status === "failed" || task.status === "cancelled") finish("failed");
+      }, { intervalMs: 2000, onError: () => finish("failed") });
+      fetchPollsRef.current.set(taskId, { stop, sourceId });
     },
     [refreshSubscribedClientState, setFetchingSourceIds]
   );

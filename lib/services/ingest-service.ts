@@ -37,7 +37,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
    */
   completeTaskAfterFetch?: boolean
 }): Promise<RefreshFetchResult> {
-  const taskId = body.taskId || (await taskManager.createTask())
+  const taskId = body.taskId || (await taskManager.createTask(body.userId))
   const completeTaskAfterFetch = body.completeTaskAfterFetch !== false
 
   await taskManager.updateTask(taskId, {

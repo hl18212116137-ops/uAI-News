@@ -11,10 +11,12 @@ import {
 } from "@/lib/subscriptions";
 import {
   type FeedPageFilters,
-  HOME_RECOMMENDED_PREFETCH_LIMIT,
+
   makeFilteredFeedPage,
   stripLongformPosts,
 } from "@/lib/feed-pagination";
+import { sourceHandlesCacheKey } from "@/lib/source-avatar";
+import { getFeedCandidateLimit } from "@/lib/feed-limits";
 import { compareNewsItemsForFeedDisplay } from "@/lib/feed-sort";
 import { getRecentlyFetchedFeedCreatedAtGte } from "@/lib/feed-window";
 
@@ -24,10 +26,6 @@ export const HOME_USER_FEED_CACHE_TAG = "home-user-feed";
 export const HOME_USER_SOURCES_CACHE_TAG = "home-user-sources";
 export const HOME_USER_BOOKMARKS_CACHE_TAG = "home-user-bookmarks";
 export const HOME_RECOMMENDED_POSTS_CACHE_TAG = "home-recommended-posts";
-
-function handlesCacheKey(handles: string[]): string {
-  return handles.map((handle) => handle.trim()).filter(Boolean).join("\n");
-}
 
 function handlesFromCacheKey(key: string): string[] {
   return key.split("\n").map((handle) => handle.trim()).filter(Boolean);
@@ -72,7 +70,7 @@ export async function getCachedUserSubscribedFeed(
   subscribedHandles?: string[]
 ) {
   const handles = subscribedHandles ?? await getUserSubscribedHandles(userId);
-  return getCachedSubscribedFeedByHandles(userId, handlesCacheKey(handles));
+  return getCachedSubscribedFeedByHandles(userId, sourceHandlesCacheKey(handles));
 }
 
 export async function getCachedUserSubscribedFeedPage(
@@ -88,11 +86,12 @@ export async function getCachedUserSubscribedFeedPage(
       ? await getSubscribedFeed(userId, subscribedHandles)
       : await getCachedUserSubscribedFeed(userId, subscribedHandles)
   );
+  const recentlyFetchedSinceMs = getRecentlyFetchedFeedCreatedAtGte().getTime();
   const pagePosts = options?.prioritizeRecentlyFetched
     ? [...posts].sort((a, b) =>
         compareNewsItemsForFeedDisplay(a, b, {
           prioritizeRecentlyFetched: true,
-          recentlyFetchedSinceMs: getRecentlyFetchedFeedCreatedAtGte().getTime(),
+          recentlyFetchedSinceMs,
         })
       )
     : posts;
@@ -104,7 +103,7 @@ export async function getCachedUserSubscribedSourcesMeta(
   subscribedHandles?: string[]
 ) {
   const handles = subscribedHandles ?? await getUserSubscribedHandles(userId);
-  return getCachedSubscribedSourcesMetaByUser(userId, handlesCacheKey(handles));
+  return getCachedSubscribedSourcesMetaByUser(userId, sourceHandlesCacheKey(handles));
 }
 
 export async function getCachedUserBookmarkedIds(userId: string) {
@@ -125,13 +124,7 @@ export async function getCachedHomeRecommendedPostPage(
   userId?: string | null,
   filters?: FeedPageFilters
 ) {
-  const hasFilters =
-    Boolean(filters?.sourceHandle?.trim()) ||
-    Boolean(filters?.category?.trim()) ||
-    Boolean(filters?.searchQuery?.trim());
-  const fetchLimit = hasFilters
-    ? Math.max(HOME_RECOMMENDED_PREFETCH_LIMIT, offset + limit, 500)
-    : Math.max(HOME_RECOMMENDED_PREFETCH_LIMIT, offset + limit);
-  const posts = stripLongformPosts(await getCachedHomeRecommendedPosts(fetchLimit, userId));
+  // A fixed candidate window keeps recommendation order stable across pages.
+  const posts = stripLongformPosts(await getCachedHomeRecommendedPosts(getFeedCandidateLimit(), userId));
   return makeFilteredFeedPage(posts, offset, limit, filters);
 }

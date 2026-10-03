@@ -4,7 +4,7 @@
 
 **uAI News** is a Next.js 15 news aggregation app using the App Router.
 
-- **Framework:** Next.js 15.5.19 (App Router)
+- **Framework:** Next.js 15.5.27 (App Router)
 - **Language:** TypeScript 5
 - **Styling:** Tailwind CSS 3.4.0 (utility-first, no CSS Modules or styled-components)
 - **UI Library:** React 18 (functional components only)
@@ -122,12 +122,13 @@ All components are:
 | `FilterList.tsx` | Filter list UI |
 | `EmptyState.tsx` | Empty/no-results state |
 | `TopImportantNews.tsx` | Featured news section |
-| `AddSourceModal.tsx` | Draggable modal to add new information sources |
+| `AddSourceModal.tsx` | Centered modal to add new information sources |
 | `AppModalShell.tsx` | Shared centered modal backdrop + panel shell |
+| `ReadingPreferencesPanel.tsx` | Reading window, keyword preferences, subscriptions and hidden content |
+| `PipelineAdminPanel.tsx` | Admin-only ingestion settings, review and longform import |
 | `LoginModalShell.tsx` | Login overlay (uses `AppModalShell` + `LoginPanel`) |
 | `RefreshButton.tsx` | Refresh with progress polling |
 | `Tooltip.tsx` | Custom tooltip — use instead of native `title=` attribute |
-| `ImportFromUrl.tsx` | Manual URL import UI |
 
 ### Component Pattern
 
@@ -238,10 +239,10 @@ uAI News/
 │   ├── globals.css    # Global Tailwind styles + component classes
 │   ├── layout.tsx     # Root layout (fonts, metadata)
 │   ├── loading.tsx    # Skeleton screen shown during page load (streaming)
-│   └── page.tsx       # Home page (Server Component, revalidate=60)
+│   └── page.tsx       # Home page (dynamic Server Component + Suspense)
 ├── components/        # All UI components (flat, no subdirs)
 ├── lib/               # Business logic, utilities, types
-│   ├── ai/            # AI service layer (Codex-service, minimax-service, ai-factory)
+│   ├── ai/            # AI service layer (claude-service, minimax-service, ai-factory)
 │   ├── deduplication/ # 3-layer deduplication pipeline
 │   ├── import/        # Manual URL import pipeline
 │   ├── types.ts       # ⭐ Shared TypeScript types (NewsItem, NewsSource, NewsCategory)
@@ -375,16 +376,17 @@ Always import types from `@/lib/types` — do not redefine them.
 | `posts` | 当前全量帖子列表（可被 delete 操作更新） |
 | `activeCategory` | 当前选中分类 |
 | `activeSource` | 当前选中信息源 handle |
-| `searchQuery` | 搜索关键词 |
 | `isSourcesListCollapsed` | sidebar 折叠状态 |
 | `showAddSourceModal` | 全局添加信息源弹窗开关 |
 
-筛选逻辑：纯客户端 `useMemo`，不触发服务端请求。
+已加载列表使用客户端 `useMemo` 筛选；「加载更多」通过 `/api/feed` 取得服务端过滤页。MainContent 调用独立 hooks 管理各领域状态，详见 `docs/ARCHITECTURE.md`。
+
+阅读偏好入口为 `ReadingPreferencesPanel`；已移除旧 `FetchPipelinePanel`。采集功能位于 `/admin/pipeline`，使用 `isPipelineAdmin`/`requirePipelineAdmin` 保护。浏览首页不触发自动抓取，长文自动发现默认关闭。新增弹窗使用 `AppModalShell` 的统一焦点管理；同层有 key 的不同弹窗必须使用不同前缀，避免会话刷新时 key 冲突。
 
 ### AI 服务
 
 - **主力**：Minimax（`lib/ai/minimax-service.ts`）
-- **降级**：Codex（`lib/ai/Codex-service.ts`）
+- **降级**：Claude（按配置）（`lib/ai/claude-service.ts`）
 - **入口**：`lib/ai/ai-factory.ts`（含重试和 fallback 逻辑）
 
 ### Tooltip 使用规范
@@ -410,4 +412,3 @@ Always import types from `@/lib/types` — do not redefine them.
 | ⭐ | `tailwind.config.ts` | 仅需确认 token 时查阅 |
 
 **不需要**在开始时读所有组件文件——按任务需要查。
-

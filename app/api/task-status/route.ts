@@ -1,6 +1,9 @@
 import { taskManager } from '@/lib/task-manager-server';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(request: Request) {
+  const { user, errorResponse } = await requireAuth();
+  if (errorResponse) return errorResponse;
   try {
     const { searchParams } = new URL(request.url);
     const taskId = searchParams.get('taskId');
@@ -11,7 +14,7 @@ export async function GET(request: Request) {
       }, { status: 400 });
     }
 
-    const task = await taskManager.getTask(taskId);
+    const task = await taskManager.getTaskForUser(taskId, user.id);
 
     if (!task) {
       return Response.json({
@@ -21,9 +24,9 @@ export async function GET(request: Request) {
 
     // 返回包含 task 的对象
     return Response.json({ task });
-  } catch (error: any) {
+  } catch {
     return Response.json({
-      error: error.message,
+      error: '任务状态暂时无法读取',
     }, { status: 500 });
   }
 }

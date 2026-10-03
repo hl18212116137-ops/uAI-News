@@ -52,7 +52,7 @@ async function translateInsightPayload(
 
   return {
     ...p,
-    review: reviewNext,
+    review: reviewNext == null ? reviewNext : reviewNext.filter((line): line is string => line !== null),
     originalTranslation,
     originalTranslationReferenced,
   }

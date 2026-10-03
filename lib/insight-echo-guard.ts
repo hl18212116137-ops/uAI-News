@@ -61,16 +61,6 @@ export function filterInsightReviewEcho(
   return next.length > 0 ? next : null;
 }
 
-export function sanitizeInsightContextEcho(
-  post: InsightEchoPostSlice,
-  contextMatch: string | null,
-): string | null {
-  if (contextMatch == null || !contextMatch.trim()) return contextMatch;
-  const sources = insightSourceTextsForEcho(post);
-  if (insightLineLooksLikeRawPostEcho(sources, contextMatch)) return null;
-  return contextMatch;
-}
-
 /**
  * 缓存是否仍含有「未经过滤的」要点原文。
  * 用于 MainContent：预取若完全未给 review，仍应走 POST 拉完整分析，否则会一直停在「暂无」且 isLoading 为 false。

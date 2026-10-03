@@ -45,8 +45,7 @@ import {
   maybeAttachAutoLongform,
   type LongformAutoBudget,
 } from '@/lib/longform-auto'
-import type { AIProcessedContent, AIService } from '@/lib/ai/ai-service'
-import { isMostlyChinese } from '@/lib/text-locale'
+import type { AIProcessedContent } from '@/lib/ai/ai-service'
 import { getProcessingBatchFailure, normalizeRequestedRawIds } from '@/lib/raw-post-queue'
 
 export type RefreshProcessResult = {
@@ -115,47 +114,6 @@ function accumulateProcessOutcome(
     acc.errors++
     if (r.errorMessage && acc.samples.length < 3) acc.samples.push(r.errorMessage)
   }
-}
-
-async function ensureChineseTitleSummary(
-  ai: AIService,
-  draft: AIProcessedContent
-): Promise<AIProcessedContent> {
-  let { title, summary, ...rest } = draft
-  if (title.trim() && !isMostlyChinese(title, 0.2)) {
-    try {
-      title = (
-        await ai.translateContent(
-          `将下面这句新闻标题译为简短简体中文标题（不要引号或「标题：」前缀）：\n${title}`
-        )
-      ).trim()
-    } catch {
-      /* 保持原文 */
-    }
-  }
-  if (summary.trim() && !isMostlyChinese(summary, 0.12)) {
-    try {
-      summary = (
-        await ai.translateContent(`将下面这段文字译为简体中文资讯摘要（一段话）：\n${summary}`)
-      ).trim()
-    } catch {
-      /* 保持原文 */
-    }
-  }
-  return { ...rest, title, summary }
-}
-
-async function ensureChineseBody(ai: AIService, body: string): Promise<string> {
-  const t = body.trim()
-  if (!t) return body
-  if (isMostlyChinese(t, 0.1)) return body
-  try {
-    const again = (await ai.translateContent(t)).trim()
-    if (isMostlyChinese(again, 0.08)) return again
-  } catch {
-    /* 保持首次译文 */
-  }
-  return body
 }
 
 async function pushProcessTelemetry(
@@ -428,7 +386,7 @@ export async function runRefreshProcessRawQueue(
   body: RunRefreshProcessBody = {}
 ): Promise<RefreshProcessResult> {
   const silent = body.silent === true
-  const taskId = silent ? CRON_TASK_ID : body.taskId || (await taskManager.createTask())
+  const taskId = silent ? CRON_TASK_ID : body.taskId || (await taskManager.createTask(body.userId))
   const rawLimit = clampProcessRawLimit(body.rawLimit)
   const requestedRawIds = normalizeRequestedRawIds(body.rawIds)
   const userId = typeof body.userId === 'string' && body.userId.trim() ? body.userId.trim() : undefined

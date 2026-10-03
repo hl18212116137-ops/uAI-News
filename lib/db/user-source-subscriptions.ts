@@ -18,11 +18,8 @@ export async function insertUserSourceSubscription(
   sourceId: string,
   sourceHandle: string
 ): Promise<void> {
-  try {
-    await db.insert(userSourceSubscriptions).values({ userId, sourceId, sourceHandle })
-  } catch (e: any) {
-    if (e?.code !== '23505') throw e
-  }
+  await db.insert(userSourceSubscriptions).values({ userId, sourceId, sourceHandle })
+    .onConflictDoUpdate({ target: [userSourceSubscriptions.userId, userSourceSubscriptions.sourceId], set: { sourceHandle } })
 }
 
 export async function deleteUserSourceSubscription(

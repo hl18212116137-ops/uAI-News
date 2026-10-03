@@ -2,7 +2,6 @@ import type { NewsItem } from "@/lib/types";
 
 export const HOME_FEED_PAGE_SIZE = 12;
 export const LONGFORM_FEED_PAGE_SIZE = 12;
-export const HOME_RECOMMENDED_PREFETCH_LIMIT = 48;
 const FEED_CONTENT_PREVIEW_CHARS = 420;
 const FEED_ORIGINAL_PREVIEW_CHARS = 220;
 const FEED_REFERENCED_PREVIEW_CHARS = 420;
@@ -25,9 +24,7 @@ export function stripLongformPosts(posts: NewsItem[]) {
 }
 
 export function clampFeedPageLimit(value: unknown, fallback = HOME_FEED_PAGE_SIZE) {
-  if (value == null || (typeof value === "string" && value.trim() === "")) {
-    return fallback;
-  }
+  if (value == null || String(value).trim() === "") return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(Math.max(Math.trunc(parsed), 1), 40);
@@ -36,7 +33,7 @@ export function clampFeedPageLimit(value: unknown, fallback = HOME_FEED_PAGE_SIZ
 export function clampFeedPageOffset(value: unknown) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
-  return Math.max(Math.trunc(parsed), 0);
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.max(Math.trunc(parsed), 0));
 }
 
 function trimPreviewText(value: string, maxChars: number): string {
@@ -61,7 +58,7 @@ export function toFeedListItem(post: NewsItem): NewsItem {
   };
 }
 
-function normalizeHandleForFilter(handle: unknown): string {
+export function normalizeHandleForFilter(handle: unknown): string {
   return String(handle ?? "").trim().replace(/^@+/, "").toLowerCase();
 }
 
@@ -85,7 +82,7 @@ export function filterFeedPosts(posts: NewsItem[], filters?: FeedPageFilters): N
     }
 
     if (lowerQuery) {
-      const source = typeof post.source === "string" ? post.source : post.source;
+      const source = post.source;
       const matches = [
         post.title,
         post.summary,
@@ -126,4 +123,18 @@ export function makeFilteredFeedPage(
   filters?: FeedPageFilters
 ): FeedPage {
   return makeFeedPage(filterFeedPosts(posts, filters), offset, limit);
+}
+
+/** Shared contract for public and authenticated feed endpoints. */
+export function parseFeedPageQuery(searchParams: URLSearchParams) {
+  return {
+    offset: clampFeedPageOffset(searchParams.get("offset")),
+    limit: clampFeedPageLimit(searchParams.get("limit")),
+    filters: {
+      sourceHandle: searchParams.get("source") || undefined,
+      category: searchParams.get("category") || undefined,
+      searchQuery: searchParams.get("q") || undefined,
+    } satisfies FeedPageFilters,
+    prioritizeRecentlyFetched: searchParams.get("fresh") === "1",
+  };
 }

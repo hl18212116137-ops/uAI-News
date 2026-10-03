@@ -1,7 +1,8 @@
 import 'server-only'
 import { db } from '@/lib/db/drizzle'
 import { sources } from '@/lib/db/schema'
-import { eq, desc, and } from 'drizzle-orm'
+import { eq, desc, and, sql } from 'drizzle-orm'
+import { parseXProfileInput } from '@/lib/source-input'
 import { resolveSourceProfile } from '@/lib/source-profile'
 import { persistableSourceAvatarUrl } from '@/lib/source-avatar'
 
@@ -79,86 +80,25 @@ export async function getSources(): Promise<Source[]> {
   }
 }
 
-/** 将用户输入规范为可抓取的 X 主页 URL（支持 @handle、裸 handle、无协议链接） */
-export function normalizeSourceInputUrl(input: string): string {
-  const trimmed = input.trim()
-  if (!trimmed) {
-    throw new Error('请输入链接地址')
-  }
-
-  if (trimmed.startsWith('@')) {
-    const handle = trimmed.slice(1).split(/[/?#]/)[0]?.trim()
-    if (!handle) throw new Error('无法从 @用户名 中识别 handle')
-    return `https://x.com/${handle}`
-  }
-
-  if (/^[A-Za-z0-9_]{1,15}$/.test(trimmed)) {
-    return `https://x.com/${trimmed}`
-  }
-
-  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed.replace(/^\/+/, '')}`
-  return withProtocol
-}
-
-/**
- * 从URL提取源信息
- */
-export async function extractSourceFromUrl(url: string): Promise<Partial<Source>> {
-  const profileUrl = normalizeSourceInputUrl(url)
-  const normalizedUrl = profileUrl.toLowerCase()
-
-  let platform: PlatformType
-  let handle: string
-  let name: string
+/** Resolve existing sources before calling X; adding a subscription never changes global settings. */
+export async function extractSourceFromUrl(input: string): Promise<Partial<Source>> {
+  const { handle, url } = parseXProfileInput(input)
+  const existing = await getSourceByHandleAndPlatform(handle, 'X')
+  if (existing) return existing
+  let name = handle
   let avatar: string | undefined
   let description: string | undefined
-
-  // X / Twitter
-  if (normalizedUrl.includes('x.com') || normalizedUrl.includes('twitter.com')) {
-    platform = 'X'
-
-    const urlObj = new URL(profileUrl)
-    const pathParts = urlObj.pathname.split('/').filter(p => p)
-
-    if (pathParts.length === 0) {
-      throw new Error('无法从URL中提取用户名')
-    }
-
-    handle = pathParts[0].replace(/^@/, '')
-    if (!handle) {
-      throw new Error('无法从URL中提取用户名')
-    }
-
-    try {
-      const { fetchUserInfoFromX } = await import('./x')
-      const userInfo = await fetchUserInfoFromX(handle)
-      name = userInfo.name
-      avatar = userInfo.avatar
-      description = userInfo.description
-    } catch (error) {
-      console.error('Failed to fetch user info, using handle as name:', error)
-      name = handle
-    }
-  } else {
-    throw new Error('暂不支持该平台')
+  try {
+    const { fetchUserInfoFromX } = await import('./x')
+    const profile = await fetchUserInfoFromX(handle)
+    name = profile.name; avatar = profile.avatar; description = profile.description
+  } catch (error) {
+    console.warn('Unable to load source profile:', error)
   }
-
-  const profile = resolveSourceProfile({ handle, platform, avatar, description })
-
+  const profile = resolveSourceProfile({ handle, platform: 'X', avatar, description })
   return {
-    sourceType: 'blogger',
-    platform,
-    handle,
-    name,
-    avatar: profile.avatar,
-    description: profile.description,
-    url: profileUrl,
-    enabled: true,
-    addedAt: new Date().toISOString(),
-    fetchConfig: {
-      method: 'api',
-      interval: 60,
-    },
+    sourceType: 'blogger', platform: 'X', handle, name, ...profile, url,
+    enabled: true, addedAt: new Date().toISOString(), fetchConfig: { method: 'api', interval: 60 },
   }
 }
 
@@ -170,7 +110,7 @@ export async function getSourceByHandleAndPlatform(
     const row = await db
       .select()
       .from(sources)
-      .where(and(eq(sources.handle, handle), eq(sources.platform, platform)))
+      .where(and(sql`lower(${sources.handle}) = ${handle.trim().toLowerCase()}`, eq(sources.platform, platform)))
       .limit(1)
       .then((r) => r[0] ?? null)
 
@@ -187,28 +127,10 @@ export async function getSourceByHandleAndPlatform(
 export async function addSource(source: Source): Promise<Source> {
   try {
     const existing = await getSourceByHandleAndPlatform(source.handle, source.platform)
+    if (existing) return existing
     const profile = resolveSourceProfile({
-      handle: source.handle,
-      platform: source.platform,
-      avatar: source.avatar ?? existing?.avatar,
-      description: source.description ?? existing?.description,
+      handle: source.handle, platform: source.platform, avatar: source.avatar, description: source.description,
     })
-
-    if (existing) {
-      const persistedAvatar = persistableSourceAvatarUrl(profile.avatar)
-      const next: Source = {
-        ...existing,
-        ...source,
-        id: existing.id,
-        avatar: persistedAvatar ?? undefined,
-        description: profile.description,
-      }
-      await updateSource(existing.id, {
-        ...next,
-        avatar: persistedAvatar ?? '',
-      })
-      return next
-    }
 
     const [row] = await db
       .insert(sources)

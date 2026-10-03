@@ -18,6 +18,7 @@ export type FetchPipelineTelemetry = {
 
 export interface Task {
   id: string
+  ownerId?: string
   status: TaskStatus
   progress: number
   message: string
@@ -43,11 +44,12 @@ export interface TaskStore {
 export class TaskManager {
   constructor(private readonly store: TaskStore) {}
 
-  async createTask(): Promise<string> {
-    const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+  async createTask(ownerId?: string): Promise<string> {
+    const id = `task_${crypto.randomUUID()}`
     const now = Date.now()
     await this.store.create({
       id,
+      ownerId,
       status: 'pending',
       progress: 0,
       message: '准备开始抓取...',
@@ -65,6 +67,11 @@ export class TaskManager {
 
   getTask(id: string): Promise<Task | null> {
     return this.store.get(id)
+  }
+
+  async getTaskForUser(id: string, userId: string): Promise<Task | null> {
+    const task = await this.store.get(id)
+    return task?.ownerId === userId ? task : null
   }
 
   async cancelTask(id: string): Promise<boolean> {
@@ -97,6 +104,7 @@ export class MemoryTaskStore implements TaskStore {
   async update(taskId: string, updates: Partial<Task>): Promise<Task | null> {
     const task = this.tasks.get(taskId)
     if (!task) return null
+    if (task.status === 'cancelled') return structuredClone(task)
 
     const updated = {
       ...task,

@@ -1,5 +1,6 @@
 import { runRefreshProcessRawQueue } from '@/lib/services/process-service'
 import { revalidateHomeFeedCaches } from '@/lib/home-cache-invalidation'
+import { requirePipelineAdmin } from '@/lib/pipeline-admin'
 
 export const maxDuration = 60
 
@@ -8,9 +9,11 @@ export const maxDuration = 60
  * 只负责 AI 处理，从 Supabase raw_posts 读取，写入 news_items
  */
 export async function POST(request: Request) {
+  const { user, errorResponse } = await requirePipelineAdmin()
+  if (errorResponse) return errorResponse
   try {
     const body = await request.json().catch(() => ({}))
-    const data = await runRefreshProcessRawQueue(body)
+    const data = await runRefreshProcessRawQueue({ userId: user.id, rawLimit: typeof body?.rawLimit === 'number' ? body.rawLimit : undefined })
     if (data?.success) {
       revalidateHomeFeedCaches()
     }

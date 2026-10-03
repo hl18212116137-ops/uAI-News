@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "katex/dist/katex.min.css";
 import "./globals.css";
+import WebVitalsReporter from "@/components/WebVitalsReporter";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -76,6 +77,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
+        {process.env.NEXT_PUBLIC_WEB_VITALS_LOG === "1" ? <WebVitalsReporter /> : null}
         {children}
         {modal}
       </body>

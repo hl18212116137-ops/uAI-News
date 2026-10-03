@@ -1,5 +1,6 @@
+import { requirePipelineAdmin } from '@/lib/pipeline-admin'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, getCurrentUser } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth'
 import {
   listSources,
   addSourceFromUrlWithBackgroundFetch,
@@ -25,10 +26,11 @@ export async function GET() {
 
 /**
  * POST /api/sources
- * 添加新源（从URL提取博主信息）—— 允许未登录用户添加
+ * 添加新源（从URL提取博主信息）—— 需要登录
  */
 export async function POST(request: NextRequest) {
-  const user = await getCurrentUser()
+  const { user, errorResponse } = await requireAuth()
+  if (errorResponse) return errorResponse
 
   try {
     const body = await request.json()
@@ -40,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     const { source, taskId, isLoggedIn, message } = await addSourceFromUrlWithBackgroundFetch({
       url,
-      user: user ? { id: user.id } : null,
+      user: { id: user.id },
     })
     revalidateHomeSourceCaches()
 
@@ -60,10 +62,10 @@ export async function POST(request: NextRequest) {
 
 /**
  * DELETE /api/sources?id=xxx
- * 删除源 —— 需要登录
+ * 删除源 —— 仅管理员
  */
 export async function DELETE(request: NextRequest) {
-  const { errorResponse } = await requireAuth()
+  const { errorResponse } = await requirePipelineAdmin()
   if (errorResponse) return errorResponse
 
   try {
@@ -91,10 +93,10 @@ export async function DELETE(request: NextRequest) {
 
 /**
  * PATCH /api/sources
- * 更新源（如启用/禁用）—— 需要登录
+ * 更新源（如启用/禁用）—— 仅管理员
  */
 export async function PATCH(request: NextRequest) {
-  const { errorResponse } = await requireAuth()
+  const { errorResponse } = await requirePipelineAdmin()
   if (errorResponse) return errorResponse
 
   try {
@@ -121,3 +123,5 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 400 })
   }
 }
+
+export const maxDuration = 300

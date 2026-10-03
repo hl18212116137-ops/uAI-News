@@ -22,13 +22,3 @@ export interface SimilarityResult {
   similarity: number;             // 0-100
   reason: string;                 // 相似原因说明
 }
-
-/**
- * 语义去重配置
- */
-export interface SemanticDedupConfig {
-  enabled: boolean;               // 是否启用
-  timeWindowHours: number;        // 时间窗口（小时）
-  similarityThreshold: number;    // 相似度阈值（0-100）
-  batchSize: number;              // 批量处理大小
-}

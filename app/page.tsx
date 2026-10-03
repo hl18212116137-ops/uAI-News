@@ -10,7 +10,6 @@ import { createHomePerf } from "@/lib/home-perf";
 import {
   getUserSubscribedHandles,
   getDefaultSubscribedHandles,
-  ensureDefaultSubscriptions,
 } from "@/lib/subscriptions";
 
 const getCachedDefaultSubscribedHandles = unstable_cache(
@@ -26,12 +25,8 @@ export default async function Home() {
   perf.segment("session");
 
   const guestHandles = user ? [] : await getCachedDefaultSubscribedHandles();
-  let subscribedHandles = user ? await getUserSubscribedHandles(user.id) : guestHandles;
+  const subscribedHandles = user ? await getUserSubscribedHandles(user.id) : guestHandles;
 
-  if (user && subscribedHandles.length === 0) {
-    await ensureDefaultSubscriptions(user.id, 3);
-    subscribedHandles = await getUserSubscribedHandles(user.id);
-  }
   perf.segment("handles");
   perf.logTotal();
 

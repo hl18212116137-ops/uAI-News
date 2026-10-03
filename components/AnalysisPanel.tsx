@@ -1099,11 +1099,7 @@ export default function AnalysisPanel({
               解读
             </span>
           </div>
-          <div className="flex shrink-0 items-center justify-center rounded-[2px] bg-[#1A1C1E] px-2 py-0.5">
-            <span className="font-sans text-[11px] font-bold uppercase leading-none tracking-[0.04em] text-[#FFB224]">
-              专业版
-            </span>
-          </div>
+
         </div>
 
         <div className="relative flex min-h-[24px] w-full shrink-0 items-center justify-between">

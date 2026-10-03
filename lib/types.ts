@@ -112,40 +112,6 @@ export interface PostAnalysis {
   highlights?: string[];
 }
 
-/**
- * 事件簇（Phase 2 新增）
- * 用于聚合描述同一事件的多条推文
- */
-export interface EventCluster {
-  id: string;
-  canonicalSummary: string;
-  entities: string[];
-  eventType: string;
-  representativePostId: string;
-  relatedPostIds: string[];       // 相关讨论
-  createdAt: string;
-}
-
-/**
- * 处理状态索引
- * 用于增量处理，跟踪已处理的推文
- */
-export interface ProcessedIndex {
-  version: string;
-  lastProcessedAt: string;
-  totalProcessed: number;
-  stats: {
-    totalRawPosts: number;
-    processedPosts: number;
-    finalPosts: number;
-  };
-  index: {
-    ids: string[];      // 已处理的推文ID
-    urls: string[];     // 已处理的URL
-    hashes: string[];   // 已处理的内容哈希
-  };
-}
-
 /** INSIGHT 面板 API 返回结构（与 news_items.insight_json 分桶值一致） */
 export type InsightAnalysisPayload = {
   scores: number | null;
@@ -154,4 +120,19 @@ export type InsightAnalysisPayload = {
   originalTranslation: string | null;
   /** 嵌套推文正文的中文译文（无嵌套时为 null） */
   originalTranslationReferenced: string | null;
+};
+
+/** Serializable source row shared by the homepage, subscriptions and source lists. */
+export type SourceListItem = {
+  id: string;
+  handle: string;
+  name: string;
+  url?: string;
+  avatar?: string;
+  description?: string;
+  enabled?: boolean;
+  postCount: number;
+  totalPostCount?: number;
+  latestPostTime?: string;
+  sourceType?: 'blogger' | 'media' | 'academic';
 };
