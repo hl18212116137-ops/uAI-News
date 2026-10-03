@@ -2,8 +2,6 @@
 
 import { memo, useState, useMemo } from "react";
 import SourceAvatarImg from "./SourceAvatarImg";
-import type { AuthUser } from "@/lib/auth";
-type User = AuthUser;
 import Tooltip from "./Tooltip";
 import { resolveSourceHomeUrl } from "@/lib/source-home-url";
 import {
@@ -19,18 +17,7 @@ import {
   SourcesSearchGlyph,
 } from "@/components/sources-sidebar-icons";
 
-type Source = {
-  handle: string;
-  name: string;
-  url?: string;
-  avatar?: string;
-  description?: string;
-  postCount: number;
-  totalPostCount?: number;
-  latestPostTime?: string;
-  id: string;
-  sourceType?: 'blogger' | 'media' | 'academic';
-};
+import type { SourceListItem as Source } from "@/lib/types";
 
 type SourcesListProps = {
   sources: Source[];              // 已订阅的信息源
@@ -39,9 +26,7 @@ type SourcesListProps = {
   onAddSource?: () => void;
   /** 侧栏单源后台抓取中：该源 postCount 位显示转圈 */
   fetchingSourceIds?: Set<string>;
-  user: User | null;              // 当前用户
   isCollapsed: boolean;            // 受控状态：是否折叠
-  onToggleCollapse: () => void;    // 切换折叠状态的回调
 };
 
 const SOURCE_SECTIONS = [
@@ -199,9 +184,7 @@ function SourcesList({
   onSourceSelect,
   onAddSource,
   fetchingSourceIds,
-  user,
   isCollapsed,
-  onToggleCollapse,
 }: SourcesListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [openSections, setOpenSections] = useState<Record<"blogger" | "media" | "academic", boolean>>({
@@ -343,6 +326,7 @@ function SourcesList({
             const open = openSections[section.id];
             const list = filteredByType[section.id];
             const count = typeCounts[section.id];
+            if (count === 0) return null;
             return (
               <div key={section.id} data-name={section.label} data-node-id={section.sectionNode} className="flex w-full flex-col items-start">
                 <button

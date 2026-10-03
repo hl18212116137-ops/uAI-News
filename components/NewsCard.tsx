@@ -189,11 +189,11 @@ function NewsCard({
                 <span className="flex min-h-[18px] items-center font-mono text-[12px] uppercase leading-[18px] tracking-[0.08em] text-[rgba(161,161,170,0.5)]">
                   /
                 </span>
-                <Tooltip content={passPending ? "正在记录 PASS" : "PASS 这条，后续少推荐类似内容"}>
+                <Tooltip content={passPending ? "正在隐藏" : "不感兴趣，后续少推荐类似内容"}>
                   <button
                     type="button"
-                    className="btn-press inline-flex min-h-[18px] shrink-0 items-center gap-1 rounded-[3px] bg-transparent px-1.5 font-mono text-[10px] font-bold uppercase leading-[14px] tracking-[0.06em] text-[#99a1af] opacity-[0.65] transition-[background-color,color,opacity] hover:bg-primary-50 hover:text-primary-600 hover:opacity-100 focus-visible:bg-primary-50 focus-visible:text-primary-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 disabled:cursor-wait disabled:opacity-70 sm:opacity-[0.45] sm:group-hover/card:opacity-75"
-                    aria-label="PASS 这条推文，后续少推荐类似内容"
+                    className="btn-press inline-flex min-h-[18px] shrink-0 items-center gap-1 rounded-[3px] bg-transparent px-1.5 font-mono text-[10px] font-bold uppercase leading-[14px] tracking-[0.06em] text-[#99a1af] opacity-[0.65] transition-[background-color,color,opacity] sm:opacity-[0.45] sm:group-hover/card:opacity-75 hover:opacity-100 focus-visible:opacity-100 hover:bg-primary-50 hover:text-primary-600 focus-visible:bg-primary-50 focus-visible:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 disabled:cursor-wait disabled:opacity-70"
+                    aria-label="不感兴趣，后续少推荐类似内容"
                     aria-busy={passPending}
                     disabled={passPending}
                     onClick={(e) => {
@@ -205,7 +205,7 @@ function NewsCard({
                     <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 6 6 18M6 6l12 12" />
                     </svg>
-                    PASS
+                    不感兴趣
                   </button>
                 </Tooltip>
               </span>

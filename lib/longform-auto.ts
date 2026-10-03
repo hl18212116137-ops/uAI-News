@@ -45,7 +45,7 @@ function envBool(name: string, fallback: boolean): boolean {
 }
 
 function isAutoEnabled(): boolean {
-  return envBool('LONGFORM_AUTO_ENABLED', true)
+  return envBool('LONGFORM_AUTO_ENABLED', false)
 }
 
 export function createLongformAutoBudget(
@@ -128,10 +128,6 @@ function uniqueUrls(values: unknown[]): string[] {
     out.push(url)
   }
   return out
-}
-
-export function normalizeLongformSignalUrls(value: unknown): string[] {
-  return uniqueUrls(valuesToStrings(value))
 }
 
 function uniqueText(values: Array<string | undefined | null>): string {

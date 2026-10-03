@@ -1,17 +1,11 @@
 import StatsCards from "./StatsCards";
 
-type SiteHeaderProps = {
-  stats: {
-    bloggerCount: number;
-    mediaCount: number;
-    academicCount: number;
-    totalPosts: number;
-    todayPosts: number;
-  };
-};
+import type { Stats } from "@/lib/stats";
+
+type SiteHeaderProps = { stats: Stats; unavailable?: boolean };
 
 /** Figma uAI News 37:4684–4689（Title）+ 37:4690 HorizontalBorder（Stats 由 StatsCards 承接） */
-export default function SiteHeader({ stats }: SiteHeaderProps) {
+export default function SiteHeader({ stats, unavailable }: SiteHeaderProps) {
   return (
     <header data-name="Site header" className="w-full text-left">
       <div
@@ -49,7 +43,7 @@ export default function SiteHeader({ stats }: SiteHeaderProps) {
         className="box-border flex h-[64px] max-h-[64px] min-h-[64px] w-full shrink-0 flex-col overflow-hidden pt-[24px]"
       >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <StatsCards {...stats} />
+          <StatsCards {...stats} unavailable={unavailable} />
         </div>
       </div>
     </header>

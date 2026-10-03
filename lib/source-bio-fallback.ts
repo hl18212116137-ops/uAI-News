@@ -1,4 +1,3 @@
-import { formatTypography } from "@/lib/utils";
 import { RECOMMENDATION_POOL } from "@/lib/recommendation-pool-data";
 
 /**
@@ -45,63 +44,4 @@ export function resolveSourceDescription(
 
 export function isGenericSourceDescriptionFallback(description: unknown): boolean {
   return String(description ?? "").trim() === GENERIC_SOURCE_DESCRIPTION_FALLBACK;
-}
-
-/** @deprecated 请使用 resolveSourceDescription */
-export function defaultBioForSourceNotInDb(handle: string): string {
-  return resolveSourceDescription(null, handle);
-}
-
-/** 优先使用数据库简介，否则走 handle 兜底 */
-export function sourceBioDisplayLine(description: string | undefined | null, handle: string): string {
-  const line = resolveSourceDescription(description, handle);
-  return formatTypography(line);
-}
-
-const MAX_SOURCE_BIO_TAGS = 3;
-
-/** 按常见分隔符拆成标签；无分隔符则整段算一条 */
-function splitBioIntoTags(formattedLine: string): string[] {
-  const t = formattedLine.trim();
-  if (!t) return [];
-  if (t.includes("、"))
-    return t
-      .split("、")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  if (/·/.test(t))
-    return t
-      .split(/\s*·\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  if (/•/.test(t))
-    return t
-      .split(/\s*•\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  if (/\|/.test(t))
-    return t
-      .split(/\s*\|\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  if (/,/.test(t))
-    return t
-      .split(/\s*,\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  return [t];
-}
-
-/**
- * SOURCES 作者简介：最多 `maxTags` 条，用 ` · ` 连接（与稿面一致），供单行展示
- */
-export function sourceBioTagsLine(
-  description: string | undefined | null,
-  handle: string,
-  maxTags: number = MAX_SOURCE_BIO_TAGS,
-): string {
-  const line = sourceBioDisplayLine(description, handle);
-  const tags = splitBioIntoTags(line);
-  if (tags.length === 0) return resolveSourceDescription(null, handle);
-  return tags.slice(0, maxTags).join(" · ");
 }

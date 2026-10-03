@@ -305,17 +305,46 @@ export function areNewsItemsNearDuplicate(a: NewsItem, b: NewsItem): boolean {
   return eventTokensAreDuplicate(newsItemEventTokens(a), newsItemEventTokens(b));
 }
 
+/**
+ * Preserve first-wins semantics while tokenizing each candidate once. The inverted
+ * index only compares retained stories sharing at least three event tokens (the
+ * minimum overlap accepted by eventTokensAreDuplicate).
+ */
 export function dedupeNewsItemsForDisplay<T extends NewsItem>(items: T[]): T[] {
   const seenKeys = new Set<string>();
-  const out: T[] = [];
+  const retained: { item: T; tokens: Set<string>; time: number | null }[] = [];
+  const byToken = new Map<string, number[]>();
 
   for (const item of items) {
     const keys = newsItemDedupeKeys(item);
     if (keys.some((key) => seenKeys.has(key))) continue;
-    if (out.some((existing) => areNewsItemsNearDuplicate(existing, item))) continue;
-    out.push(item);
+    const tokens = newsItemEventTokens(item);
+    const time = publishedTimeMs(item.publishedAt);
+    const overlaps = new Map<number, number>();
+    for (const token of tokens) {
+      for (const index of byToken.get(token) ?? []) {
+        overlaps.set(index, (overlaps.get(index) ?? 0) + 1);
+      }
+    }
+    let duplicate = false;
+    for (const [index, shared] of overlaps) {
+      if (shared < 3) continue;
+      const existing = retained[index];
+      if (time != null && existing.time != null && Math.abs(time - existing.time) > EVENT_DEDUPE_WINDOW_MS) continue;
+      if (eventTokensAreDuplicate(tokens, existing.tokens)) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (duplicate) continue;
+    const index = retained.length;
+    retained.push({ item, tokens, time });
     for (const key of keys) seenKeys.add(key);
+    for (const token of tokens) {
+      const indexes = byToken.get(token);
+      if (indexes) indexes.push(index);
+      else byToken.set(token, [index]);
+    }
   }
-
-  return out;
+  return retained.map(({ item }) => item);
 }

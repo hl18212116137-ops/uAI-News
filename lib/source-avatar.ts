@@ -132,3 +132,8 @@ export function expandHandleQueryVariants(handles: string[]): string[] {
   }
   return [...out]
 }
+
+/** Keep DB spelling: case-insensitive cache canonicalization can lose CamelCase handles in SQL IN queries. */
+export function sourceHandlesCacheKey(handles: string[]): string {
+  return [...new Set(handles.map((handle) => handle.trim()).filter(Boolean))].sort().join("\n")
+}

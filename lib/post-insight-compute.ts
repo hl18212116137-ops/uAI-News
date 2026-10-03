@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createHash } from "crypto";
 import { getPostById } from "@/lib/db";
 import { getDefaultAIService } from "@/lib/ai/ai-factory";
 import { isMostlyChinese, needsTranslateToChineseForInsight } from "@/lib/text-locale";
@@ -113,8 +112,4 @@ export async function computeInsightAnalysis(args: {
     originalTranslation,
     originalTranslationReferenced,
   };
-}
-
-export function insightSourcesSignature(subscribedSourcesLines: string): string {
-  return createHash("sha256").update(subscribedSourcesLines).digest("hex").slice(0, 32);
 }

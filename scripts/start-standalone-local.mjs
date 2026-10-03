@@ -7,8 +7,6 @@ import dotenv from 'dotenv'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const standaloneDir = path.join(root, '.next', 'standalone')
 const standaloneServer = path.join(standaloneDir, 'server.js')
-const runtimeDir = path.join(root, '.next-standalone-runtime')
-const runtimeServer = path.join(runtimeDir, 'server.js')
 
 function assertPathInsideRoot(targetPath) {
   const relative = path.relative(root, path.resolve(targetPath))
@@ -18,7 +16,7 @@ function assertPathInsideRoot(targetPath) {
 }
 
 if (!fs.existsSync(standaloneServer)) {
-  throw new Error('Missing .next/standalone/server.js. Run npm.cmd run build first.')
+  throw new Error('Missing .next/standalone/server.js. Run npm run build first.')
 }
 
 dotenv.config({ path: path.join(root, '.env.local') })
@@ -33,20 +31,19 @@ if (!process.env.NEXTAUTH_URL || localAuthUrl.test(process.env.NEXTAUTH_URL)) {
 
 const staticSource = path.join(root, '.next', 'static')
 if (!fs.existsSync(staticSource)) {
-  throw new Error('Missing .next/static. Run npm.cmd run build first.')
+  throw new Error('Missing .next/static. Run npm run build first.')
 }
 
-assertPathInsideRoot(runtimeDir)
-fs.rmSync(runtimeDir, { recursive: true, force: true })
-fs.cpSync(standaloneDir, runtimeDir, { recursive: true, force: true })
-fs.cpSync(staticSource, path.join(runtimeDir, '.next', 'static'), { recursive: true, force: true })
-
+// Standalone already contains the traced dependencies. Copy assets only;
+// duplicating its node_modules on every start doubles disk and startup work.
+assertPathInsideRoot(standaloneDir)
+fs.cpSync(staticSource, path.join(standaloneDir, '.next', 'static'), { recursive: true, force: true })
 const publicSource = path.join(root, 'public')
 if (fs.existsSync(publicSource)) {
-  fs.cpSync(publicSource, path.join(runtimeDir, 'public'), { recursive: true, force: true })
+  fs.cpSync(publicSource, path.join(standaloneDir, 'public'), { recursive: true, force: true })
 }
 
-const child = spawn(process.execPath, [runtimeServer], {
+const child = spawn(process.execPath, [standaloneServer], {
   cwd: root,
   env: process.env,
   stdio: 'inherit',

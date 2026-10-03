@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: true, ...page });
   } catch {
     return NextResponse.json(
-      { success: false, error: "Failed to load longform posts" },
+      { success: false, error: "长文暂时无法加载，请稍后重试。" },
       { status: 500 }
     );
   }

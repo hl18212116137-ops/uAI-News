@@ -9,7 +9,7 @@ import {
 } from "react";
 import { NewsItem } from "@/lib/types";
 import NewsCard from "./NewsCard";
-import EmptyState from "./EmptyState";
+import EmptyState, { type FeedEmptyStatus } from "./EmptyState";
 
 type NewsListProps = {
   posts: NewsItem[];
@@ -21,7 +21,9 @@ type NewsListProps = {
   newPostIds?: Set<string>;
   analysisActivePostId?: string | null;
   onAnalysisToggle?: (postId: string) => void;
-  emptyFeedAwaitingFetch?: boolean;
+  emptyStatus?: FeedEmptyStatus;
+  onRetry?: () => void;
+  retrying?: boolean;
 };
 
 export default memo(NewsList);
@@ -36,7 +38,7 @@ function NewsList({
   newPostIds,
   analysisActivePostId = null,
   onAnalysisToggle,
-  emptyFeedAwaitingFetch = false,
+  emptyStatus, onRetry, retrying,
 }: NewsListProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -99,21 +101,12 @@ function NewsList({
   useEffect(() => {
     const listEl = listRef.current;
     if (!listEl) return;
-    const scrollParent = listEl.closest(".main-content-scroll");
-    const onScrollOrResize = () => scheduleBarUpdate();
-    if (scrollParent) {
-      scrollParent.addEventListener("scroll", onScrollOrResize, {
-        passive: true,
-      });
-    }
-    window.addEventListener("resize", onScrollOrResize, { passive: true });
-    const ro = new ResizeObserver(onScrollOrResize);
+    const onResize = () => scheduleBarUpdate();
+    window.addEventListener("resize", onResize, { passive: true });
+    const ro = new ResizeObserver(onResize);
     ro.observe(listEl);
     return () => {
-      if (scrollParent) {
-        scrollParent.removeEventListener("scroll", onScrollOrResize);
-      }
-      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("resize", onResize);
       ro.disconnect();
       if (barRafRef.current != null) {
         cancelAnimationFrame(barRafRef.current);
@@ -123,7 +116,7 @@ function NewsList({
   }, [scheduleBarUpdate]);
 
   if (posts.length === 0) {
-    return <EmptyState awaitingFetch={emptyFeedAwaitingFetch} />;
+    return <EmptyState status={emptyStatus} onRetry={onRetry} retrying={retrying} />;
   }
 
   return (

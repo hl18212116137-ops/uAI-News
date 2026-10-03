@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useModalFocus } from "@/hooks/useModalFocus";
 
 export type AppModalShellProps = {
   isOpen: boolean;
@@ -33,6 +34,7 @@ export default function AppModalShell({
   panelVariant = "default",
   ariaLabelledBy,
 }: AppModalShellProps) {
+  const panelRef = useModalFocus(isOpen, onClose, disableBackdropClick);
   if (!isOpen) return null;
 
   const panelBase = panelVariant === "large" ? "modal-panel-lg" : "modal-panel";
@@ -57,6 +59,8 @@ export default function AppModalShell({
         disabled={disableBackdropClick}
       />
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className={[
           panelBase,
           "relative z-[1] w-full modal-panel-enter",

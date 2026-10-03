@@ -1,5 +1,5 @@
 import type { NewsItem } from '@/lib/types'
-import { isDemoPostId } from '@/lib/demo-feed-posts'
+import { isPlaceholderNewsPostId } from '@/lib/news-post-url'
 
 /** 「推荐订阅」区块每次展示条数（客户端/服务端共用） */
 export const RECOMMENDED_SIDEBAR_LIMIT = 4
@@ -22,7 +22,7 @@ export function getFeedMinImportanceScore(): number {
 export function filterPostsForPublicFeed(posts: NewsItem[]): NewsItem[] {
   const minScore = getFeedMinImportanceScore()
   return posts.filter((p) => {
-    if (isDemoPostId(p.id)) return false
+    if (isPlaceholderNewsPostId(p.id)) return false
     if (isPlaceholderNewsItem(p)) return false
     const score = p.importanceScore
     if (typeof score === 'number' && Number.isFinite(score)) {

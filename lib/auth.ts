@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 
@@ -15,9 +16,9 @@ type AuthFailure = { user: null; errorResponse: Response }
  * 在需要登录的 API handler 开头调用，未登录时返回 401
  */
 export async function requireAuth(): Promise<AuthSuccess | AuthFailure> {
-  const session = await getServerSession(authOptions)
+  const user = await getCurrentUser()
 
-  if (!session?.user) {
+  if (!user) {
     return {
       user: null,
       errorResponse: Response.json(
@@ -27,19 +28,13 @@ export async function requireAuth(): Promise<AuthSuccess | AuthFailure> {
     }
   }
 
-  const user: AuthUser = {
-    id: session.user.id,
-    email: session.user.email!,
-    name: session.user.name,
-  }
-
   return { user, errorResponse: null }
 }
 
 /**
  * 在 Server Component 中获取当前用户（不抛 401，返回 null 表示未登录）
  */
-export async function getCurrentUser(): Promise<AuthUser | null> {
+export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
   const session = await getServerSession(authOptions)
   if (!session?.user) return null
 
@@ -48,4 +43,4 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     email: session.user.email!,
     name: session.user.name,
   }
-}
+})

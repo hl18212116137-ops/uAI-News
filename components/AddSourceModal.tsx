@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import AppModalShell from "./AppModalShell";
 import SourceRecommendSection, { type RecommendSourceRow } from "@/components/SourceRecommendSection";
 import { RECOMMENDED_SIDEBAR_LIMIT } from "@/lib/feed-quality";
 
@@ -40,13 +41,8 @@ export default function AddSourceModal({
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isPositionReady, setIsPositionReady] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isRefreshingRecommended, setIsRefreshingRecommended] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
-  const panelRef = useRef<HTMLDivElement | null>(null);
   const recommendedRequestRef = useRef<Promise<RecommendSourceRow[] | null> | null>(null);
   const router = useRouter();
 
@@ -107,61 +103,6 @@ export default function AddSourceModal({
     }
   }, [recommendedSources, onRecommendedChange]);
 
-  useLayoutEffect(() => {
-    if (!isOpen) {
-      setIsPositionReady(false);
-      return;
-    }
-
-    const modalWidth = Math.min(480, window.innerWidth - 32);
-    const modalHeight = Math.min(560, window.innerHeight * 0.85);
-    const centerX = Math.max(16, (window.innerWidth - modalWidth) / 2);
-    const centerY = Math.max(16, (window.innerHeight - modalHeight) / 2);
-    setPosition({ x: centerX, y: centerY });
-    setIsPositionReady(true);
-  }, [isOpen]);
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDragging(true);
-    setDragOffset({
-      x: e.clientX - position.x,
-      y: e.clientY - position.y,
-    });
-  };
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const panelRect = panelRef.current?.getBoundingClientRect();
-      const panelWidth = panelRect?.width ?? Math.min(480, window.innerWidth - 32);
-      const panelHeight = panelRect?.height ?? Math.min(560, window.innerHeight * 0.85);
-      const nextX = e.clientX - dragOffset.x;
-      const nextY = e.clientY - dragOffset.y;
-      setPosition({
-        x: Math.min(Math.max(12, nextX), Math.max(12, window.innerWidth - panelWidth - 12)),
-        y: Math.min(Math.max(12, nextY), Math.max(12, window.innerHeight - panelHeight - 12)),
-      });
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    document.body.style.userSelect = "none";
-    document.body.style.webkitUserSelect = "none";
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.userSelect = "";
-      document.body.style.webkitUserSelect = "";
-    };
-  }, [isDragging, dragOffset]);
-
   const handleAddSource = async () => {
     if (!url.trim()) {
       setError("请输入链接地址");
@@ -201,35 +142,13 @@ export default function AddSourceModal({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <>
-      <button
-        type="button"
-        aria-label="关闭对话框"
-        className="modal-backdrop fixed inset-0 z-[100]"
-        onClick={onClose}
-      />
-
-      {isPositionReady ? (
-      <div
-        ref={panelRef}
-        className="modal-panel modal-panel-enter fixed z-[101] flex max-h-[min(720px,85vh)] w-[480px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg p-0"
-        style={{
-          left: `${position.x}px`,
-          top: `${position.y}px`,
-          cursor: isDragging ? "grabbing" : "default",
-        }}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-source-title"
-      >
+    <AppModalShell isOpen={isOpen} onClose={onClose} disableBackdropClick={isLoading}
+      panelClassName="flex max-h-[min(720px,85vh)] max-w-[480px] flex-col overflow-hidden rounded-lg p-0"
+      ariaLabelledBy="add-source-title">
         <header className="app-divider-border-b flex items-start justify-between px-5 pb-4 pt-5">
           <div
-            className="min-w-0 flex-1 cursor-grab select-none active:cursor-grabbing"
-            onMouseDown={handleMouseDown}
+            className="min-w-0 flex-1"
           >
             <h2
               id="add-source-title"
@@ -241,7 +160,7 @@ export default function AddSourceModal({
           <button
             type="button"
             onClick={onClose}
-            onMouseDown={(e) => e.stopPropagation()}
+            disabled={isLoading}
             className="btn-press -mr-1 -mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[#6a7282] transition-colors hover:bg-[#f3f4f6] hover:text-[#101828] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30"
             aria-label="关闭"
           >
@@ -317,7 +236,7 @@ export default function AddSourceModal({
               <div className="min-w-0 font-mono text-[11px] leading-[1.55] text-[#4a5565]">
                 <span className="font-semibold text-[#0055FF]">提示：</span>{" "}
                 <span className="font-normal">
-                  添加后会立即抓取以校验 RSS/API 兼容性，通常很快完成。
+                  添加后会保存订阅，并尝试获取最新内容。
                 </span>
               </div>
             </div>
@@ -351,8 +270,6 @@ export default function AddSourceModal({
             ) : null}
           </div>
         </div>
-      </div>
-      ) : null}
-    </>
+    </AppModalShell>
   );
 }

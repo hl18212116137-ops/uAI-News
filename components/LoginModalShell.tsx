@@ -40,6 +40,7 @@ export default function LoginModalShell({
   return (
     <AppModalShell
       isOpen
+      ariaLabelledBy="login-dialog-title"
       onClose={handleClose}
       backdropAriaLabel="关闭登录"
       panelClassName="max-w-[400px] p-6"

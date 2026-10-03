@@ -24,6 +24,28 @@ import type {
   XReferencedPost,
 } from '@/lib/types'
 
+export const NEWS_ITEMS_FEED_COLUMNS = {
+  id: newsItems.id,
+  title: newsItems.title,
+  summary: newsItems.summary,
+  content: newsItems.content,
+  sourcePlatform: newsItems.sourcePlatform,
+  sourceName: newsItems.sourceName,
+  sourceHandle: newsItems.sourceHandle,
+  sourceUrl: newsItems.sourceUrl,
+  category: newsItems.category,
+  publishedAt: newsItems.publishedAt,
+  originalText: newsItems.originalText,
+  createdAt: newsItems.createdAt,
+  importanceScore: newsItems.importanceScore,
+  mediaUrls: newsItems.mediaUrls,
+  socialEngagement: newsItems.socialEngagement,
+  referencedPost: newsItems.referencedPost,
+  longformJson: newsItems.longformJson,
+}
+
+type NewsFeedRow = Pick<typeof newsItems.$inferSelect, keyof typeof NEWS_ITEMS_FEED_COLUMNS>
+
 /** 读取/返回前修正 X 推文 status 链接（避免 profile 或错误 url 导致无法跳转原文） */
 export function withCanonicalPostSourceUrl(item: NewsItem): NewsItem {
   const url = canonicalizeNewsSourceUrl(item)
@@ -31,7 +53,7 @@ export function withCanonicalPostSourceUrl(item: NewsItem): NewsItem {
   return { ...item, source: { ...item.source, url } }
 }
 
-function mapNewsRowToItem(row: typeof newsItems.$inferSelect): NewsItem {
+export function mapNewsRowToItem(row: NewsFeedRow): NewsItem {
   return withCanonicalPostSourceUrl({
     id: row.id,
     title: cleanNewsTitle(row.title),
@@ -131,29 +153,16 @@ export async function getAllPosts(): Promise<NewsItem[]> {
   }
 }
 
-/**
- * 全库 news_items 条数与「近 24h 创建」条数（COUNT，不拉行）
- */
-export async function getNewsItemsPostCountSummary(): Promise<{
-  totalPosts: number
-  todayPosts: number
-}> {
+/** Count only the last 24 hours; the home page no longer needs a full-table total. */
+export async function getRecentPostCount(): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
   try {
-    const [allRes, recentRes] = await Promise.all([
-      db.select({ count: sql<number>`count(*)` }).from(newsItems),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(newsItems)
-        .where(gte(newsItems.createdAt, since)),
-    ])
-    return {
-      totalPosts: Number(allRes[0]?.count ?? 0),
-      todayPosts: Number(recentRes[0]?.count ?? 0),
-    }
+    const [row] = await db.select({ count: sql<number>`count(*)` })
+      .from(newsItems).where(gte(newsItems.createdAt, since))
+    return Number(row?.count ?? 0)
   } catch (error) {
-    console.warn('Failed to get news item counts:', error)
-    return { totalPosts: 0, todayPosts: 0 }
+    console.warn('Failed to get recent post count:', error)
+    return 0
   }
 }
 
@@ -214,24 +223,6 @@ export type AddPostResult =
   | { status: 'updated'; id: string }
   | { status: 'duplicate_exact'; id: string }
   | { status: 'duplicate_content'; id: string }
-
-export async function getRecentLongformPosts(limit = 40): Promise<NewsItem[]> {
-  try {
-    const data = await db
-      .select()
-      .from(newsItems)
-      .where(isNotNull(newsItems.longformJson))
-      .orderBy(desc(newsItems.publishedAt))
-      .limit(limit)
-
-    return data
-      .map(mapNewsRowToItem)
-      .filter((post) => Boolean(post.longform?.translatedContent) && !isLongformPreviewPost(post))
-  } catch (error) {
-    console.error('Failed to fetch longform posts:', error)
-    return []
-  }
-}
 
 const LONGFORM_LIST_CONTENT_PREVIEW_CHARS = 320
 const LONGFORM_DISCOVERY_METHODS = new Set<LongformDiscoveryMethod>([
@@ -393,7 +384,7 @@ export async function getRecentLongformPostPreviewPage(
         })
         .from(newsItems)
         .where(isNotNull(newsItems.longformJson))
-        .orderBy(desc(newsItems.publishedAt))
+        .orderBy(desc(newsItems.publishedAt), desc(newsItems.id))
         .limit(pageSize)
         .offset(start),
     ])
@@ -803,29 +794,6 @@ function parseInsightJsonDoc(raw: unknown): InsightJsonDoc | null {
   return { v: o.v, bySourcesSig: out, global }
 }
 
-/**
- * 按订阅上下文签名读取已持久化的 INSIGHT（需已执行 S2 insight_json 列）
- */
-export async function getInsightPayloadBySourcesSig(
-  postId: string,
-  sourcesSig: string
-): Promise<InsightAnalysisPayload | null> {
-  try {
-    const rows = await db
-      .select({ insightJson: newsItems.insightJson })
-      .from(newsItems)
-      .where(eq(newsItems.id, postId))
-      .limit(1)
-
-    const data = rows[0] ?? null
-    const doc = parseInsightJsonDoc(data?.insightJson)
-    if (!doc) return null
-    return doc.bySourcesSig[sourcesSig] ?? null
-  } catch {
-    return null
-  }
-}
-
 /** 优先 global；否则回退任一历史 bySourcesSig 桶（稳定按 key 排序） */
 export async function getPersistedInsightForRead(postId: string): Promise<InsightAnalysisPayload | null> {
   try {
@@ -898,52 +866,6 @@ export async function getPersistedInsightsForReadBatch(
     return out
   } catch {
     return out
-  }
-}
-
-const MAX_INSIGHT_SIG_BUCKETS = 24
-
-/**
- * 合并写入 insight_json（按 sourcesSig 分桶，避免不同订阅上下文互相覆盖）
- */
-export async function mergeInsightPayloadForSourcesSig(
-  postId: string,
-  sourcesSig: string,
-  payload: InsightAnalysisPayload
-): Promise<void> {
-  try {
-    const rows = await db
-      .select({ insightJson: newsItems.insightJson })
-      .from(newsItems)
-      .where(eq(newsItems.id, postId))
-      .limit(1)
-
-    const data = rows[0] ?? null
-
-    const prev = parseInsightJsonDoc(data?.insightJson)
-    const bySourcesSig: Record<string, InsightAnalysisPayload> = {
-      ...(prev?.bySourcesSig ?? {}),
-      [sourcesSig]: payload,
-    }
-
-    const keys = Object.keys(bySourcesSig)
-    if (keys.length > MAX_INSIGHT_SIG_BUCKETS) {
-      const drop = keys.slice(0, keys.length - MAX_INSIGHT_SIG_BUCKETS)
-      for (const k of drop) delete bySourcesSig[k]
-    }
-
-    const doc: InsightJsonDoc = {
-      v: 2,
-      ...(prev != null && prev.global != null ? { global: prev.global } : {}),
-      bySourcesSig,
-    }
-
-    await db
-      .update(newsItems)
-      .set({ insightJson: doc })
-      .where(eq(newsItems.id, postId))
-  } catch (e) {
-    console.warn('[insight_json] persist skipped', e)
   }
 }
 

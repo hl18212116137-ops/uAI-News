@@ -25,10 +25,8 @@ type TopBarProps = {
   analysisPanelOpen?: boolean;
   /** 点击仙女棒：折叠右侧 ANALYSIS（保留列表选中态） */
   onCollapseAnalysisSidebar?: () => void;
-  /** 齿轮：打开抓取流水线与规则说明 */
+  /** 齿轮：打开阅读偏好 */
   onOpenFetchPipelineSettings?: () => void;
-  /** PASS：打开被筛掉内容的审核面板 */
-  onOpenPassReview?: () => void;
 };
 
 const layoutTf = "var(--layout-duration) var(--layout-ease)";
@@ -47,7 +45,6 @@ export default function TopBar({
   analysisPanelOpen = false,
   onCollapseAnalysisSidebar,
   onOpenFetchPipelineSettings,
-  onOpenPassReview,
 }: TopBarProps) {
   const openLogin = useOpenLogin();
 
@@ -57,14 +54,6 @@ export default function TopBar({
       return;
     }
     window.dispatchEvent(new Event("uai:open-fetch-pipeline-panel"));
-  };
-
-  const handleOpenPassReview = () => {
-    if (onOpenPassReview) {
-      onOpenPassReview();
-      return;
-    }
-    window.dispatchEvent(new Event("uai:open-pass-review"));
   };
 
   const rememberHomeBeforeBookmarks = () => {
@@ -169,19 +158,9 @@ export default function TopBar({
 
           <button
             type="button"
-            aria-label="PASS 审核"
-            aria-haspopup="dialog"
-            className="motion-layout-ease relative flex h-9 min-w-[52px] shrink-0 items-center justify-center rounded-md px-2 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-primary-600 transition-colors hover:bg-primary-50"
-            onClick={handleOpenPassReview}
-          >
-            PASS
-          </button>
-
-          <button
-            type="button"
             data-name="Container"
             data-node-id={dualCollapsed ? "43:5036" : "3:2683"}
-            aria-label="抓取流水线与规则"
+            aria-label="阅读偏好"
             aria-haspopup="dialog"
             className="motion-layout-ease relative flex size-9 shrink-0 items-center justify-center rounded-md text-[#111113] transition-colors hover:bg-[#f5f5f5]"
             onClick={handleOpenFetchPipelineSettings}

@@ -145,7 +145,7 @@ export default function CategoryFilter({
             data-node-id="37:4735"
             onClick={onFetch}
             aria-busy={isFetchRunning}
-            aria-label={isFetchRunning ? "暂停抓取" : "抓取更新"}
+            aria-label={isFetchRunning ? "暂停更新" : "更新资讯"}
             className="motion-layout-ease inline-flex h-8 max-h-8 min-h-8 shrink-0 items-center gap-2 rounded-[4px] border border-[#ebebef] bg-white px-[14px] py-0 shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 focus-visible:ring-offset-2"
           >
             <span
@@ -161,7 +161,7 @@ export default function CategoryFilter({
               className="font-sans text-[12px] font-semibold uppercase leading-[18px] tracking-[0.08em] text-[#05f]"
               data-node-id="37:4739"
             >
-              {isFetchRunning ? "抓取中" : "抓取"}
+              {isFetchRunning ? "更新中" : "更新"}
             </span>
           </button>
         </div>

@@ -25,9 +25,6 @@ export const MAIN_GRID_COLS_WITH_ANALYSIS =
 export const MAIN_FRAME_GRID_SHELL_CLASS =
   "relative isolate flex min-h-0 w-full min-w-0 flex-1 flex-col bg-white lg:grid lg:grid-rows-[minmax(0,1fr)]";
 
-/** @deprecated 使用 MAIN_FRAME_GRID_SHELL_CLASS + MAIN_GRID_COLS_* 组合 */
-export const MAIN_FRAME_CLASS = `${MAIN_FRAME_GRID_SHELL_CLASS} ${MAIN_GRID_COLS_CLASS}`;
-
 /** 43:4890 / 43:4891 — 侧栏格：相对定位 + 裁切，供内层 absolute 256/336 */
 export const MAIN_SIDE_FRAME_CLASS =
   "relative min-h-0 min-w-0 h-full overflow-hidden bg-white";

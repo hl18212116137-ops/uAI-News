@@ -26,6 +26,7 @@ type Props = {
   onClose: () => void;
   user: AuthUser | null;
   onPromoted?: () => void;
+  scope?: "hidden" | "moderation";
 };
 
 function passTypeLabel(passType: PassedPostLogRow["passType"]): string {
@@ -52,6 +53,7 @@ export default function PassedPostsReviewPanel({
   onClose,
   user,
   onPromoted,
+  scope = "hidden",
 }: Props) {
   const router = useRouter();
   const [logs, setLogs] = useState<PassedPostLogRow[]>([]);
@@ -61,7 +63,7 @@ export default function PassedPostsReviewPanel({
   const [promoting, setPromoting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const userCacheKey = user?.id ?? "guest";
+  const userCacheKey = `${user?.id ?? "guest"}:${scope}`;
   const activeUserCacheKeyRef = useRef(userCacheKey);
   const loadLogsRequestRef = useRef<Promise<void> | null>(null);
 
@@ -80,7 +82,7 @@ export default function PassedPostsReviewPanel({
     if (!user) {
       setLogs([]);
       setLoaded(true);
-      setError("登录后可以审核你的订阅源 PASS 记录。");
+      setError("登录后可以管理不感兴趣的内容。");
       return;
     }
 
@@ -91,7 +93,7 @@ export default function PassedPostsReviewPanel({
       setError(null);
       setMessage(null);
       try {
-        const res = await fetch("/api/me/pass-logs?limit=80", {
+        const res = await fetch(`/api/me/pass-logs?limit=80&scope=${scope}`, {
           cache: "no-store",
           credentials: "same-origin",
         });
@@ -108,10 +110,11 @@ export default function PassedPostsReviewPanel({
       } catch (e) {
         if (activeUserCacheKeyRef.current !== requestUserCacheKey) return;
         setLogs([]);
-        setError(e instanceof Error ? e.message : "加载 PASS 记录失败");
+        setError("记录暂时无法加载，请稍后重试。");
       } finally {
         if (activeUserCacheKeyRef.current === requestUserCacheKey) {
           setLoading(false);
+          setLoaded(true);
         }
       }
     })();
@@ -122,7 +125,7 @@ export default function PassedPostsReviewPanel({
       }
     });
     return request;
-  }, [user, userCacheKey]);
+  }, [user, userCacheKey, scope]);
 
   useEffect(() => {
     if (!isOpen || loaded || loading) return;
@@ -130,7 +133,7 @@ export default function PassedPostsReviewPanel({
   }, [isOpen, loaded, loading, loadLogs]);
 
   const selectableIds = useMemo(
-    () => logs.filter((log) => !log.promotedAt).map((log) => log.id),
+    () => logs.filter((log) => !log.promotedAt).map((log) => log.id).slice(0, 30),
     [logs]
   );
   const selectedCount = selectedIds.size;
@@ -141,7 +144,7 @@ export default function PassedPostsReviewPanel({
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else if (next.size < 30) next.add(id);
       return next;
     });
   }, []);
@@ -157,6 +160,7 @@ export default function PassedPostsReviewPanel({
   const promoteSelected = useCallback(async () => {
     if (selectedIds.size === 0 || promoting) return;
 
+    const requestUserKey = userCacheKey;
     setPromoting(true);
     setError(null);
     setMessage(null);
@@ -166,7 +170,7 @@ export default function PassedPostsReviewPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ ids, scope }),
       });
       const data = (await res.json()) as {
         success?: boolean;
@@ -177,6 +181,7 @@ export default function PassedPostsReviewPanel({
       };
       if (!res.ok || !data.success) throw new Error(data.error || "推送失败");
 
+      if (activeUserCacheKeyRef.current !== requestUserKey) return;
       const promotedIds = new Set(data.promotedIds ?? []);
       const now = new Date().toISOString();
       setLogs((current) =>
@@ -185,20 +190,22 @@ export default function PassedPostsReviewPanel({
         )
       );
       setSelectedIds(new Set());
-      setMessage(data.message || `已推送 ${data.promoted ?? promotedIds.size} 条到网页`);
+      setMessage(data.message || `已恢复 ${data.promoted ?? promotedIds.size} 条内容`);
       router.refresh();
       onPromoted?.();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "推送失败");
+    } catch {
+      if (activeUserCacheKeyRef.current !== requestUserKey) return;
+      setError("恢复失败，请稍后重试。");
     } finally {
-      setPromoting(false);
+      if (activeUserCacheKeyRef.current === requestUserKey) setPromoting(false);
     }
-  }, [selectedIds, promoting, router, onPromoted]);
+  }, [selectedIds, promoting, router, onPromoted, scope, userCacheKey]);
 
   return (
     <AppModalShell
       isOpen={isOpen}
       onClose={onClose}
+      disableBackdropClick={promoting}
       panelVariant="large"
       panelClassName="max-h-[86vh] max-w-[920px] overflow-hidden p-0"
       ariaLabelledBy="pass-review-title"
@@ -208,10 +215,10 @@ export default function PassedPostsReviewPanel({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 id="pass-review-title" className="text-base font-semibold text-[#101828]">
-                PASS 审核
+                {scope === "moderation" ? "采集筛选记录" : "不感兴趣的内容"}
               </h2>
               <p className="mt-1 text-sm leading-5 text-[#6a7282]">
-                选择误杀的推文重新推送到网页；你的选择会作为后续筛选的校准样本。
+                {scope === "moderation" ? "审核你的订阅源被筛掉的内容，必要时重新入库。" : "这里是你隐藏过的内容，恢复后将重新参与正常筛选。"}
               </p>
             </div>
             <button
@@ -235,11 +242,11 @@ export default function PassedPostsReviewPanel({
                 onChange={toggleAll}
                 disabled={selectableIds.length === 0 || loading || promoting}
               />
-              全选可推送条目
+              全选本批（最多 30 条）
             </label>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-[#6a7282]">
-                已选 {selectedCount} 条，可推送 {selectableIds.length} 条
+                已选 {selectedCount} 条，可恢复 {selectableIds.length} 条
               </span>
               <button
                 type="button"
@@ -247,7 +254,7 @@ export default function PassedPostsReviewPanel({
                 disabled={selectedCount === 0 || promoting}
                 onClick={() => void promoteSelected()}
               >
-                {promoting ? "推送中…" : "重新推送到网页"}
+                {promoting ? "恢复中…" : "恢复所选内容"}
               </button>
             </div>
           </div>
@@ -260,15 +267,15 @@ export default function PassedPostsReviewPanel({
           ) : null}
 
           {loading ? (
-            <div className="grid gap-2 px-5 py-4" role="status" aria-label="正在加载 PASS 记录">
+            <div className="grid gap-2 px-5 py-4" role="status" aria-label="正在加载记录">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="skeleton h-20 rounded-md" />
               ))}
             </div>
-          ) : logs.length === 0 ? (
+          ) : !error && logs.length === 0 ? (
             <div className="px-5 py-10 text-center">
-              <p className="text-sm font-medium text-[#101828]">暂无 PASS 记录</p>
-              <p className="mt-1 text-sm text-[#6a7282]">新的刷新完成后，这里会开始累积可审核条目。</p>
+              <p className="text-sm font-medium text-[#101828]">暂无记录</p>
+              <p className="mt-1 text-sm text-[#6a7282]">{scope === "moderation" ? "后续采集的筛选记录会显示在这里。" : "你尚未将内容标记为不感兴趣。"}</p>
             </div>
           ) : (
             <ul className="min-h-0 flex-1 divide-y divide-[#f3f4f6] overflow-y-auto">
@@ -284,7 +291,7 @@ export default function PassedPostsReviewPanel({
                         checked={checked}
                         disabled={disabled}
                         onChange={() => toggleOne(log.id)}
-                        aria-label={`选择 ${log.sourceName || log.sourceHandle || "未知来源"} 的 PASS 推文`}
+                        aria-label={`选择 ${log.sourceName || log.sourceHandle || "未知来源"} 的内容`}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -296,11 +303,11 @@ export default function PassedPostsReviewPanel({
                                 : "bg-primary-50 text-primary-700",
                             ].join(" ")}
                           >
-                            {passTypeLabel(log.passType)}
+                            {scope === "moderation" ? passTypeLabel(log.passType) : "不感兴趣"}
                           </span>
                           {log.promotedAt ? (
                             <span className="rounded bg-[#eef4ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#0055FF]">
-                              已推送
+                              已恢复
                             </span>
                           ) : null}
                           <span className="min-w-0 truncate text-xs font-medium text-[#101828]">
@@ -320,7 +327,7 @@ export default function PassedPostsReviewPanel({
                             </a>
                           ) : null}
                         </div>
-                        <p className="mt-2 text-xs leading-5 text-[#101828]">{log.passReason}</p>
+                        {scope === "moderation" ? <p className="mt-2 text-xs leading-5 text-[#101828]">{log.passReason}</p> : null}
                         {log.content ? (
                           <p className="mt-1 line-clamp-3 text-xs leading-5 text-[#6a7282]">
                             {log.content}
@@ -346,6 +353,7 @@ export default function PassedPostsReviewPanel({
             type="button"
             className="btn-primary btn-press w-full rounded-md py-2.5 text-sm font-medium"
             onClick={onClose}
+            disabled={promoting}
           >
             关闭
           </button>

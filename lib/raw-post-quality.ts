@@ -12,17 +12,6 @@ export type LowSignalThresholds = {
   minNestedRt: number
 }
 
-/**
- * 规则预筛：极短外层、或引用帖嵌套过短且无媒体 → 跳过 processNews，直接删 raw。
- * @param thresholds 若省略则从环境变量读取（与旧行为一致）。
- */
-export function shouldSkipLowSignalRawPost(
-  rawPost: Record<string, unknown>,
-  thresholds?: LowSignalThresholds
-): boolean {
-  return getLowSignalRawPostPassReason(rawPost, thresholds) != null
-}
-
 export function getLowSignalRawPostPassReason(
   rawPost: Record<string, unknown>,
   thresholds?: LowSignalThresholds

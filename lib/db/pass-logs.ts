@@ -217,6 +217,7 @@ export async function listPassedPosts(options: {
   handles?: string[]
   limit?: number
   userId?: string
+  personalOnly?: boolean
 } = {}): Promise<PassedPostLog[]> {
   await ensurePassedPostsTable()
 
@@ -238,13 +239,18 @@ export async function listPassedPosts(options: {
         WHERE pf.user_id = ${addParam(options.userId)}::uuid
           AND pf.passed_post_id = passed_posts.id
           AND pf.action = 'promote_from_pass'
+          AND NOT EXISTS (SELECT 1 FROM pass_feedback hidden WHERE hidden.user_id = pf.user_id AND hidden.passed_post_id = pf.passed_post_id AND hidden.action = 'pass_from_feed' AND hidden.updated_at >= pf.updated_at)
         ORDER BY pf.updated_at DESC
         LIMIT 1
       )`
     : 'NULL::timestamptz'
-  const where = handles
-    ? `WHERE lower(regexp_replace(coalesce(source_handle, ''), '^@+', '')) = ANY(${addParam(handles)}::text[])`
-    : ''
+  const conditions: string[] = []
+  if (handles) conditions.push(`lower(regexp_replace(coalesce(source_handle, ''), '^@+', '')) = ANY(${addParam(handles)}::text[])`)
+  if (options.personalOnly) {
+    if (!options.userId) return []
+    conditions.push(`EXISTS (SELECT 1 FROM pass_feedback pf WHERE pf.user_id = ${addParam(options.userId)}::uuid AND pf.passed_post_id = passed_posts.id AND pf.action = 'pass_from_feed')`)
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
   const { rows } = await pool.query(
     `
@@ -623,6 +629,7 @@ export async function promotePassedPosts(options: {
   userId: string
   ids: string[]
   handles: string[]
+  personalOnly?: boolean
 }): Promise<PromotePassedPostsResult> {
   await ensurePassedPostsTable()
 
@@ -644,12 +651,23 @@ export async function promotePassedPosts(options: {
   )
 
   const promotedIds: string[] = []
-  for (const row of rows) {
-    const { item, rawPost } = await buildRestoredNewsItem(row)
-    await upsertRawPosts([rawPost])
-    await addPost(item, { skipContentDedupe: true, refreshExisting: true })
+  let allowedRows = rows
+  if (options.personalOnly) {
+    const own = await pool.query(
+      "SELECT passed_post_id FROM pass_feedback WHERE user_id = $1::uuid AND action = 'pass_from_feed' AND passed_post_id = ANY($2::text[])",
+      [options.userId, ids],
+    )
+    const ownIds = new Set(own.rows.map((row) => String(row.passed_post_id)))
+    allowedRows = rows.filter((row) => ownIds.has(String(row.id)))
+  }
+  for (const row of allowedRows) {
+    if (!options.personalOnly) {
+      const { item, rawPost } = await buildRestoredNewsItem(row)
+      await upsertRawPosts([rawPost])
+      await addPost(item, { skipContentDedupe: true, refreshExisting: true })
+    }
     await recordPromoteFeedback(options.userId, row)
-    promotedIds.push(item.id)
+    promotedIds.push(String(row.id))
   }
 
   return {
@@ -670,9 +688,10 @@ export async function getPromotedPassedPostRefsForUser(userId: string): Promise<
     const { rows } = await pool.query(
       `
         SELECT passed_post_id, max(updated_at) AS promoted_at
-        FROM pass_feedback
+        FROM pass_feedback pf
         WHERE user_id = $1::uuid
           AND action = 'promote_from_pass'
+          AND NOT EXISTS (SELECT 1 FROM pass_feedback hidden WHERE hidden.user_id = pf.user_id AND hidden.passed_post_id = pf.passed_post_id AND hidden.action = 'pass_from_feed' AND hidden.updated_at >= pf.updated_at)
         GROUP BY passed_post_id
         ORDER BY promoted_at DESC
         LIMIT 200
@@ -701,9 +720,10 @@ export async function getUserPassedPostIdsForUser(userId: string, limit = 500): 
     const { rows } = await pool.query(
       `
         SELECT passed_post_id
-        FROM pass_feedback
+        FROM pass_feedback pf
         WHERE user_id = $1::uuid
           AND action = 'pass_from_feed'
+          AND NOT EXISTS (SELECT 1 FROM pass_feedback restored WHERE restored.user_id = pf.user_id AND restored.passed_post_id = pf.passed_post_id AND restored.action = 'promote_from_pass' AND restored.updated_at > pf.updated_at)
         ORDER BY updated_at DESC
         LIMIT $2
       `,
@@ -771,44 +791,4 @@ export async function getPersonalFilterLearningContextForUser(
   }
 
   return lines.join('\n')
-}
-
-export async function getFilterLearningContextForUser(
-  userId: string | null | undefined,
-  handle?: string | null
-): Promise<string> {
-  if (!userId) return ''
-  await ensurePassedPostsTable()
-
-  const normalizedHandle = normalizeHandle(handle ?? '')
-  const params: unknown[] = [userId]
-  const handleClause = normalizedHandle
-    ? `AND (lower(regexp_replace(coalesce(source_handle, ''), '^@+', '')) = $2 OR source_handle IS NULL OR source_handle = '')`
-    : ''
-  if (normalizedHandle) params.push(normalizedHandle)
-
-  const { rows } = await pool.query(
-    `
-      SELECT source_handle, pass_type, pass_reason, content
-      FROM pass_feedback
-      WHERE user_id = $1::uuid
-        AND action = 'promote_from_pass'
-        ${handleClause}
-      ORDER BY updated_at DESC
-      LIMIT 5
-    `,
-    params
-  )
-
-  if (rows.length === 0) return ''
-
-  return [
-    '用户曾经从 PASS 列表手动恢复过这些内容；判断 important 时，遇到相似信息不要轻易 PASS：',
-    ...rows.map((row, index) => {
-      const h = normalizeText(row.source_handle, 80)
-      const reason = snippet(row.pass_reason, 90)
-      const content = snippet(row.content, 160)
-      return `${index + 1}. ${h ? `@${h} ` : ''}${row.pass_type || 'PASS'}；原 PASS 原因：${reason || '未记录'}；恢复样本：${content || '无正文'}`
-    }),
-  ].join('\n')
 }

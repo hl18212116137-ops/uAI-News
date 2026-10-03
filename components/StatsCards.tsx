@@ -1,110 +1,23 @@
 "use client";
 
 import Tooltip from "./Tooltip";
+import type { Stats } from "@/lib/stats";
 
-type StatsCardsProps = {
-  bloggerCount: number;
-  mediaCount: number;
-  academicCount: number;
-  totalPosts: number;
-  todayPosts: number;
-};
-
-/**
- * Figma 37:4690–4717：标签在上、数值在下；竖线 #f1f1f1 h-24；TODAY 数值 #05f
- */
-export default function StatsCards({
-  bloggerCount,
-  mediaCount,
-  academicCount,
-  totalPosts,
-  todayPosts,
-}: StatsCardsProps) {
-  const sourcesTotal = bloggerCount + academicCount;
-  const collectionsTotal = mediaCount;
-  const indexed = totalPosts.toLocaleString("zh-CN");
-  const todayStr = todayPosts > 0 ? `+${todayPosts}` : String(todayPosts);
-  const todayBlue = todayPosts > 0;
-
+export default function StatsCards({ sourceCount, recentPosts, unavailable = false }: Stats & { unavailable?: boolean }) {
   const items = [
-    {
-      value: String(sourcesTotal),
-      label: "信息源",
-      blue: false,
-      pad: "pr-2 sm:pr-0" as const,
-      width: "sm:w-[139.25px]",
-      nodeId: "37:4691",
-    },
-    {
-      value: String(collectionsTotal),
-      label: "专题",
-      blue: false,
-      pad: "px-2 sm:px-8" as const,
-      width: "sm:w-[203.25px]",
-      nodeId: "37:4698",
-    },
-    {
-      value: indexed,
-      label: "近30天收录",
-      blue: false,
-      pad: "px-2 sm:px-8" as const,
-      width: "sm:w-[203.25px]",
-      nodeId: "37:4705",
-    },
-    {
-      value: todayStr,
-      label: "今日",
-      blue: todayBlue,
-      pad: "pl-2 sm:pl-8" as const,
-      width: "sm:w-[171.25px]",
-      nodeId: "37:4712",
-    },
+    { label: "信息源", value: sourceCount },
+    { label: "近24小时新增", value: recentPosts },
   ];
-
   return (
-    <div
-      data-name="Stats container"
-      className="scrollbar-none mb-0 flex h-full min-h-0 w-full min-w-0 flex-col overflow-x-auto overscroll-x-contain"
-    >
-      <Tooltip content="数值与当前订阅及本页展示的动态一致。">
-        <div
-          data-name="Stats row"
-          className="flex h-full min-h-0 w-full min-w-0 flex-nowrap items-center justify-start"
-        >
-          {items.map((item, i) => (
-            <div key={item.label} className="flex min-w-0 flex-1 items-stretch sm:flex-none">
-              <div
-                data-name="Container"
-                data-node-id={item.nodeId}
-                className={`flex min-w-0 flex-1 flex-col items-start sm:flex-none ${item.width} ${item.pad}`}
-              >
-                <div className="w-full pb-2">
-                  <span className="block font-sans text-[12px] font-bold uppercase leading-[18px] tracking-[0.04em] text-[#8a8a93]">
-                    {item.label}
-                  </span>
-                </div>
-                <div className="w-full">
-                  <span
-                    className={[
-                      "block font-mono text-[15px] font-bold leading-[15px] tracking-[0.75px]",
-                      item.blue ? "text-[#05f]" : "text-[#111113]",
-                    ].join(" ")}
-                  >
-                    {item.value}
-                  </span>
-                </div>
-              </div>
-              {i < items.length - 1 ? (
-                <div
-                  className="app-divider-v mx-0 h-6 self-center"
-                  data-name="Vertical Divider"
-                  aria-hidden
-                />
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </Tooltip>
-    </div>
+    <Tooltip content="统计当前信息源范围；新增按内容入库时间计算。">
+      <div className="flex h-full min-w-0 items-center gap-8" aria-label="资讯统计">
+        {items.map((item, index) => <div key={item.label} className={`min-w-0 ${index ? "border-l border-[#f3f4f6] pl-8" : ""}`}>
+          <span className="block pb-2 font-sans text-[12px] font-bold leading-[18px] tracking-[0.04em] text-[#8a8a93]">{item.label}</span>
+          <span className={`block font-sans text-[15px] font-bold leading-[15px] tabular-nums ${index && item.value > 0 ? "text-[#05f]" : "text-[#111113]"}`}>
+            {unavailable ? "—" : item.value.toLocaleString("zh-CN")}
+          </span>
+        </div>)}
+      </div>
+    </Tooltip>
   );
 }

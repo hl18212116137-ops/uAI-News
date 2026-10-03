@@ -80,19 +80,6 @@ export function normalizeRawPostRowForProcess(row: Record<string, unknown>): Rec
   }
 }
 
-/** 与 refresh/fetch、process 当前行为一致：仅 id 列 */
-export async function fetchExistingRawPostIds(): Promise<string[]> {
-  const rows = await db.select({ id: rawPosts.id }).from(rawPosts)
-  return rows.map(r => r.id)
-}
-
-export async function fetchExistingNewsSourceUrls(): Promise<string[]> {
-  const rows = await db.select({ sourceUrl: newsItems.sourceUrl }).from(newsItems)
-  return rows
-    .map(r => (r.sourceUrl ? canonicalizeExternalUrlForDedupe(r.sourceUrl) : ''))
-    .filter(Boolean)
-}
-
 export async function fetchExistingRawPostDedupeKeys(): Promise<Set<string>> {
   const rows = await withTransientDatabaseReadRetry(
     () => db

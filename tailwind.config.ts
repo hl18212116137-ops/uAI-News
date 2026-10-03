@@ -4,7 +4,7 @@ const config: Config = {
   content: [
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
-    // lib/ holds MAIN_FRAME_CLASS etc.; must be scanned or grid-cols-[…] is never generated
+    // lib/ holds shared layout classes; scan it to generate the grid utilities
     "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
@@ -17,7 +17,7 @@ const config: Config = {
           600: '#e11d28',
           700: '#be123c',
         },
-        /** 站点主题金（与 INSIGHT PRO / 强调条一致，见 CLAUDE.md Accent gold） */
+        /** 站点主题金（与 INSIGHT PRO / 强调条一致，见 AGENTS.md Accent gold） */
         gold: {
           DEFAULT: '#d7a220',
           bright: '#f0c030',

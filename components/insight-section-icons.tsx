@@ -27,14 +27,3 @@ export function InsightKeyPointsGlyph(props: { className?: string }) {
     </svg>
   );
 }
-
-/** 关联：双节点 + 连接条 */
-export function InsightRelevanceGlyph(props: { className?: string }) {
-  return (
-    <svg className={props.className} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-      <circle cx="3.35" cy="7" r="1.9" fill="currentColor" />
-      <rect x="5.35" y="6.12" width="3.3" height="1.76" rx="0.88" fill="currentColor" />
-      <circle cx="10.65" cy="7" r="1.9" fill="currentColor" />
-    </svg>
-  );
-}

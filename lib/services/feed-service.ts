@@ -14,7 +14,6 @@ function parseExcludeIds(param: string | null): string[] {
 
 export type RecommendedSourcesQuery = {
   limit: number
-  userId: string | null
   pickRandom: boolean
   excludeSourceIds: string[] | undefined
   excludeHandles: string[] | undefined
@@ -25,7 +24,6 @@ export function parseRecommendedSourcesSearchParams(
 ): RecommendedSourcesQuery {
   const raw = parseInt(searchParams.get('limit') || String(RECOMMENDED_SIDEBAR_LIMIT), 10)
   const limit = Math.min(50, Math.max(1, Number.isFinite(raw) ? raw : RECOMMENDED_SIDEBAR_LIMIT))
-  const userIdParam = searchParams.get('userId')
 
   const randomParam = searchParams.get('random')
   const pickRandom =
@@ -36,7 +34,6 @@ export function parseRecommendedSourcesSearchParams(
 
   return {
     limit,
-    userId: userIdParam,
     pickRandom,
     excludeSourceIds: excludeSourceIds.length ? excludeSourceIds : undefined,
     excludeHandles: excludeHandles.length ? excludeHandles : undefined,
@@ -51,11 +48,8 @@ export async function loadRecommendedSourcesForApi(
 ) {
   const q = parseRecommendedSourcesSearchParams(new URL(request.url).searchParams)
 
-  let userId: string | null = q.userId
-  if (!userId) {
-    const user = await getCurrentUser()
-    userId = user?.id || null
-  }
+  const user = await getCurrentUser()
+  const userId = user?.id ?? null
 
   return getRecommendedSources(userId, q.limit, {
     pickRandom: q.pickRandom,

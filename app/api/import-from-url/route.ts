@@ -1,3 +1,4 @@
+import { requirePipelineAdmin } from '@/lib/pipeline-admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { importContentFromUrl } from '@/lib/services/import-url-service'
 
@@ -6,6 +7,9 @@ import { importContentFromUrl } from '@/lib/services/import-url-service'
  * 从 URL 导入内容
  */
 export async function POST(request: NextRequest) {
+  const { errorResponse } = await requirePipelineAdmin()
+  if (errorResponse) return errorResponse
+
   try {
     const body = await request.json()
     const { url } = body

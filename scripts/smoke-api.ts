@@ -1,5 +1,6 @@
 type SmokeTarget = {
   path: string;
+  expectedStatuses?: number[];
   maxBytes?: number;
   validate?: (body: unknown) => void;
 };
@@ -20,7 +21,7 @@ async function smoke(target: SmokeTarget, baseUrl: string) {
   const elapsedMs = Date.now() - startedAt;
   const bytes = Buffer.byteLength(text);
 
-  assertCondition(res.ok, `${target.path} returned HTTP ${res.status}`);
+  assertCondition((target.expectedStatuses ?? [200]).includes(res.status), `${target.path} returned HTTP ${res.status}`);
   if (target.maxBytes) {
     assertCondition(bytes <= target.maxBytes, `${target.path} exceeded ${target.maxBytes} bytes`);
   }
@@ -67,9 +68,12 @@ const targets: SmokeTarget[] = [
   },
   {
     path: "/api/health/feed",
+    expectedStatuses: [200, 503],
     validate(body) {
       assertRecord(body, "/api/health/feed");
       assertRecord(body.queue, "/api/health/feed queue");
+      assertRecord(body.checks, "/api/health/feed checks");
+      assertCondition("database_sources" in body.checks, "Database health query must succeed, even when feed is empty");
       assertCondition(
         typeof body.rawQueuePending === "number",
         "/api/health/feed rawQueuePending should be a number"

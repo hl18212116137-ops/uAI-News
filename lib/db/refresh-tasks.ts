@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/drizzle'
 import { refreshTasks } from '@/lib/db/schema'
 import { withTransientDatabaseReadRetry } from '@/lib/db/retry'
@@ -51,9 +51,9 @@ export class PostgresTaskStore implements TaskStore {
         payload: sql`${refreshTasks.payload} || ${patch}::jsonb`,
         updatedAt: new Date(updatedAt),
       })
-      .where(eq(refreshTasks.id, taskId))
+      .where(and(eq(refreshTasks.id, taskId), ne(refreshTasks.status, 'cancelled')))
       .returning({ payload: refreshTasks.payload })
 
-    return asTask(rows[0]?.payload)
+    return asTask(rows[0]?.payload) ?? this.get(taskId)
   }
 }

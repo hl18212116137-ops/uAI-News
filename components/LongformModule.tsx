@@ -2,8 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  KeyboardEvent as ReactKeyboardEvent,
-  PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -15,13 +13,11 @@ import { FeedInsightSparkleGlyph } from "@/components/feed-inline-icons";
 import { MathInlineText } from "@/components/MathText";
 import ReadingContent, { type ReadingContentBlock } from "@/components/ReadingContent";
 import { SourcesChevronRightGlyph } from "@/components/sources-sidebar-icons";
-import Tooltip from "@/components/Tooltip";
 
 type LongformPost = NewsItem & { longform: NonNullable<NewsItem["longform"]> };
 
 type LongformModuleProps = {
   posts: NewsItem[];
-  onAddArticle?: () => void;
   analysisActivePostId?: string | null;
   onAnalysisToggle?: (postId: string) => void;
   previewPostIds?: Set<string>;
@@ -45,13 +41,6 @@ type LongformTocItem = {
 type LongformTocPosition = {
   left: number;
   top: number;
-};
-
-type LongformTocDragState = {
-  offsetX: number;
-  offsetY: number;
-  width: number;
-  height: number;
 };
 
 const LONGFORM_TOC_WIDTH = 288;
@@ -111,7 +100,6 @@ type ArticleDigestRoleCandidate = {
 };
 
 const DIGEST_POINT_LIMIT = 3;
-const SUMMARY_MAX_LENGTH = 150;
 const POINT_MAX_LENGTH = 112;
 const PLAIN_SUMMARY_MAX_LENGTH = 76;
 const PLAIN_POINT_MAX_LENGTH = 72;
@@ -122,12 +110,6 @@ const DIGEST_EMPHASIS_TERM_LIMIT = 7;
 const DIGEST_EMPHASIS_TOTAL_LIMIT = 4;
 const DIGEST_EMPHASIS_PER_TERM_LIMIT = 1;
 const SENTENCE_RE = /[^。！？!?；;.\n]+[。！？!?；;.]?/g;
-const STRONG_CONCLUSION_RE =
-  /(研究发现|结果表明|结果显示|实验表明|数据显示|这意味着|这表明|由此可见|关键在于|核心是|结论是|因此|所以|因而|最终|总体来看|总的来说|换句话说|不应|不能|必须|需要|应该|建议|值得注意|最重要|显著|高于|低于|提升|提高|降低|减少|增加|导致|带来|影响|风险|瓶颈|限制|机会|价值|证明|found that|results? (show|suggest|indicate)|this means|therefore|overall|in conclusion|we conclude|key takeaway|should|must|need to|significant|increase|decrease|risk|impact)/i;
-const WEAK_CONCLUSION_RE =
-  /(发现|表明|显示|说明|意味着|揭示|印证|证明|指出|认为|强调|建议|结论|启示|影响|重要|关键|核心|主要|显著|更大|更小|更强|更弱|更高|更低|优于|差于|不足|问题|挑战|风险|机会|价值|found|suggest|indicate|imply|show|prove|conclude|important|key|major|challenge|risk|impact|value)/i;
-const INTRO_RE =
-  /(本文|本研究|这篇文章|本文中|在本文|我们研究|我们探讨|我们介绍|我们考察|我们评估|我们测试|我们试图|将介绍|将探讨|概述|背景|首先|主要介绍|旨在|目的在于|article (introduces|explores)|we (study|explore|introduce|present|evaluate|test|examine)|background|overview|introduction|whether)/i;
 const LOW_VALUE_RE =
   /(欢迎|点赞|点个赞|收藏|转发|关注|订阅|评论区|分享给|如果看不完|如果你觉得|谢谢|感谢|参考文献|致谢|copyright|all rights reserved|references|acknowledg(e)?ments)/i;
 const EXAMPLE_RE =
@@ -1174,45 +1156,6 @@ function getCleanBodyParagraphs(paragraphs: string[], title: string): string[] {
     .map(({ clean }) => clean);
 }
 
-function PlusGlyph({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-      focusable="false"
-    >
-      <path
-        d="M12 5v14M5 12h14"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function AddArticleButton({ onClick }: { onClick?: () => void }) {
-  if (!onClick) return null;
-
-  return (
-    <Tooltip content="添加文章">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label="添加文章"
-        className="btn-press inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md bg-transparent px-2.5 text-[#0055FF] transition-colors hover:bg-[#f5f7ff] hover:text-[#0046d5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30"
-      >
-        <PlusGlyph className="block size-4" />
-        <span className="text-[13px] font-semibold leading-none">添加</span>
-      </button>
-    </Tooltip>
-  );
-}
-
 function LongformAnalysisButton({
   active,
   title,
@@ -1405,10 +1348,7 @@ function LongformArticleToc({
   onClose: () => void;
 }) {
   const tocRef = useRef<HTMLElement | null>(null);
-  const dragStateRef = useRef<LongformTocDragState | null>(null);
-  const userMovedRef = useRef(false);
   const [mounted, setMounted] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState<LongformTocPosition | null>(null);
 
   useEffect(() => {
@@ -1467,82 +1407,6 @@ function LongformArticleToc({
     };
   }, [mounted]);
 
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handlePointerMove = (event: PointerEvent) => {
-      const dragState = dragStateRef.current;
-      if (!dragState) return;
-
-      const nextPosition = clampLongformTocPosition(
-        {
-          left: event.clientX - dragState.offsetX,
-          top: event.clientY - dragState.offsetY,
-        },
-        dragState.width,
-        dragState.height,
-      );
-      setPosition(nextPosition);
-    };
-
-    const handlePointerEnd = () => {
-      dragStateRef.current = null;
-      setIsDragging(false);
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerEnd);
-    window.addEventListener("pointercancel", handlePointerEnd);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerEnd);
-      window.removeEventListener("pointercancel", handlePointerEnd);
-    };
-  }, [isDragging]);
-
-  const handleDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    const rect = tocRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    event.preventDefault();
-    userMovedRef.current = true;
-    dragStateRef.current = {
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-      width: rect.width,
-      height: rect.height,
-    };
-    setIsDragging(true);
-  };
-
-  const handleDragKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!position) return;
-
-    const step = event.shiftKey ? 48 : 16;
-    const deltaByKey: Record<string, LongformTocPosition> = {
-      ArrowLeft: { left: -step, top: 0 },
-      ArrowRight: { left: step, top: 0 },
-      ArrowUp: { left: 0, top: -step },
-      ArrowDown: { left: 0, top: step },
-    };
-    const delta = deltaByKey[event.key];
-    if (!delta) return;
-
-    event.preventDefault();
-    userMovedRef.current = true;
-    const rect = tocRef.current?.getBoundingClientRect();
-    const nextPosition = clampLongformTocPosition(
-      {
-        left: position.left + delta.left,
-        top: position.top + delta.top,
-      },
-      rect?.width || LONGFORM_TOC_WIDTH,
-      rect?.height || 420,
-    );
-    setPosition(nextPosition);
-  };
-
   if (!mounted) return null;
   if (!position) return null;
   if (items.length === 0) return null;
@@ -1551,10 +1415,7 @@ function LongformArticleToc({
     <nav
       id="longform-article-toc"
       ref={tocRef}
-      className={[
-        "modal-panel modal-panel-enter fixed z-[60] flex w-72 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0",
-        isDragging ? "cursor-grabbing select-none shadow-md" : "shadow-sm",
-      ].join(" ")}
+      className="modal-panel modal-panel-enter fixed z-[60] flex w-72 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 shadow-sm"
       style={{
         left: position.left,
         top: position.top,
@@ -1564,21 +1425,8 @@ function LongformArticleToc({
     >
       <div className="flex items-center justify-between gap-3 px-4 py-3.5">
         <div
-          className="flex min-w-0 flex-1 cursor-grab touch-none items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30 active:cursor-grabbing"
-          role="button"
-          tabIndex={0}
-          aria-label="移动文章目录"
-          onPointerDown={handleDragStart}
-          onKeyDown={handleDragKeyDown}
+          className="flex min-w-0 flex-1 items-center gap-2.5"
         >
-            <svg
-              className="h-4 w-4 shrink-0 text-[#99a1af]"
-              fill="currentColor"
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-            >
-              <path d="M5 3.5A1.5 1.5 0 1 1 3.5 2 1.5 1.5 0 0 1 5 3.5Zm0 4.5a1.5 1.5 0 1 1-1.5-1.5A1.5 1.5 0 0 1 5 8Zm0 4.5A1.5 1.5 0 1 1 3.5 11 1.5 1.5 0 0 1 5 12.5Zm7.5-7.5A1.5 1.5 0 1 0 11 3.5 1.5 1.5 0 0 0 12.5 5Zm0 4.5A1.5 1.5 0 1 0 11 8a1.5 1.5 0 0 0 1.5 1.5Zm0 4.5A1.5 1.5 0 1 0 11 12.5a1.5 1.5 0 0 0 1.5 1.5Z" />
-            </svg>
             <p className="m-0 min-w-0 truncate text-[15px] font-semibold leading-5 text-[#101828]">
               文章目录
             </p>
@@ -1649,7 +1497,6 @@ function MetadataDivider() {
 
 export default function LongformModule({
   posts,
-  onAddArticle,
   analysisActivePostId = null,
   onAnalysisToggle,
   previewPostIds,
@@ -1736,9 +1583,6 @@ export default function LongformModule({
         <p className="m-0 mt-2 text-[13px] leading-5 text-[#6a7282]">
           近期整理的博客、媒体与研究文章会出现在这里。
         </p>
-        <div className="mt-5 flex justify-center">
-          <AddArticleButton onClick={onAddArticle} />
-        </div>
       </section>
     );
   }
@@ -1774,7 +1618,6 @@ export default function LongformModule({
             目录（{longformPosts.length}）
           </button>
         </div>
-        <AddArticleButton onClick={onAddArticle} />
       </div>
 
       <div className="flex w-full min-w-0 flex-col">

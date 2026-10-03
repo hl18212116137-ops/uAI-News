@@ -27,7 +27,7 @@ const PROCESS_DRAIN_MAX_PASSES = 5
 /** Persist the task before returning its id to the client. */
 export async function startBackgroundFullRefresh(userId: string): Promise<StartRefreshResult> {
   try {
-    const taskId = await taskManager.createTask()
+    const taskId = await taskManager.createTask(userId)
     await taskManager.updateTask(taskId, {
       status: 'running',
       progress: 0,

@@ -9,7 +9,7 @@ const args = process.argv.slice(2)
 
 dotenv.config({ path: path.join(root, '.env.local') })
 
-if (!args.includes('-p') && !args.includes('--port')) {
+if (!args.includes('-p') && !args.includes('--port') && !args.some((arg) => arg.startsWith('--port='))) {
   args.push('-p', process.env.PORT || '3001')
 }
 
