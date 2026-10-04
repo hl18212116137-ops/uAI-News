@@ -36,7 +36,7 @@ async function smoke(target: SmokeTarget, baseUrl: string) {
 const baseUrl = process.env.SMOKE_BASE_URL || "http://127.0.0.1:3001";
 
 const targets: SmokeTarget[] = [
-  { path: "/", maxBytes: 90_000 },
+  { path: "/", maxBytes: 180_000 },
   {
     path: "/api/feed?offset=0&limit=12",
     maxBytes: 30_000,

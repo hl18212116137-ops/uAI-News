@@ -1,4 +1,5 @@
 import 'server-only'
+import { fetchPublicHtml } from '@/lib/public-html'
 
 import { Readability } from '@mozilla/readability'
 import { JSDOM } from 'jsdom'
@@ -661,26 +662,10 @@ function splitForTranslation(text: string): string[] {
 }
 
 async function fetchHtml(url: string): Promise<{ html: string; resolvedUrl: string } | null> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 12000)
   try {
-    const res = await fetch(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        'user-agent': HTML_USER_AGENT,
-        accept: 'text/html,application/xhtml+xml',
-      },
-    })
-    if (!res.ok) return null
-    const type = res.headers.get('content-type') || ''
-    if (!type.includes('text/html') && !type.includes('application/xhtml')) return null
-    const html = await res.text()
-    return { html, resolvedUrl: res.url || url }
+    return await fetchPublicHtml(url, HTML_USER_AGENT)
   } catch {
     return null
-  } finally {
-    clearTimeout(timer)
   }
 }
 

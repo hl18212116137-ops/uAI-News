@@ -14,7 +14,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Missing post id" }, { status: 400 });
     }
 
-    const post = await getPostById(decodeURIComponent(postId));
+    const post = await getPostById(postId);
     if (!post?.longform?.translatedContent) {
       return NextResponse.json({ success: false, error: "Longform post not found" }, { status: 404 });
     }

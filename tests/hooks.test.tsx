@@ -267,3 +267,32 @@ test('nested modal Escape affects only the top dialog and respects pending work'
     await act(async () => { escape() }); assert.equal(outerCloses, 1)
   } finally { dom.window.HTMLElement.prototype.getClientRects = originalRects }
 })
+
+test('hiding a loaded post restarts pagination without skipping the shifted next row', async () => {
+  const firstPage = [post('one'), post('two')]
+  let api!: ReturnType<typeof useFeedPagination>
+  let items: NewsItem[] = []
+  let hide!: () => void
+  function Harness() {
+    const [posts, setPosts] = useState(firstPage); items = posts
+    api = useFeedPagination({ initialPosts: firstPage, initialPage: { nextOffset: 2, total: 4, hasMore: true }, posts, setPosts,
+      filters: {}, filteredPosts: posts, pageSize: 2, enabled: true, prioritizeRecentlyFetched: () => false, onPostsLoaded: noOp })
+    hide = () => { setPosts((current) => current.filter((item) => item.id !== 'one')); api.handlePostHidden() }
+    return null
+  }
+  const offsets: number[] = []
+  globalThis.fetch = async (url) => {
+    const offset = Number(new URL(String(url), 'http://localhost').searchParams.get('offset'))
+    offsets.push(offset)
+    return response({ success: true, posts: offset === 0 ? [post('two'), post('three')] : [post('four')],
+      nextOffset: offset === 0 ? 2 : 3, total: 3, hasMore: offset === 0 })
+  }
+  await render(<Harness />)
+  await act(async () => hide())
+  assert.equal(api.loadMoreStatusText, '已加载 1 / 3')
+  await act(async () => api.handleLoadMoreFeed())
+  await act(async () => api.handleLoadMoreFeed())
+  assert.deepEqual(offsets, [0, 2])
+  assert.deepEqual(items.map((item) => item.id), ['two', 'three', 'four'])
+  assert.equal(api.canShowLoadMoreFeed, false)
+})

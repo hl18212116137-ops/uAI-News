@@ -6,6 +6,9 @@ import {
   removeBookmarkForUser,
 } from '@/lib/services/bookmarks-service'
 import { revalidateHomeBookmarkCaches } from '@/lib/home-cache-invalidation'
+import { z } from 'zod'
+
+const bookmarkSchema = z.object({ news_item_id: z.string().trim().min(1).max(512) })
 
 /**
  * GET /api/bookmarks
@@ -34,23 +37,25 @@ export async function POST(request: NextRequest) {
   if (errorResponse) return errorResponse
 
   try {
-    const body = await request.json()
-    const { news_item_id } = body
-
-    if (!news_item_id || typeof news_item_id !== 'string') {
+    const parsed = bookmarkSchema.safeParse(await request.json().catch(() => null))
+    if (!parsed.success) {
       return NextResponse.json(
         { success: false, error: '请提供有效的 news_item_id' },
         { status: 400 }
       )
     }
 
-    await addBookmarkForUser(user!.id, news_item_id)
+    await addBookmarkForUser(user!.id, parsed.data.news_item_id)
     revalidateHomeBookmarkCaches()
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : '收藏失败'
+    // The article may have been pruned since its card was loaded.
+    const cause = error instanceof Error && error.cause ? error.cause : error
+    if (cause && typeof cause === 'object' && 'code' in cause && cause.code === '23503') {
+      return NextResponse.json({ success: false, error: '这篇内容已不存在，请刷新后重试' }, { status: 404 })
+    }
     console.error('Failed to add bookmark:', error)
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    return NextResponse.json({ success: false, error: '收藏失败，请稍后重试' }, { status: 500 })
   }
 }
 

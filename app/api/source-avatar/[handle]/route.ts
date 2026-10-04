@@ -6,7 +6,7 @@ export async function GET(
 ) {
   const { handle: routeHandle } = await params
   const rawHandle = String(routeHandle ?? '').trim()
-  const handle = rawHandle ? decodeURIComponent(rawHandle) : 'source'
+  const handle = rawHandle || 'source'
 
   return new Response(sourceAvatarSvgForHandle(handle), {
     headers: {

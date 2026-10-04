@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { mapSignInError } from "@/lib/auth-errors";
+import { safeRedirectPath } from "@/lib/safe-redirect";
 
 type LoginPanelProps = {
   /** 首页受控弹窗：登录成功后整页刷新以同步 RSC Session */
@@ -19,11 +20,6 @@ function LoginPanelInner({ hardRedirectAfterLogin }: LoginPanelProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") ?? "/";
-
-  function safeRedirectPath(raw: string): string {
-    if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
-    return raw;
-  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

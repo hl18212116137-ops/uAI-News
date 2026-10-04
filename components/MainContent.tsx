@@ -378,7 +378,7 @@ export default function MainContent({
 
   const prioritizeRecentlyFetched = useCallback(() => Boolean(newBadgeCollectionWindowRef.current), []);
   const {
-    handleFeedPageSynced, handleLoadMoreFeed, isLoadingMoreFeed, loadMoreFeedError,
+    handleFeedPageSynced, handlePostHidden, handleLoadMoreFeed, isLoadingMoreFeed, loadMoreFeedError,
     loadMoreStatusText, matchedPostIds, canShowLoadMoreFeed,
   } = useFeedPagination({
     initialPage: { nextOffset: initialFeedOffset, total: initialFeedTotal, hasMore: initialFeedHasMore },
@@ -386,7 +386,7 @@ export default function MainContent({
     filters: { sourceHandle: isLongformCategory ? undefined : activeSource,
       category: isLongformCategory ? undefined : activeCategory },
     filteredPosts: locallyFilteredPosts, pageSize: feedPageSize,
-    enabled: canLoadMoreFeed && !isLongformCategory && !feedUnavailable,
+    enabled: canLoadMoreFeed && !isLongformCategory && !feedUnavailable && passPendingIds.size === 0,
     prioritizeRecentlyFetched, onPostsLoaded: collectNewBadgesForLoadedPosts,
   });
 
@@ -590,6 +590,7 @@ export default function MainContent({
         if (!res.ok || !data.success) {
           throw new Error(data.error || "隐藏失败，请稍后重试。");
         }
+        handlePostHidden();
         showSourceActivity(
           {
             title: "已隐藏这条内容",
@@ -613,7 +614,7 @@ export default function MainContent({
         setPassPendingIds(new Set(passPendingIdsRef.current));
       }
     },
-    [analysisPostId, closeAnalysisSession, showSourceActivity, user]
+    [analysisPostId, closeAnalysisSession, handlePostHidden, showSourceActivity, user]
   );
 
   const isGuestDefaultFeed =

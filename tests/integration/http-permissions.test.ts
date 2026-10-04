@@ -12,8 +12,8 @@ test('HTTP permission boundaries and reading preference persistence', { skip: !b
   async function request(path: string, method = 'GET', token?: string, body?: unknown) {
     return fetch(`${base}${path}`, { method, redirect: 'manual', headers: {
       ...(token ? { cookie: `next-auth.session-token=${token}` } : {}),
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    }, body: body ? JSON.stringify(body) : undefined })
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    }, body: body !== undefined ? JSON.stringify(body) : undefined })
   }
   await t.test('anonymous imports and source creation require authentication', async () => {
     for (const path of ['/api/longform/import', '/api/import-from-url', '/api/longform/from-post', '/api/sources', '/api/refresh/fetch', '/api/refresh/process']) {
@@ -37,6 +37,8 @@ test('HTTP permission boundaries and reading preference persistence', { skip: !b
     const allowed = await request('/admin/pipeline', 'GET', admin)
     assert.equal(allowed.status, 200)
     assert.match(await allowed.text(), /站点采集参数/)
+    const page = await (await request('/admin/pipeline', 'GET', admin)).text()
+    assert.match(page, /启用采集/, 'An unsubscribed paused source remains manageable')
   })
   await t.test('refresh status and cancellation belong to the initiating user', async () => {
     assert.equal((await request('/api/task-status?taskId=unknown')).status, 401)
@@ -55,6 +57,16 @@ test('HTTP permission boundaries and reading preference persistence', { skip: !b
     for (const body of [{}, { email: 'invalid', password: 'long-enough' }, { email: 'reader@example.invalid', password: 'short' }]) {
       assert.equal((await request('/api/register', 'POST', undefined, body)).status, 400)
     }
+  })
+  await t.test('encoded route parameters and invalid bookmark requests return controlled responses', async () => {
+    assert.equal((await request('/api/source-avatar/100%25')).status, 200)
+    assert.equal((await request('/api/longform/posts/100%25')).status, 404)
+    for (const body of [null, {}, { news_item_id: ' ' }]) {
+      assert.equal((await request('/api/bookmarks', 'POST', member, body)).status, 400)
+    }
+    assert.equal((await request('/api/bookmarks', 'POST', member, { news_item_id: 'nonexistent-audit-id' })).status, 404)
+    const response = await fetch(`${base}/api/analysis`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: 'null' })
+    assert.equal(response.status, 400)
   })
   await t.test('concurrent registration creates one normalized account', async () => {
     const email = `signup-${Date.now()}@example.invalid`
@@ -78,5 +90,28 @@ test('HTTP permission boundaries and reading preference persistence', { skip: !b
     } finally {
       assert.equal((await request(`/api/me/pipeline-rules?id=${rule.id}`, 'DELETE', member)).status, 200)
     }
+  })
+  await t.test('bookmarks persist, stay private, and support repeated removal', async () => {
+    const postId = 'feature-test-post'
+    assert.equal((await request('/api/bookmarks', 'POST', member, { news_item_id: postId })).status, 200)
+    assert.equal((await request('/api/bookmarks', 'POST', member, { news_item_id: postId })).status, 200)
+    const mine = await (await request('/api/bookmarks', 'GET', member)).json()
+    const theirs = await (await request('/api/bookmarks', 'GET', admin)).json()
+    assert.equal(mine.bookmarkedIds.filter((id: string) => id === postId).length, 1)
+    assert.ok(!theirs.bookmarkedIds.includes(postId))
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.equal((await request(`/api/bookmarks?id=${postId}`, 'DELETE', member)).status, 200)
+    }
+    assert.ok(!(await (await request('/api/bookmarks', 'GET', member)).json()).bookmarkedIds.includes(postId))
+  })
+  await t.test('administrator settings save, validate, and reset', async () => {
+    assert.equal((await request('/api/admin/pipeline-settings', 'PUT', member, { rawMinOuterChars: 23 })).status, 403)
+    assert.equal((await request('/api/admin/pipeline-settings', 'PUT', admin, { rawMinOuterChars: -1 })).status, 400)
+    const saved = await request('/api/admin/pipeline-settings', 'PUT', admin, { rawMinOuterChars: 23 })
+    assert.equal(saved.status, 200)
+    assert.equal((await saved.json()).config.rawMinOuterChars, 23)
+    const reset = await request('/api/admin/pipeline-settings', 'PUT', admin, { rawMinOuterChars: null })
+    assert.equal(reset.status, 200)
+    assert.notEqual((await reset.json()).config.rawMinOuterChars, 23)
   })
 })

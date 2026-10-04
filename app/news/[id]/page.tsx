@@ -1,4 +1,5 @@
 import { getPostById } from '@/lib/db';
+import { notFound } from 'next/navigation';
 
 export const revalidate = 3600;
 
@@ -10,16 +11,7 @@ export default async function NewsDetailPage({
   const { id } = await params;
   const post = await getPostById(id);
 
-  if (!post) {
-    return (
-      <main className="min-h-screen bg-[#f5f5f5] px-4 py-10 sm:px-6">
-        <div className="mx-auto max-w-200 rounded-md border border-[#f3f4f6] bg-white p-6 shadow-sm">
-          <h1 className="m-0 text-xl font-semibold text-[#101828]">新闻不存在</h1>
-          <p className="mt-2 text-sm text-[#6a7282]">这篇内容可能已被删除或暂时不可访问。</p>
-        </div>
-      </main>
-    );
-  }
+  if (!post) notFound();
 
   const sourceName = post.source.name;
   const sourceUrl = post.source.url;

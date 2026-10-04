@@ -13,7 +13,7 @@ const AddLongformModal = dynamic(() => import("./AddLongformModal"), { ssr: fals
 const PassedPostsReviewPanel = dynamic(() => import("./PassedPostsReviewPanel"), { ssr: false });
 const noop = () => {};
 
-export default function PipelineAdminPanel({ initialConfig, sources, user }: { initialConfig: FetchPipelinePublicConfig; sources: SourceListItem[]; user: AuthUser }) {
+export default function PipelineAdminPanel({ initialConfig, sources, user }: { initialConfig: FetchPipelinePublicConfig; sources: Pick<SourceListItem, 'id' | 'name' | 'enabled'>[]; user: AuthUser }) {
   const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
   const [outer, setOuter] = useState(initialConfig.rawMinOuterChars);

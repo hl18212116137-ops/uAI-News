@@ -58,6 +58,15 @@ export function useFeedPagination({ initialPage, initialPosts, posts, setPosts, 
     setLoading(false);
     setError("");
   }, [cancel]);
+  const handlePostHidden = useCallback(() => {
+    cancel();
+    // Hiding changes the server result set (and potentially its ranking).
+    // Re-read from zero and merge identities so no shifted row is skipped.
+    setPage((current) => ({ total: Math.max(0, current.total - 1), nextOffset: 0, hasMore: current.total > 1 }));
+    setFilteredPage(null);
+    setLoading(false);
+    setError("");
+  }, [cancel]);
   useEffect(() => {
     handleFeedPageSynced({ nextOffset: initialPage.nextOffset, total: initialPage.total, hasMore: initialPage.hasMore });
   }, [handleFeedPageSynced, initialPosts, initialPage.nextOffset, initialPage.total, initialPage.hasMore]);
@@ -113,6 +122,6 @@ export function useFeedPagination({ initialPage, initialPosts, posts, setPosts, 
     ? activePage ? `已显示 ${Math.min(filteredCount, activePage.total)} / ${activePage.total}`
       : `已显示 ${filteredCount} 条，点击加载当前筛选结果`
     : `已加载 ${Math.min(regularCount, page.total)} / ${page.total}`;
-  return { handleFeedPageSynced, handleLoadMoreFeed, isLoadingMoreFeed, loadMoreFeedError,
+  return { handleFeedPageSynced, handlePostHidden, handleLoadMoreFeed, isLoadingMoreFeed, loadMoreFeedError,
     loadMoreStatusText, matchedPostIds, canShowLoadMoreFeed: enabled && hasMore };
 }

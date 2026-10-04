@@ -77,7 +77,7 @@ async function runInsightComputeOnce(
 export async function runPostInsightForRequest(request: Request): Promise<PostInsightServiceResult> {
   try {
     const body = await request.json().catch(() => ({}));
-    const postId = body.postId;
+    const postId = body && typeof body === 'object' ? body.postId : undefined;
 
     if (!postId || typeof postId !== "string") {
       return { kind: "bad_request", error: "Missing postId" };
