@@ -175,6 +175,7 @@ export default function MainContent({
 }: MainContentProps) {
   const router = useRouter();
   const [retryingFeed, startFeedRetry] = useTransition();
+  const retryFeed = useCallback(() => startFeedRetry(() => router.refresh()), [router]);
   const optionalShell = useOptionalHomeLayout();
   const openLogin = useOpenLogin();
   const [hasHydrated, setHasHydrated] = useState(false);
@@ -806,7 +807,7 @@ export default function MainContent({
                       analysisActivePostId={analysisPostId}
                       onAnalysisToggle={handleAnalysisToggle}
                       emptyStatus={isFetchBusy || fetchingSourceIds.size > 0 ? "updating" : feedUnavailable ? "unavailable" : activeCategory || activeSource ? "filtered" : "empty"}
-                      onRetry={() => startFeedRetry(() => router.refresh())}
+                      onRetry={retryFeed}
                       retrying={retryingFeed}
                     />
                   )}
@@ -1075,7 +1076,7 @@ export default function MainContent({
         />
       ) : null}
 
-      {hasOpenedFetchPipelinePanel ? (
+      {hasOpenedFetchPipelinePanel || fetchPipelinePanelOpen ? (
         <ReadingPreferencesPanel
           key={`preferences:${user?.id ?? "guest"}`}
           isOpen={fetchPipelinePanelOpen}

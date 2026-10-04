@@ -85,8 +85,8 @@ export default function ReadingPreferencesPanel({ isOpen, onClose, user, canMana
   const disabled = busy || loading || !loaded;
 
   return (
-    <AppModalShell isOpen={isOpen} onClose={onClose} disableBackdropClick={busy} panelClassName="max-w-[520px] max-h-[85vh] overflow-y-auto p-5" ariaLabelledBy="reading-preferences-title">
-      <div className="mb-5 flex items-center justify-between gap-3">
+    <AppModalShell isOpen={isOpen} onClose={onClose} disableBackdropClick={busy} panelClassName={`max-w-[520px] max-h-[85dvh] overflow-hidden p-5 ${user ? "flex h-[min(540px,85dvh)] flex-col" : ""}`} ariaLabelledBy="reading-preferences-title">
+      <div className="mb-5 flex shrink-0 items-center justify-between gap-3">
         <h2 id="reading-preferences-title" className="text-base font-semibold text-[#101828]">阅读偏好</h2>
         <button type="button" onClick={onClose} disabled={busy} className="btn-primary rounded-md px-3 py-1.5 text-xs">关闭</button>
       </div>
@@ -96,9 +96,8 @@ export default function ReadingPreferencesPanel({ isOpen, onClose, user, canMana
           <button type="button" onClick={onLogin} className="btn-primary btn-press rounded-md px-4 py-2 text-sm">登录</button>
         </div>
       ) : (
-        <div className="space-y-5">
-          <p className="text-xs leading-5 text-[#6a7282]">仅影响你的订阅资讯流，可随时修改。</p>
-          {loading ? <p role="status" className="text-sm text-[#6a7282]">正在读取偏好…</p> : null}
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain scrollbar-gutter-stable" aria-busy={loading}>
+          <p role="status" className="min-h-5 text-xs leading-5 text-[#6a7282]">{loading ? "正在读取偏好…" : message || "仅影响你的订阅资讯流，可随时修改。"}</p>
           {error ? <div role="alert" className="text-sm text-primary-600">{error}{!loaded && !loading ? <button type="button" className="ml-3 underline" onClick={() => setRevision((value) => value + 1)}>重试</button> : null}</div> : null}
           <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); void mutate({ module: "recommendation", ruleType: "recommendation_visible_days", payload: { days } }); }}>
             <label htmlFor="reading-days" className="block text-sm font-medium text-[#101828]">阅读时间范围</label>
@@ -132,10 +131,9 @@ export default function ReadingPreferencesPanel({ isOpen, onClose, user, canMana
               </ul>
             </section>;
           })}
-          {message ? <p role="status" className="text-sm text-[#6a7282]">{message}</p> : null}
           <SubscriptionSettings sources={sources} onChanged={onChanged} />
           <div className="flex flex-wrap gap-4 border-t border-[#f3f4f6] pt-4 text-sm">
-            <button type="button" disabled={busy} onClick={onReviewHidden} className="text-[#101828] hover:text-primary-600">管理不感兴趣的内容</button>
+            <button type="button" disabled={busy} onClick={onReviewHidden} onPointerEnter={() => { void import("./PassedPostsReviewPanel").catch(() => {}); }} onFocus={() => { void import("./PassedPostsReviewPanel").catch(() => {}); }} className="text-[#101828] hover:text-primary-600">管理不感兴趣的内容</button>
             {canManage ? <Link href="/admin/pipeline" className="text-[#6a7282] hover:text-primary-600">采集管理</Link> : null}
           </div>
         </div>

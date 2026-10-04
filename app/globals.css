@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Preserve page width when a modal locks the document scrollbar. */
+html {
+  scrollbar-gutter: stable;
+}
+
 /* Linear 风格布局动效：侧栏 / 顶栏 / Tab 指示 / Feed 金条等与 prefers-reduced-motion 共用节奏 */
 :root {
   --layout-duration: 220ms;

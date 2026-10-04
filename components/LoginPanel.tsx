@@ -140,8 +140,19 @@ function LoginPanelInner({ hardRedirectAfterLogin }: LoginPanelProps) {
 
 function LoginPanelFallback() {
   return (
-    <div className="flex min-h-[280px] items-center justify-center text-sm font-normal text-[#99a1af]">
-      加载中…
+    <div aria-busy="true" aria-label="正在加载登录表单">
+      <div className="mb-6 text-center">
+        <span className="inline-block text-lg font-semibold tracking-[-0.02em] text-[#101828]">uAI News</span>
+        <p className="mt-1.5 text-sm font-normal leading-5 text-[#6a7282]">登录以使用完整功能。</p>
+      </div>
+      <div className="flex flex-col gap-4" aria-hidden>
+        {["邮箱", "密码"].map((label) => <div key={label}>
+          <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.06em] text-[#6a7282]">{label}</span>
+          <div className="skeleton h-9 w-full rounded-[4px]" />
+        </div>)}
+        <div className="skeleton mt-1 h-9 rounded-[4px]" />
+      </div>
+      <p className="mt-6 h-5 text-center text-sm text-[#99a1af]" role="status">加载中…</p>
     </div>
   );
 }

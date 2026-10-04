@@ -207,11 +207,11 @@ export default function PassedPostsReviewPanel({
       onClose={onClose}
       disableBackdropClick={promoting}
       panelVariant="large"
-      panelClassName="max-h-[86vh] max-w-[920px] overflow-hidden p-0"
+      panelClassName="h-[min(640px,86dvh)] max-w-[920px] overflow-hidden p-0"
       ariaLabelledBy="pass-review-title"
     >
-      <div className="flex max-h-[86vh] min-h-0 flex-col bg-white">
-        <div className="border-b border-[#f3f4f6] px-5 py-4">
+      <div className="flex h-full min-h-0 flex-col bg-white">
+        <div className="shrink-0 border-b border-[#f3f4f6] px-5 py-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 id="pass-review-title" className="text-base font-semibold text-[#101828]">
@@ -267,18 +267,18 @@ export default function PassedPostsReviewPanel({
           ) : null}
 
           {loading ? (
-            <div className="grid gap-2 px-5 py-4" role="status" aria-label="正在加载记录">
+            <div className="grid min-h-0 flex-1 gap-2 overflow-hidden px-5 py-4" role="status" aria-label="正在加载记录">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="skeleton h-20 rounded-md" />
               ))}
             </div>
           ) : !error && logs.length === 0 ? (
-            <div className="px-5 py-10 text-center">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-10 text-center">
               <p className="text-sm font-medium text-[#101828]">暂无记录</p>
               <p className="mt-1 text-sm text-[#6a7282]">{scope === "moderation" ? "后续采集的筛选记录会显示在这里。" : "你尚未将内容标记为不感兴趣。"}</p>
             </div>
           ) : (
-            <ul className="min-h-0 flex-1 divide-y divide-[#f3f4f6] overflow-y-auto">
+            <ul className="min-h-0 flex-1 divide-y divide-[#f3f4f6] overflow-y-auto overscroll-contain">
               {logs.map((log) => {
                 const disabled = Boolean(log.promotedAt) || promoting;
                 const checked = selectedIds.has(log.id);
@@ -348,7 +348,7 @@ export default function PassedPostsReviewPanel({
           )}
         </div>
 
-        <div className="border-t border-[#e5e7eb] px-5 py-3">
+        <div className="shrink-0 border-t border-[#e5e7eb] px-5 py-3">
           <button
             type="button"
             className="btn-primary btn-press w-full rounded-md py-2.5 text-sm font-medium"

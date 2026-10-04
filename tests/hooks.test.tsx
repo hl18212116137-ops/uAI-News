@@ -8,6 +8,7 @@ import { useInsightPanel } from '../hooks/useInsightPanel'
 import { useLongformFeed, LONGFORM_CATEGORY } from '../hooks/useLongformFeed'
 import { useFeedPagination } from '../hooks/useFeedPagination'
 import { useModalFocus } from '../hooks/useModalFocus'
+import { useFeedScroll } from '../hooks/useFeedScroll'
 import { post, response } from './fixtures'
 import type { NewsItem } from '../lib/types'
 
@@ -188,8 +189,11 @@ test('server full-text matches are retained when card previews omit the query', 
 
 test('modal focus traps Tab, closes on Escape and restores the trigger and scroll', async () => {
   const originalRects = dom.window.HTMLElement.prototype.getClientRects
+  const originalFocus = dom.window.HTMLElement.prototype.focus
+  const focusOptions: (FocusOptions | undefined)[] = []
   dom.window.HTMLElement.prototype.getClientRects = () => [{ width: 1 }] as unknown as DOMRectList
   const trigger = document.createElement('button'); document.body.appendChild(trigger); trigger.focus()
+  dom.window.HTMLElement.prototype.focus = function(options) { focusOptions.push(options); originalFocus.call(this, options) }
   function Harness() {
     const [open, setOpen] = useState(true)
     const ref = useModalFocus(open, () => setOpen(false), false)
@@ -202,10 +206,36 @@ test('modal focus traps Tab, closes on Escape and restores the trigger and scrol
     assert.equal(document.activeElement?.id, 'last')
     await act(async () => { document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true })) })
     assert.equal(document.activeElement?.id, 'first')
-    trigger.focus(); assert.equal(document.activeElement?.id, 'first')
+    originalFocus.call(trigger); assert.equal(document.activeElement?.id, 'first')
     await act(async () => { document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
     assert.equal(document.activeElement, trigger); assert.equal(document.body.style.overflow, '')
-  } finally { dom.window.HTMLElement.prototype.getClientRects = originalRects }
+    assert.ok(focusOptions.length >= 4)
+    assert.ok(focusOptions.every((options) => options?.preventScroll === true), 'Modal focus must never reposition a scroll container')
+  } finally {
+    dom.window.HTMLElement.prototype.getClientRects = originalRects
+    dom.window.HTMLElement.prototype.focus = originalFocus
+  }
+})
+
+test('background wheel routing pauses while a modal is open and resumes after close', async () => {
+  const original = { Node: globalThis.Node, Element: globalThis.Element, WheelEvent: globalThis.WheelEvent }
+  Object.assign(globalThis, { Node: dom.window.Node, Element: dom.window.Element, WheelEvent: dom.window.WheelEvent })
+  let setOpen!: (open: boolean) => void
+  function Harness() {
+    const [open, update] = useState(false); setOpen = update
+    const { mainScrollRef } = useFeedScroll(true, false)
+    return <><div id="scroll-feed" ref={mainScrollRef} />{open ? <div role="dialog" aria-modal="true" /> : null}</>
+  }
+  const wheel = () => document.body.dispatchEvent(new dom.window.WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true }))
+  try {
+    await render(<Harness />)
+    const feed = document.getElementById('scroll-feed')!
+    wheel(); assert.equal(feed.scrollTop, 100)
+    await act(async () => setOpen(true))
+    wheel(); assert.equal(feed.scrollTop, 100)
+    await act(async () => setOpen(false))
+    wheel(); assert.equal(feed.scrollTop, 200)
+  } finally { Object.assign(globalThis, original) }
 })
 
 test('nested modal Escape affects only the top dialog and respects pending work', async () => {

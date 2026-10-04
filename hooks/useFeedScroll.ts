@@ -43,6 +43,8 @@ export function useFeedScroll(isSourcesListCollapsed: boolean, analysisSlidesOpe
 
     const onWheelCapture = (e: WheelEvent) => {
       if (e.ctrlKey) return;
+      // The feed scrolls inside its own container; locking body alone cannot stop it.
+      if (document.querySelector('[aria-modal="true"]')) return;
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
 
       const rawTarget = e.target;

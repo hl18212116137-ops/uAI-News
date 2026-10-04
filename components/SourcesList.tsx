@@ -277,6 +277,8 @@ function SourcesList({
               data-name="Button"
               data-node-id="37:4557"
               onClick={() => onAddSource?.()}
+              onPointerEnter={() => { void import("./AddSourceModal").catch(() => {}); }}
+              onFocus={() => { void import("./AddSourceModal").catch(() => {}); }}
               className="btn-press flex size-8 shrink-0 items-center justify-center rounded-md transition-[background-color,opacity] hover:bg-[#f3f4f6] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/30"
               aria-label="添加信息源"
             >

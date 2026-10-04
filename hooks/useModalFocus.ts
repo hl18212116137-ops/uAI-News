@@ -26,7 +26,7 @@ export function useModalFocus(isOpen: boolean, onClose: () => void, disableClose
     const isTop = () => openPanels[openPanels.length - 1] === panel;
     const targets = () => Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector))
       .filter((element) => element.tabIndex >= 0 && !element.closest('[hidden], [inert], [aria-hidden="true"]') && element.getClientRects().length > 0);
-    const focusFirst = () => (targets()[0] ?? panel).focus();
+    const focusFirst = () => (targets()[0] ?? panel).focus({ preventScroll: true });
     focusFirst();
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isTop()) return;
@@ -40,9 +40,9 @@ export function useModalFocus(isOpen: boolean, onClose: () => void, disableClose
         const last = items[items.length - 1] ?? panel;
         const focusOutside = !panel.contains(document.activeElement);
         if (event.shiftKey && (focusOutside || document.activeElement === first || document.activeElement === panel)) {
-          event.preventDefault(); last.focus();
+          event.preventDefault(); last.focus({ preventScroll: true });
         } else if (!event.shiftKey && (focusOutside || document.activeElement === last || document.activeElement === panel)) {
-          event.preventDefault(); first.focus();
+          event.preventDefault(); first.focus({ preventScroll: true });
         }
       }
     };
@@ -58,8 +58,8 @@ export function useModalFocus(isOpen: boolean, onClose: () => void, disableClose
       document.removeEventListener("focusin", onFocus);
       if (openPanels.length === 0) document.body.style.overflow = previousOverflow;
       if (wasTop) {
-        if (previousFocus?.isConnected) previousFocus.focus();
-        else openPanels[openPanels.length - 1]?.focus();
+        if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+        else openPanels[openPanels.length - 1]?.focus({ preventScroll: true });
       }
     };
   }, [isOpen]);

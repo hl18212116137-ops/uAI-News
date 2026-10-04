@@ -31,6 +31,8 @@ type TopBarProps = {
 
 const layoutTf = "var(--layout-duration) var(--layout-ease)";
 const BOOKMARKS_RETURN_HOME_KEY = "uai:bookmarks-return-home";
+const preparePreferences = () => { void import("./ReadingPreferencesPanel").catch(() => {}); };
+const prepareLogin = () => { void import("./LoginModalShell").catch(() => {}); };
 
 /**
  * 单一 DOM：图标不随布局切换卸载；用 left/right + transition 对齐 grid（1fr|1|800|1|1fr）几何。
@@ -164,6 +166,9 @@ export default function TopBar({
             aria-haspopup="dialog"
             className="motion-layout-ease relative flex size-9 shrink-0 items-center justify-center rounded-md text-[#111113] transition-colors hover:bg-[#f5f5f5]"
             onClick={handleOpenFetchPipelineSettings}
+            onPointerEnter={preparePreferences}
+            onFocus={preparePreferences}
+            onPointerDown={preparePreferences}
           >
             <div
               data-name="Container"
@@ -190,6 +195,9 @@ export default function TopBar({
               <button
                 type="button"
                 onClick={openLogin}
+                onPointerEnter={prepareLogin}
+                onFocus={prepareLogin}
+                onPointerDown={prepareLogin}
                 className="motion-layout-ease flex size-9 items-center justify-center rounded-md transition-colors hover:bg-[#f5f5f5]"
                 aria-label="登录"
               >

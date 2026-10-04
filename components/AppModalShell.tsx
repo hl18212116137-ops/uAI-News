@@ -41,7 +41,7 @@ export default function AppModalShell({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain px-4"
       role="presentation"
     >
       <button
@@ -63,7 +63,7 @@ export default function AppModalShell({
         tabIndex={-1}
         className={[
           panelBase,
-          "relative z-[1] w-full modal-panel-enter",
+          "relative z-[1] w-full overscroll-contain modal-panel-enter",
           panelClassName,
         ]
           .filter(Boolean)

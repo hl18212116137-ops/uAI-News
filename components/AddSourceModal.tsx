@@ -144,7 +144,7 @@ export default function AddSourceModal({
 
   return (
     <AppModalShell isOpen={isOpen} onClose={onClose} disableBackdropClick={isLoading}
-      panelClassName="flex max-h-[min(720px,85vh)] max-w-[480px] flex-col overflow-hidden rounded-lg p-0"
+      panelClassName="flex h-[min(720px,85dvh)] max-w-[480px] flex-col overflow-hidden rounded-lg p-0"
       ariaLabelledBy="add-source-title">
         <header className="app-divider-border-b flex items-start justify-between px-5 pb-4 pt-5">
           <div
