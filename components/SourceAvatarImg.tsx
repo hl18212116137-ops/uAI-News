@@ -6,7 +6,7 @@ const avatarLoadCache = new Map<string, { src: string; failed: boolean }>();
 
 type SourceAvatarImgProps = {
   src?: unknown;
-  /** 主图加载失败时尝试的备用 URL（如 unavatar 另一路径） */
+  /** 主图加载失败时尝试的站内头像或占位图 */
   fallbackSrc?: unknown;
   alt: string;
   letter: unknown;
@@ -107,10 +107,8 @@ export default function SourceAvatarImg({
       setFailed(false);
     };
     image.onerror = () => {
-      avatarLoadCache.set(cacheKey(primarySrc, fallbackSrc), {
-        src: fb,
-        failed: false,
-      });
+      // Transient CDN failures must not pin future mounts to a placeholder.
+      if (!cancelled) avatarLoadCache.delete(cacheKey(primarySrc, fallbackSrc));
     };
     image.src = primarySrc;
 
@@ -155,17 +153,11 @@ export default function SourceAvatarImg({
       }}
       onError={() => {
         if (fb && displaySrc !== fb) {
-          avatarLoadCache.set(cacheKey(primarySrc, fallbackSrc), {
-            src: fb,
-            failed: false,
-          });
+          avatarLoadCache.delete(cacheKey(primarySrc, fallbackSrc));
           setActiveSrc(fb);
           return;
         }
-        avatarLoadCache.set(cacheKey(primarySrc, fallbackSrc), {
-          src: "",
-          failed: true,
-        });
+        avatarLoadCache.delete(cacheKey(primarySrc, fallbackSrc));
         setFailed(true);
       }}
     />

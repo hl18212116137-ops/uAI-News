@@ -1,6 +1,14 @@
 /**
  * 侧栏与信息流共用：优先真实头像；无图时展示本地生成头像。
  */
+import avatarSnapshots from '@/data/source-avatars.json'
+
+const snapshots: Record<string, { source: string; path: string }> = avatarSnapshots
+
+function snapshotForHandle(handle: string | null | undefined) {
+  const key = normalizeSourceHandle(handle)
+  return Object.hasOwn(snapshots, key) ? snapshots[key] : undefined
+}
 
 const X_PLATFORMS = new Set(['x', 'twitter'])
 
@@ -88,11 +96,11 @@ export function sourceAvatarSvgForHandle(handle: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="${escapeSvgText(h)} avatar"><rect width="96" height="96" rx="14" fill="${palette.bg}"/><path d="M72 0h24v96H0V72c13.6 8.1 28.9 12.1 45.8 12.1C66.9 84.1 82.3 75.3 92 57.8V0H72Z" fill="${palette.accent}" opacity="0.14"/><circle cx="22" cy="22" r="10" fill="${palette.accent}" opacity="0.18"/><text x="48" y="54" text-anchor="middle" dominant-baseline="middle" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="42" font-weight="700" fill="${palette.fg}">${initial}</text></svg>`
 }
 
-/** X 源默认头像（本地生成；仅用于展示，不应作为真实头像写入 DB） */
+/** Prefer a bundled real avatar; otherwise generate a local placeholder. */
 export function defaultAvatarUrlForHandle(handle: string): string {
   const h = normalizeSourceHandle(handle)
   if (!h) return ''
-  return `/api/source-avatar/${encodeURIComponent(h)}`
+  return snapshotForHandle(h)?.path || `/api/source-avatar/${encodeURIComponent(h)}`
 }
 
 export function resolveSourceAvatarUrl(
@@ -101,6 +109,8 @@ export function resolveSourceAvatarUrl(
   platform: string | undefined | null
 ): string {
   const url = dbAvatar?.trim()
+  const snapshot = snapshotForHandle(handle)
+  if (url && snapshot?.source === url) return snapshot.path
   if (url && !isFallbackSourceAvatarUrl(url)) return url
 
   const h = handle?.replace(/^@+/, '').trim()

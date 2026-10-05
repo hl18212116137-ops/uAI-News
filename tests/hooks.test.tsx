@@ -9,11 +9,12 @@ import { useLongformFeed, LONGFORM_CATEGORY } from '../hooks/useLongformFeed'
 import { useFeedPagination } from '../hooks/useFeedPagination'
 import { useModalFocus } from '../hooks/useModalFocus'
 import { useFeedScroll } from '../hooks/useFeedScroll'
+import SourceAvatarImg from '../components/SourceAvatarImg'
 import { post, response } from './fixtures'
 import type { NewsItem } from '../lib/types'
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost', pretendToBeVisual: true })
-Object.assign(globalThis, { window: dom.window, document: dom.window.document,
+Object.assign(globalThis, { React, window: dom.window, document: dom.window.document,
   requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window), IS_REACT_ACT_ENVIRONMENT: true })
 let root: Root | undefined
@@ -29,6 +30,26 @@ afterEach(async () => {
 })
 const initial = [post('one')]
 const noOp = () => {}
+
+test('avatar remount retries a failed CDN preload and replaces its placeholder after recovery', async () => {
+  const OriginalImage = window.Image
+  const preloads: HTMLImageElement[] = []
+  window.Image = function () {
+    const image = document.createElement('img'); preloads.push(image); return image
+  } as unknown as typeof window.Image
+  const avatar = <SourceAvatarImg src="https://cdn.example/avatar-recovery.jpg" fallbackSrc="/fallback.svg"
+    alt="Recovery" letter="R" imgClassName="avatar" placeholderClassName="placeholder" instantFallback />
+  try {
+    await render(avatar)
+    await act(async () => { preloads[0].dispatchEvent(new dom.window.Event('error')) })
+    await act(async () => root!.unmount())
+    root = undefined
+    await render(avatar)
+    assert.equal(preloads.length, 2)
+    await act(async () => { preloads[1].dispatchEvent(new dom.window.Event('load')) })
+    assert.equal(document.querySelector('img.avatar')?.getAttribute('src'), 'https://cdn.example/avatar-recovery.jpg')
+  } finally { window.Image = OriginalImage }
+})
 
 test('insight retry actually issues another request after a failed response', async () => {
   let calls = 0

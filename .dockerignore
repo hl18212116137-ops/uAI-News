@@ -6,6 +6,7 @@ node_modules
 !.env.production.example
 data/*
 !data/sources.json
+!data/source-avatars.json
 mobile-app
 *.log
 *.tsbuildinfo

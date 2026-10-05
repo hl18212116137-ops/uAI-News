@@ -35,7 +35,7 @@ export const RECOMMENDATION_POOL: RecommendationPoolEntry[] = [
   { handle: 'lexfridman', name: 'Lex Fridman', description: 'AI 播客与访谈', sourceType: 'blogger' },
   { handle: 'JimFan0924', name: 'Jim Fan', description: 'NVIDIA 高级 AI 科学家', sourceType: 'blogger' },
   { handle: 'bfchollet', name: 'François Chollet', description: 'Keras 作者，ARC 基准', sourceType: 'blogger' },
-  { handle: 'satabor', name: 'Sébastien Bubeck', description: '微软研究院，Sparks of AGI', sourceType: 'blogger' },
+  { handle: 'SebastienBubeck', name: 'Sébastien Bubeck', description: 'Sparks of AGI 作者', sourceType: 'blogger' },
   { handle: 'jasonwei20', name: 'Jason Wei', description: 'OpenAI 研究员，思维链', sourceType: 'blogger' },
   { handle: 'rasbt', name: 'Sebastian Raschka', description: '机器学习教育与实践', sourceType: 'blogger' },
   { handle: 'NathanBenaich', name: 'Nathan Benaich', description: 'Air Street Capital，State of AI', sourceType: 'blogger' },
