@@ -54,7 +54,8 @@ export async function runBackgroundFullRefresh(taskId: string, userId: string): 
       completeTaskAfterFetch: false,
     })
 
-    if ((await taskManager.getTask(taskId))?.status === 'cancelled') return
+    const fetchedTask = await taskManager.getTask(taskId)
+    if (fetchedTask?.status === 'cancelled' || fetchedTask?.status === 'completed') return
 
     let processedTotal = 0
     let reachedDrainLimit = false

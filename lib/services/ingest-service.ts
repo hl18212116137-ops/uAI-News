@@ -128,6 +128,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
   const total = enabledSources.length
   let rawFetchedTotal = 0
   let rawSkippedDuplicate = 0
+  const sourceErrors: string[] = []
 
   const pushTelemetry = async () => {
     await mergePipelineTelemetryToTask(taskId, {
@@ -208,6 +209,7 @@ export async function runRefreshFetchFromEnabledSources(body: {
       }
     } catch (error) {
       console.error(`抓取 ${source.handle} 失败:`, error)
+      sourceErrors.push(`${source.handle}: ${error instanceof Error ? error.message : '抓取失败'}`)
     }
 
     processed++
@@ -216,6 +218,10 @@ export async function runRefreshFetchFromEnabledSources(body: {
       progress: Math.round((processed / total) * 100),
       message: `已抓取 ${processed}/${total} 个源，${newRawPosts.length} 条新内容`,
     })
+  }
+
+  if (sourceErrors.length === total) {
+    throw new Error(`所有信息源抓取失败：${sourceErrors.slice(0, 3).join('；')}`)
   }
 
   await upsertRawPosts(newRawPosts)

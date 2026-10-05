@@ -767,6 +767,9 @@ export async function fetchPostsFromX(handle: string): Promise<XPost[]> {
       });
 
       if (!response.ok) {
+        if (response.status === 402) {
+          throw new Error('TwitterAPI.io 余额不足，请充值后重试')
+        }
         throw new Error(`TwitterAPI.io request failed: ${response.status} ${response.statusText}`);
       }
 
@@ -829,6 +832,6 @@ export async function fetchPostsFromX(handle: string): Promise<XPost[]> {
     return mapped;
   } catch (error) {
     console.error(`Error fetching posts from X for ${handle}:`, error);
-    return [];
+    throw error;
   }
 }
