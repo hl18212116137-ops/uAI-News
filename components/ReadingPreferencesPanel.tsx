@@ -19,6 +19,8 @@ type Props = {
   onChanged: () => void;
 };
 
+const prepareHiddenPostsReview = () => { void import("./PassedPostsReviewPanel").catch(() => {}); };
+
 export default function ReadingPreferencesPanel({ isOpen, onClose, user, canManage, sources, onLogin, onReviewHidden, onChanged }: Props) {
   const [rules, setRules] = useState<ReadingPreference[]>([]);
   const [maxDays, setMaxDays] = useState(7);
@@ -133,7 +135,7 @@ export default function ReadingPreferencesPanel({ isOpen, onClose, user, canMana
           })}
           <SubscriptionSettings sources={sources} onChanged={onChanged} />
           <div className="flex flex-wrap gap-4 border-t border-[#f3f4f6] pt-4 text-sm">
-            <button type="button" disabled={busy} onClick={onReviewHidden} onPointerEnter={() => { void import("./PassedPostsReviewPanel").catch(() => {}); }} onFocus={() => { void import("./PassedPostsReviewPanel").catch(() => {}); }} className="text-[#101828] hover:text-primary-600">管理不感兴趣的内容</button>
+            <button type="button" disabled={busy} onClick={onReviewHidden} onPointerEnter={prepareHiddenPostsReview} onFocus={prepareHiddenPostsReview} className="text-[#101828] hover:text-primary-600">管理不感兴趣的内容</button>
             {canManage ? <Link href="/admin/pipeline" className="text-[#6a7282] hover:text-primary-600">采集管理</Link> : null}
           </div>
         </div>

@@ -51,22 +51,19 @@ export function useFeedPagination({ initialPage, initialPosts, posts, setPosts, 
     return cancel;
   }, [cancel, key, enabled]);
 
-  const handleFeedPageSynced = useCallback((next: PageMeta) => {
+  const resetPage = useCallback((next: SetStateAction<PageMeta>) => {
     cancel();
     setPage(next);
     setFilteredPage(null);
     setLoading(false);
     setError("");
   }, [cancel]);
+  const handleFeedPageSynced = useCallback((next: PageMeta) => resetPage(next), [resetPage]);
   const handlePostHidden = useCallback(() => {
-    cancel();
     // Hiding changes the server result set (and potentially its ranking).
     // Re-read from zero and merge identities so no shifted row is skipped.
-    setPage((current) => ({ total: Math.max(0, current.total - 1), nextOffset: 0, hasMore: current.total > 1 }));
-    setFilteredPage(null);
-    setLoading(false);
-    setError("");
-  }, [cancel]);
+    resetPage((current) => ({ total: Math.max(0, current.total - 1), nextOffset: 0, hasMore: current.total > 1 }));
+  }, [resetPage]);
   useEffect(() => {
     handleFeedPageSynced({ nextOffset: initialPage.nextOffset, total: initialPage.total, hasMore: initialPage.hasMore });
   }, [handleFeedPageSynced, initialPosts, initialPage.nextOffset, initialPage.total, initialPage.hasMore]);
