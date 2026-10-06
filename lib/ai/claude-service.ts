@@ -1,10 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { AIService, AIProcessedContent, LongformDigestDraft, LongformDigestInput, PostInsightContext } from './ai-service';
 import { buildLongformDigestPrompt, parseLongformDigestResponse } from './longform-digest';
 import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
-import { cleanEnvValue } from '../env';
+import { environmentAIConnection, type AIConnection } from './config';
+import { requestAIText } from './request';
 
 // 有效的分类列表
 const VALID_CATEGORIES: NewsCategory[] = [
@@ -20,41 +20,15 @@ const VALID_CATEGORIES: NewsCategory[] = [
  * Claude AI 服务实现
  */
 export class ClaudeService implements AIService {
-  private client: Anthropic;
+  private connection: AIConnection;
 
-  constructor() {
-    const apiKey = cleanEnvValue(process.env.ANTHROPIC_API_KEY);
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not configured');
-    }
-
-    this.client = new Anthropic({
-      apiKey,
-    });
+  constructor(connection?: AIConnection) {
+    this.connection = connection ?? environmentAIConnection('claude');
+    if (!this.connection.apiKey) throw new Error('claude API Key 未配置');
   }
 
-  /**
-   * 调用 Claude API
-   */
-  private async callAPI(prompt: string): Promise<string> {
-    const message = await this.client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      temperature: 0.3,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    });
-
-    const content = message.content[0];
-    if (content.type === 'text') {
-      return content.text;
-    }
-
-    throw new Error('Unexpected response format from Claude API');
+  private callAPI(prompt: string, systemPrompt?: string): Promise<string> {
+    return requestAIText(this.connection, prompt, systemPrompt);
   }
 
   /**

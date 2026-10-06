@@ -89,3 +89,11 @@ flowchart TD
 抓取任务通过 `TaskManager` / `PostgresTaskStore` 保存至 `refresh_tasks`，`ownerId` 随任务 JSON 持久化。HTTP 查询与取消校验发起人；取消后的任务不会被迟到的结果改写为完成。`after()` 保持响应后的请求生命周期，抓取入口设置 300 秒平台上限。订阅补抓冷却仍是进程内提示，不是跨实例的强限流。
 
 保留远程 main 的数据库读取瞬时错误重试、连接保活、本轮 rawIds 优先处理、AI 环境值清洗及降级逻辑。长文每页默认 12 条，按发布时间与 ID 稳定排序，客户端按服务端 nextOffset 继续读取。实际长任务吞吐、平台时限、数据保留周期和 AI 质量仍需部署环境测量。
+
+### AI 接口设置与处理时限
+
+管理员在 /admin/pipeline 配置 DeepSeek、MiniMax 或 Claude 的模型、官方接口、API Key、备用服务和请求超时。保存配置覆盖环境变量；恢复部署配置后重新使用环境变量。Key 在 site_ai_settings 中使用 AES-256-GCM 加密，接口仅返回是否已配置。加密密钥优先使用 AI_SETTINGS_ENCRYPTION_KEY，否则使用 NEXTAUTH_SECRET，至少 32 字符；更换密钥前需恢复配置并重新填写 Key。
+
+已有数据库部署前执行 db/migrations/add-ai-settings.sql；新建数据库的 db/init.sql 已包含该表。表启用 RLS，禁止公共角色读取。缺少表时读取仍使用环境配置，保存需先执行迁移。
+
+AI 请求设置超时，鉴权和余额等明确错误不重复重试。每条处理完成后更新进度；完整刷新统一结束任务，处理阶段不提前标记完成。整轮刷新处理预算为 240 秒；失败或超时原文保留，下次更新继续处理。部署平台的实际执行时限仍需核对。

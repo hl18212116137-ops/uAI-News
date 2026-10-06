@@ -8,6 +8,7 @@ import {
   filterInsightReviewEcho,
 } from "@/lib/insight-echo-guard";
 import type { InsightAnalysisPayload } from "@/lib/types";
+import type { AIService } from "@/lib/ai/ai-service";
 
 export type { InsightAnalysisPayload } from "@/lib/types";
 
@@ -41,11 +42,12 @@ async function ensureChineseInsightReview(
 export async function computeInsightAnalysis(args: {
   postId: string;
   subscribedSourcesLines: string;
+  aiService?: AIService;
 }): Promise<InsightAnalysisPayload | null> {
   const post = await getPostById(args.postId);
   if (!post) return null;
 
-  const aiService = getDefaultAIService();
+  const aiService = args.aiService ?? await getDefaultAIService();
 
   const analyzed = await aiService.analyzePost(
     post.originalText,

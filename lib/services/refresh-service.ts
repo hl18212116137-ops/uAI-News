@@ -47,6 +47,7 @@ export async function startBackgroundFullRefresh(userId: string): Promise<StartR
 
 /** Run from Next.js after(), so Vercel keeps the invocation alive after the response. */
 export async function runBackgroundFullRefresh(taskId: string, userId: string): Promise<void> {
+  const deadlineAt = Date.now() + 240_000
   try {
     const fetchData = await runRefreshFetchFromEnabledSources({
       taskId,
@@ -61,11 +62,14 @@ export async function runBackgroundFullRefresh(taskId: string, userId: string): 
     let reachedDrainLimit = false
 
     for (let pass = 1; pass <= PROCESS_DRAIN_MAX_PASSES; pass += 1) {
+      if (Date.now() >= deadlineAt) { reachedDrainLimit = true; break }
       const processData = await runRefreshProcessRawQueue({
         taskId,
         userId,
         rawLimit: PROCESS_RAW_BATCH_LIMIT,
-        rawIds: fetchData.rawIds,
+        rawIds: fetchData.rawIds.length ? fetchData.rawIds : undefined,
+        completeTaskAfterProcess: false,
+        deadlineAt,
       })
       const processedThisPass = processData.count || 0
       processedTotal += processedThisPass
@@ -73,9 +77,11 @@ export async function runBackgroundFullRefresh(taskId: string, userId: string): 
       if ((await taskManager.getTask(taskId))?.status === 'cancelled') return
 
       if (processedThisPass < PROCESS_RAW_BATCH_LIMIT) {
-        reachedDrainLimit = false
+        reachedDrainLimit = Boolean(processData.deferred)
         break
       }
+
+      if (processData.deferred) { reachedDrainLimit = true; break }
 
       reachedDrainLimit = pass === PROCESS_DRAIN_MAX_PASSES
       if (reachedDrainLimit) break
@@ -98,7 +104,7 @@ export async function runBackgroundFullRefresh(taskId: string, userId: string): 
       progress: 100,
       remainingTime: 0,
       message: reachedDrainLimit
-        ? `完成！本轮处理 ${processedTotal} 条新内容，历史队列将在下次继续处理`
+        ? `本轮已处理 ${processedTotal} 条内容，未完成内容已保留，可再次更新重试`
         : `完成！共处理 ${processedTotal} 条新内容`,
     })
   } catch (error: unknown) {

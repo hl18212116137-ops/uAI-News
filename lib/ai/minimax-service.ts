@@ -3,10 +3,9 @@ import { buildLongformDigestPrompt, parseLongformDigestResponse } from './longfo
 import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
-import { cleanEnvValue } from '../env';
+import { environmentAIConnection, type AIConnection } from './config';
+import { requestAIText } from './request';
 
-// MiniMax API 配置
-const MINIMAX_API_URL = 'https://api.minimax.chat/v1/text/chatcompletion_v2';
 
 const VALID_CATEGORIES: NewsCategory[] = [
   '模型',
@@ -21,57 +20,15 @@ const VALID_CATEGORIES: NewsCategory[] = [
  * MiniMax AI 服务实现
  */
 export class MinimaxService implements AIService {
-  private apiKey: string;
-  private groupId: string;
-  private model: string;
+  private connection: AIConnection;
 
-  constructor() {
-    this.apiKey = cleanEnvValue(process.env.MINIMAX_API_KEY);
-    this.groupId = cleanEnvValue(process.env.MINIMAX_GROUP_ID);
-    this.model = cleanEnvValue(process.env.MINIMAX_MODEL) || 'abab6.5-chat';
-
-    if (!this.apiKey) {
-      throw new Error('MINIMAX_API_KEY is not configured');
-    }
+  constructor(connection?: AIConnection) {
+    this.connection = connection ?? environmentAIConnection('minimax');
+    if (!this.connection.apiKey) throw new Error('minimax API Key 未配置');
   }
 
-  /**
-   * 调用 MiniMax API
-   */
-  private async callAPI(prompt: string): Promise<string> {
-    const response = await fetch(MINIMAX_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 2048,
-        ...(this.groupId && { group_id: this.groupId }),
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`MiniMax API error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      console.error('[MiniMax] Unexpected response structure:', JSON.stringify(data).slice(0, 500));
-      throw new Error('Invalid response format from MiniMax API');
-    }
-
-    return data.choices[0].message.content;
+  private callAPI(prompt: string, systemPrompt?: string): Promise<string> {
+    return requestAIText(this.connection, prompt, systemPrompt);
   }
 
   /**

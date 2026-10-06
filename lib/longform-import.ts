@@ -179,7 +179,7 @@ async function importXArticleLongformFromUrl(rawUrl: string): Promise<LongformIm
     throw new Error('没有抓取到这条 X 长文的正文，请稍后重试或确认链接可公开访问')
   }
 
-  const aiService = getDefaultAIService()
+  const aiService = await getDefaultAIService()
   const translate = (text: string) => {
     const trimmed = text.trim()
     if (!trimmed || isMostlyChinese(trimmed, 0.1)) return Promise.resolve(text)
@@ -227,7 +227,7 @@ export async function importLongformFromUrl(rawUrl: string): Promise<LongformImp
   const xArticle = await importXArticleLongformFromUrl(url)
   if (xArticle) return xArticle
 
-  const aiService = getDefaultAIService()
+  const aiService = await getDefaultAIService()
   const articleBase = await extractLongformFromDirectUrl(url, (text) =>
     aiService.translateContent(text),
   )
@@ -262,7 +262,7 @@ export async function importLongformFromTextFile(
 
   const digest = sha256(`${input.fileName}\n${text}`)
   const pseudoUrl = `manual-upload:${digest.slice(0, 20)}`
-  const aiService = getDefaultAIService()
+  const aiService = await getDefaultAIService()
   const articleBase = await createLongformFromTextArticle(
     {
       requestedUrl: pseudoUrl,

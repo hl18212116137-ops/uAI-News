@@ -54,7 +54,7 @@ export async function fetchAndProcessPostsInBackground(
       message: `找到 ${posts.length} 条推文，正在处理...`,
     })
 
-    const aiService = getDefaultAIService()
+    const aiService = await getDefaultAIService()
     let successCount = 0
     let processedCount = 0
     let lowSignalCount = 0

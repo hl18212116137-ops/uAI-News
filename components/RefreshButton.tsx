@@ -91,7 +91,7 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
               </p>
             </Tooltip>
             <div className="shrink-0 pt-px text-right font-sans text-[10px] font-medium leading-4 tracking-[0.01em] text-[#99a1af]">
-              {remainingSec != null ? (
+              {remainingSec != null && remainingSec > 0 ? (
                 <span className="whitespace-nowrap">
                   <span className="font-normal">预计剩余时间</span>
                   <span className="mx-1 text-[#e5e7eb]" aria-hidden>
@@ -102,8 +102,8 @@ export default function RefreshProgress({ taskId, task, onTaskUpdate, onTaskComp
                   </span>
                 </span>
               ) : (
-                <span className="invisible select-none whitespace-nowrap" aria-hidden>
-                  预计剩余时间 · 0 秒
+                <span className="whitespace-nowrap">
+                  正在处理，耗时取决于 AI 响应
                 </span>
               )}
             </div>

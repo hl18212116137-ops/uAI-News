@@ -15,6 +15,21 @@ test('HTTP permission boundaries and reading preference persistence', { skip: !b
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     }, body: body !== undefined ? JSON.stringify(body) : undefined })
   }
+  await t.test('AI configuration is admin-only and never exposes saved keys', async () => {
+    const path = '/api/admin/ai-settings'
+    for (const method of ['GET', 'POST', 'PUT', 'DELETE']) {
+      assert.equal((await request(path, method)).status, 401)
+      assert.equal((await request(path, method, member)).status, 403)
+    }
+    const body = { provider: 'deepseek', fallbackProvider: null, model: 'deepseek-chat',
+      endpoint: 'https://api.deepseek.com/chat/completions', timeoutSeconds: 30, apiKey: 'http-isolated-secret-key' }
+    assert.equal((await request(path, 'PUT', admin, body)).status, 200)
+    const saved = await (await request(path, 'GET', admin)).text()
+    assert.ok(!saved.includes(body.apiKey))
+    assert.equal(JSON.parse(saved).settings.connections.deepseek.configured, true)
+    for (const method of ['POST', 'PUT']) assert.equal((await request(path, method, admin, { ...body, endpoint: 'http://127.0.0.1/internal' })).status, 400)
+    assert.equal((await request(path, 'DELETE', admin)).status, 200)
+  })
   await t.test('anonymous imports and source creation require authentication', async () => {
     for (const path of ['/api/longform/import', '/api/import-from-url', '/api/longform/from-post', '/api/sources', '/api/refresh/fetch', '/api/refresh/process']) {
       assert.equal((await request(path, 'POST')).status, 401, path)

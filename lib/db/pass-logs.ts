@@ -438,7 +438,7 @@ async function buildRestoredNewsItem(row: Record<string, unknown>): Promise<{
       }
     : undefined
   const textForAi = composeTextForAiProcessing(enrichedOuterText, referencedPost)
-  const ai = getDefaultAIService()
+  const ai = await getDefaultAIService()
 
   let title = restoredTitleFromText(enrichedOuterText, tweet.handle)
   let summary = restoredSummaryFromText(enrichedOuterText, referencedPost?.text)

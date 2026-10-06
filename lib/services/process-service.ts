@@ -53,6 +53,7 @@ export type RefreshProcessResult = {
   taskId: string
   message: string
   count: number
+  deferred?: boolean
 }
 
 const BATCH_SIZE = 5
@@ -88,6 +89,7 @@ type ProcessContext = {
   userId?: string
   learningContextCache?: Map<string, Promise<string>>
   longformAutoBudget?: LongformAutoBudget
+  deadlineAt?: number
 }
 
 type ProcessOneResult = {
@@ -186,7 +188,6 @@ async function processOneRawPost(
   rawPost: Record<string, unknown>,
   ctx: ProcessContext
 ): Promise<ProcessOneResult> {
-  const aiService = getDefaultAIService()
   const rawId = String(rawPost.id ?? '')
   const id = canonicalNewsIdForRawPost(rawPost) || rawId
   const outerText = String(rawPost.text ?? '')
@@ -222,6 +223,7 @@ async function processOneRawPost(
       return { outcome: 'low_signal' }
     }
 
+    const aiService = await getDefaultAIService(Math.min(Date.now() + 90_000, ctx.deadlineAt ?? Infinity))
     const filterLearningContext = await getLearningContext(ctx, handle)
     const aiDraft = await aiService.processNews(text, authorName, handle, filterLearningContext)
 
@@ -333,6 +335,7 @@ async function processOneRawPost(
       const insight = await computeInsightAnalysis({
         postId: storedId,
         subscribedSourcesLines: '',
+        aiService,
       })
       if (insight) await mergeInsightGlobalPayload(storedId, insight)
     } catch (insightErr) {
@@ -376,6 +379,9 @@ export type RunRefreshProcessBody = {
   rawIds?: string[]
   /** 当前登录用户；用于读取该用户手动恢复 PASS 的反馈样本 */
   userId?: string
+  /** Full refresh owns the final completed state across all processing passes. */
+  completeTaskAfterProcess?: boolean
+  deadlineAt?: number
 }
 
 /**
@@ -386,6 +392,8 @@ export async function runRefreshProcessRawQueue(
   body: RunRefreshProcessBody = {}
 ): Promise<RefreshProcessResult> {
   const silent = body.silent === true
+  const completionStatus = body.completeTaskAfterProcess === false ? 'running' : 'completed'
+  const deadlineAt = body.deadlineAt ?? Date.now() + 50_000
   const taskId = silent ? CRON_TASK_ID : body.taskId || (await taskManager.createTask(body.userId))
   const rawLimit = clampProcessRawLimit(body.rawLimit)
   const requestedRawIds = normalizeRequestedRawIds(body.rawIds)
@@ -427,7 +435,7 @@ export async function runRefreshProcessRawQueue(
         samples: [],
       })
       await syncTask(silent, taskId, {
-        status: 'completed',
+        status: completionStatus,
         progress: 100,
         message: '没有原始推文需要处理',
       })
@@ -446,29 +454,35 @@ export async function runRefreshProcessRawQueue(
     }
 
     for (let i = 0; i < rawPosts.length; i += BATCH_SIZE) {
+      if (Date.now() >= deadlineAt) break
       if (await isUserRefreshCancelled(taskId, silent)) {
         await pushProcessTelemetry(silent, taskId, acc)
         return { success: true, taskId, message: 'cancelled', count: processed }
       }
       const batch = rawPosts.slice(i, i + BATCH_SIZE)
-      const results = await Promise.all(
-        batch.map(raw =>
-          processOneRawPost(raw, {
+      let progressWrites = Promise.resolve()
+      await Promise.all(
+        batch.map(async raw => {
+          const result = await processOneRawPost(raw, {
             persistRawPostId: false,
             lowSignalThresholds,
             userId,
             learningContextCache,
             longformAutoBudget,
+            deadlineAt,
           })
-        )
+          progressWrites = progressWrites.then(async () => {
+            accumulateProcessOutcome(acc, result)
+            processed++
+            await syncTask(silent, taskId, {
+              progress: 40 + Math.round((processed / total) * 55),
+              message: `已处理 ${processed}/${total} 条推文`,
+            })
+            await pushProcessTelemetry(silent, taskId, acc)
+          })
+          await progressWrites
+        })
       )
-      for (const r of results) accumulateProcessOutcome(acc, r)
-      processed += batch.length
-      await syncTask(silent, taskId, {
-        progress: 40 + Math.round((processed / total) * 60),
-        message: `已处理 ${processed}/${total} 条推文`,
-      })
-      await pushProcessTelemetry(silent, taskId, acc)
     }
 
     if (await isUserRefreshCancelled(taskId, silent)) {
@@ -479,8 +493,8 @@ export async function runRefreshProcessRawQueue(
     await pushProcessTelemetry(silent, taskId, acc)
     await throwIfEntireBatchFailed(silent, taskId, acc)
     await syncTask(silent, taskId, {
-      status: 'completed',
-      progress: 100,
+      status: completionStatus,
+      progress: completionStatus === 'completed' ? 100 : 95,
       message: `处理完成：${processed} 条推文`,
     })
 
@@ -489,6 +503,7 @@ export async function runRefreshProcessRawQueue(
       taskId,
       message: '处理完成',
       count: processed,
+      deferred: processed < total || acc.errors > 0,
     }
   }
 
@@ -508,7 +523,7 @@ export async function runRefreshProcessRawQueue(
       samples: [],
     })
     await syncTask(silent, taskId, {
-      status: 'completed',
+      status: completionStatus,
       progress: 100,
       message: '没有原始推文需要处理',
     })
@@ -527,13 +542,14 @@ export async function runRefreshProcessRawQueue(
   const bumpProgress = async () => {
     idx++
     await syncTask(silent, taskId, {
-      progress: 40 + Math.round((idx / totalWork) * 60),
+      progress: 40 + Math.round((idx / totalWork) * 55),
       message: `已处理 ${idx}/${totalWork} 条推文`,
     })
     await pushProcessTelemetry(silent, taskId, acc)
   }
 
   for (const job of pending) {
+    if (Date.now() >= deadlineAt) break
     if (await isUserRefreshCancelled(taskId, silent)) {
       await pushProcessTelemetry(silent, taskId, acc)
       return { success: true, taskId, message: 'cancelled', count: idx }
@@ -566,30 +582,37 @@ export async function runRefreshProcessRawQueue(
       userId,
       learningContextCache,
       longformAutoBudget,
+      deadlineAt,
     })
     accumulateProcessOutcome(acc, one)
     await bumpProgress()
   }
 
   for (let i = 0; i < legacyRaw.length; i += BATCH_SIZE) {
+    if (Date.now() >= deadlineAt) break
     if (await isUserRefreshCancelled(taskId, silent)) {
       await pushProcessTelemetry(silent, taskId, acc)
       return { success: true, taskId, message: 'cancelled', count: idx }
     }
     const batch = legacyRaw.slice(i, i + BATCH_SIZE)
-    const results = await Promise.all(
-      batch.map(raw =>
-        processOneRawPost(raw, {
+    let progressWrites = Promise.resolve()
+    await Promise.all(
+      batch.map(async raw => {
+        const result = await processOneRawPost(raw, {
           persistRawPostId,
           lowSignalThresholds,
           userId,
           learningContextCache,
           longformAutoBudget,
+          deadlineAt,
         })
-      )
+        progressWrites = progressWrites.then(async () => {
+          accumulateProcessOutcome(acc, result)
+          await bumpProgress()
+        })
+        await progressWrites
+      })
     )
-    for (const r of results) accumulateProcessOutcome(acc, r)
-    for (let j = 0; j < batch.length; j++) await bumpProgress()
   }
 
   if (await isUserRefreshCancelled(taskId, silent)) {
@@ -600,8 +623,8 @@ export async function runRefreshProcessRawQueue(
   await pushProcessTelemetry(silent, taskId, acc)
   await throwIfEntireBatchFailed(silent, taskId, acc)
   await syncTask(silent, taskId, {
-    status: 'completed',
-    progress: 100,
+    status: completionStatus,
+    progress: completionStatus === 'completed' ? 100 : 95,
     message: `处理完成：${idx} 条推文`,
   })
 
@@ -610,5 +633,6 @@ export async function runRefreshProcessRawQueue(
     taskId,
     message: '处理完成',
     count: idx,
+    deferred: idx < totalWork || acc.errors > 0,
   }
 }

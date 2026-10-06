@@ -171,7 +171,7 @@ async function runPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise
 
 async function main() {
   console.log(DRY ? '模式: dry-run（不写库）\n' : '模式: 写库\n')
-  const ai = getDefaultAIService()
+  const ai = await getDefaultAIService()
   const translate = (s: string) => ai.translateContent(s)
 
   const posts = await getAllPosts()

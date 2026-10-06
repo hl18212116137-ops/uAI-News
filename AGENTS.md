@@ -385,8 +385,9 @@ Always import types from `@/lib/types` — do not redefine them.
 
 ### AI 服务
 
-- **主力**：Minimax（`lib/ai/minimax-service.ts`）
-- **降级**：Claude（按配置）（`lib/ai/claude-service.ts`）
+- **默认主力**：DeepSeek（`lib/ai/deepseek-service.ts`），可由部署配置或管理员设置覆盖
+- **默认备用**：MiniMax，可在管理员面板改为 Claude 或关闭
+- **配置入口**：`/admin/pipeline` 的 AI 接口设置；Key 加密保存、不回显，支持连接测试
 - **入口**：`lib/ai/ai-factory.ts`（含重试和 fallback 逻辑）
 
 ### Tooltip 使用规范

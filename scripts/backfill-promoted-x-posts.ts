@@ -76,7 +76,7 @@ async function backfillOne(
 
     const handle = parsed?.handle ?? row.sourceHandle ?? 'unknown'
     const authorName = row.sourceName ?? handle
-    const ai = getDefaultAIService()
+    const ai = await getDefaultAIService()
     const aiDraft = await ai.processNews(textForAi, authorName, handle)
     if (!aiDraft.important) {
       const { deleteNewsItemById } = await import('../lib/db/news')

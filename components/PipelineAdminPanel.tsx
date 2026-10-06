@@ -8,6 +8,7 @@ import type { FetchPipelinePublicConfig } from "@/lib/fetch-pipeline-public-conf
 import type { SourceListItem } from "@/lib/types";
 import { useRefreshTask } from "@/hooks/useRefreshTask";
 import RefreshProgress from "./RefreshButton";
+import AISettingsPanel from "./AISettingsPanel";
 
 const AddLongformModal = dynamic(() => import("./AddLongformModal"), { ssr: false });
 const PassedPostsReviewPanel = dynamic(() => import("./PassedPostsReviewPanel"), { ssr: false });
@@ -47,6 +48,7 @@ export default function PipelineAdminPanel({ initialConfig, sources, user }: { i
   }
   const pipeline = refresh.task?.result?.pipeline;
   return <div className="space-y-5">
+    <AISettingsPanel />
     <section className="card space-y-4 p-5">
       <h2 className="font-semibold text-[#101828]">内容管理</h2>
       <div className="flex flex-wrap gap-3">

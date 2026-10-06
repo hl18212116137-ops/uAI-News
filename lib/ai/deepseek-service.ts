@@ -3,9 +3,9 @@ import { buildLongformDigestPrompt, parseLongformDigestResponse } from './longfo
 import { DEFAULT_INSIGHT_PERSONA } from '../insight-defaults';
 import { NewsCategory } from '../types';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
-import { cleanEnvValue } from '../env';
+import { environmentAIConnection, type AIConnection } from './config';
+import { requestAIText } from './request';
 
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 
 const VALID_CATEGORIES: NewsCategory[] = [
   '模型',
@@ -17,52 +17,15 @@ const VALID_CATEGORIES: NewsCategory[] = [
 ];
 
 export class DeepSeekService implements AIService {
-  private apiKey: string;
-  private model: string;
+  private connection: AIConnection;
 
-  constructor() {
-    this.apiKey = cleanEnvValue(process.env.DEEPSEEK_API_KEY);
-    this.model = cleanEnvValue(process.env.DEEPSEEK_MODEL) || 'deepseek-chat';
-
-    if (!this.apiKey) {
-      throw new Error('DEEPSEEK_API_KEY is not configured');
-    }
+  constructor(connection?: AIConnection) {
+    this.connection = connection ?? environmentAIConnection('deepseek');
+    if (!this.connection.apiKey) throw new Error('deepseek API Key 未配置');
   }
 
-  private async callAPI(prompt: string, systemPrompt?: string): Promise<string> {
-    const messages: Array<{ role: string; content: string }> = [];
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: prompt });
-
-    const response = await fetch(DEEPSEEK_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        temperature: 0.3,
-        max_tokens: 4096,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.choices?.[0]?.message?.content) {
-      console.error('[DeepSeek] Unexpected response:', JSON.stringify(data).slice(0, 500));
-      throw new Error('Invalid response format from DeepSeek API');
-    }
-
-    return data.choices[0].message.content;
+  private callAPI(prompt: string, systemPrompt?: string): Promise<string> {
+    return requestAIText(this.connection, prompt, systemPrompt);
   }
 
   getProviderName(): string {

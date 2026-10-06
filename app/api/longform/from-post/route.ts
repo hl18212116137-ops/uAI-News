@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: '没有找到这条推文' }, { status: 404 })
     }
 
-    const aiService = getDefaultAIService()
+    const aiService = await getDefaultAIService()
 
     if (existing.longform?.translatedContent) {
       const enriched = await enrichLongformArticle(existing.longform, aiService)

@@ -5,6 +5,8 @@ import { ClaudeService } from './claude-service';
 import { DeepSeekService } from './deepseek-service';
 import { SemanticFingerprint, SimilarityResult } from '../deduplication/types';
 import { cleanEnvValue } from '../env';
+import { resolveAISettings, type AIConnection } from './config';
+import { isPermanentAIError } from './request';
 
 export type AIProvider = 'minimax' | 'claude' | 'deepseek';
 
@@ -18,16 +20,16 @@ export class AIServiceFactory {
    * @param provider AI 提供商（默认从环境变量读取）
    * @returns AIService 实例
    */
-  static create(provider?: AIProvider): AIService {
+  static create(provider?: AIProvider, connection?: AIConnection): AIService {
     const selectedProvider = cleanEnvValue(provider || process.env.AI_PROVIDER) || 'deepseek';
 
     switch (selectedProvider) {
       case 'deepseek':
-        return new DeepSeekService();
+        return new DeepSeekService(connection);
       case 'claude':
-        return new ClaudeService();
+        return new ClaudeService(connection);
       case 'minimax':
-        return new MinimaxService();
+        return new MinimaxService(connection);
       default:
         console.warn(`Unknown AI provider: ${selectedProvider}, falling back to deepseek`);
         return new DeepSeekService();
@@ -43,24 +45,27 @@ export class AIServiceFactory {
    */
   static createWithFallback(
     primaryProvider?: AIProvider,
-    fallbackProvider?: AIProvider
+    fallbackProvider?: AIProvider | null,
+    connections?: Record<AIProvider, AIConnection>
   ): AIService {
     const primary = (cleanEnvValue(primaryProvider || process.env.AI_PROVIDER) || 'deepseek') as AIProvider;
-    const fallback = (cleanEnvValue(fallbackProvider) || (primary === 'deepseek' ? 'minimax' : 'deepseek')) as AIProvider;
+    const fallback = (cleanEnvValue(fallbackProvider ?? undefined) || (primary === 'deepseek' ? 'minimax' : 'deepseek')) as AIProvider;
 
     let primaryService: AIService;
     try {
-      primaryService = this.create(primary);
+      primaryService = this.create(primary, connections?.[primary]);
     } catch (primaryError) {
       const message = primaryError instanceof Error ? primaryError.message : String(primaryError);
       console.warn(
         `[AIServiceFactory] Primary "${primary}" unavailable (${message}). Using fallback "${fallback}".`
       );
-      return this.create(fallback);
+      if (fallbackProvider === null) throw primaryError;
+      return this.create(fallback, connections?.[fallback]);
     }
 
+    if (fallbackProvider === null) return primaryService;
     try {
-      const fallbackService = this.create(fallback);
+      const fallbackService = this.create(fallback, connections?.[fallback]);
       return new AIServiceWithFallback(primaryService, fallbackService);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -105,7 +110,7 @@ class AIServiceWithFallback implements AIService {
         );
       } catch (fallbackError) {
         console.error('Both AI services failed:', { primaryError, fallbackError });
-        throw new Error('All AI services failed');
+        throw new Error(`AI 主备服务均失败：${primaryError instanceof Error ? primaryError.message : '主服务失败'}；${fallbackError instanceof Error ? fallbackError.message : '备用服务失败'}`);
       }
     }
   }
@@ -129,7 +134,7 @@ class AIServiceWithFallback implements AIService {
         );
       } catch (fallbackError) {
         console.error('Both AI services failed:', { primaryError, fallbackError });
-        throw new Error('All AI services failed');
+        throw new Error(`AI 主备服务均失败：${primaryError instanceof Error ? primaryError.message : '主服务失败'}；${fallbackError instanceof Error ? fallbackError.message : '备用服务失败'}`);
       }
     }
   }
@@ -363,14 +368,16 @@ class AIServiceWithFallback implements AIService {
   ): Promise<T> {
     let lastError: Error | undefined;
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Provider calls already have a deadline; at most one transient retry.
+    const retryLimit = Math.min(maxRetries, 1);
+    for (let attempt = 0; attempt <= retryLimit; attempt++) {
       try {
         return await fn();
       } catch (error: any) {
         lastError = error;
 
         // 如果是最后一次尝试，直接抛出错误
-        if (attempt === maxRetries) {
+        if (isPermanentAIError(error) || attempt === retryLimit) {
           break;
         }
 
@@ -391,6 +398,9 @@ class AIServiceWithFallback implements AIService {
  * 获取默认的 AI 服务实例（带降级策略）
  * @returns AIService 实例
  */
-export function getDefaultAIService(): AIService {
-  return AIServiceFactory.createWithFallback();
+export async function getDefaultAIService(deadlineAt?: number): Promise<AIService> {
+  const { readAISettings } = await import('./settings');
+  const { provider, fallbackProvider, connections } = resolveAISettings(await readAISettings());
+  for (const connection of Object.values(connections)) connection.deadlineAt = deadlineAt;
+  return AIServiceFactory.createWithFallback(provider, fallbackProvider, connections);
 }

@@ -55,7 +55,7 @@ async function reconcileOne(row: typeof newsItems.$inferSelect) {
   }
 
   try {
-    const ai = getDefaultAIService()
+    const ai = await getDefaultAIService()
     const draft = await ai.processNews(text, authorName, handle)
 
     if (!draft.important) {

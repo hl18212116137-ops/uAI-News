@@ -212,7 +212,7 @@ async function convertToNewsItem(parsed: ParsedContent): Promise<NewsItem> {
 
   try {
     // 获取 AI 服务实例（带降级策略）
-    const aiService = getDefaultAIService();
+    const aiService = await getDefaultAIService();
     const textForAi = composeTextForAiProcessing(parsed.content, parsed.referencedPost);
 
     // 使用 AI 处理：生成中文标题、摘要、分类
